@@ -1,0 +1,26 @@
+# Ignore geist directory
+geist/
+
+# Ignore llama.cpp directory
+backend/inference/llama.cpp/
+
+# Common ignores
+.DS_Store
+*.pyc
+__pycache__/
+*.log
+.env
+.venv/
+venv/
+node_modules/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
