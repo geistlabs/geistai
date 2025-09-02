@@ -19,7 +19,7 @@ async def chat(request: ChatRequest):
       # Call the llama.cpp server
       async with httpx.AsyncClient() as client:
           response = await client.post(
-              "http://localhost:8080/v1/chat/completions",
+              "http://inference:8080/v1/chat/completions",
               json={
                   "messages": [{"role": "user", "content": request.message}],
                   "temperature": 0.7,
