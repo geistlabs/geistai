@@ -9,4 +9,5 @@ dependencies = [
     "httpx>=0.28.1",
     "openai-harmony>=0.0.4",
     "uvicorn>=0.35.0",
+    "sse-starlette>=1.6.5",
 ]

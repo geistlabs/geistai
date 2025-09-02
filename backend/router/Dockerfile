@@ -16,7 +16,7 @@ COPY config.py .
 COPY harmony_service.py .
 
 # Install dependencies 
-RUN pip install fastapi uvicorn httpx openai-harmony
+RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette
 
 # Create non-root user
 RUN useradd -m -u 1000 router && chown -R router:router /app

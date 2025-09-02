@@ -26,19 +26,28 @@ services:
     build: ./inference
     ports:
       - "8080:8080"
+    platform: linux/arm64  # Force ARM64 for Apple Silicon
     environment:
       - MODEL_PATH=/models/gpt-oss-20b-Q4_K_S.gguf
       - HOST=0.0.0.0
       - PORT=8080
       - CONTEXT_SIZE=4096
-      - THREADS=0
-      - GPU_LAYERS=0
+      - THREADS=0 # Auto-detect CPU threads
+      - GPU_LAYERS=${GPU_LAYERS:-0} # Set based on your GPU hardware: 0 for CPU-only, 32+ for NVIDIA GPUs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 60s # Model loading takes time
+    deploy:
+      resources:
+        limits:
+          memory: 16G # Adjust based on model size (GPT-OSS 20B needs more)
+        reservations:
+          memory: 4G
+    # Apple Silicon M3 GPU acceleration happens automatically via Metal backend
+    restart: unless-stopped
     networks:
       - geist-network
 

@@ -255,3 +255,167 @@ class HarmonyService:
             
             # Parse GPT-OSS Harmony channels (based on reference decoder)
             return self.parse_harmony_channels(ai_response)
+    
+    async def stream_chat_request(self, messages, config, reasoning_effort="low"):
+        """
+        Stream a chat request with real-time Harmony channel parsing.
+        Yields individual tokens from the 'final' channel only.
+        """
+        import httpx
+        import json
+        import re
+        
+        if self.enabled:
+            # Harmony path - use completion endpoint with streaming
+            harmony_tokens = self.prepare_conversation(messages, reasoning_effort)
+            harmony_prompt = self.encoding.decode(harmony_tokens)
+            
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST",
+                    f"{config.INFERENCE_URL}/v1/completions",
+                    json={
+                        "prompt": harmony_prompt,
+                        "temperature": 0.7,
+                        "max_tokens": 500,
+                        "stream": True  # Enable streaming
+                    },
+                    timeout=config.INFERENCE_TIMEOUT
+                ) as response:
+                    response.raise_for_status()
+                    
+                    current_channel = None
+                    buffer = ""
+                    
+                    async for line in response.aiter_lines():
+                        # Parse SSE format: lines starting with "data: "
+                        if line.startswith("data: "):
+                            data = line[6:]  # Remove "data: " prefix
+                            
+                            # Check for completion
+                            if data.strip() == "[DONE]":
+                                break
+                            
+                            try:
+                                # Parse JSON chunk from llama.cpp
+                                chunk_data = json.loads(data)
+                                
+                                if "choices" in chunk_data and chunk_data["choices"]:
+                                    choice = chunk_data["choices"][0]
+                                    token = choice.get("text", "")
+                                    finish_reason = choice.get("finish_reason")
+                                    
+                                    if token:  # Only process non-empty tokens
+                                        buffer += token
+                                        
+                                        # Parse tokens for channel markers and content
+                                        for parsed_token in self._parse_streaming_token(buffer):
+                                            if parsed_token["type"] == "content" and parsed_token["channel"] == "final":
+                                                yield parsed_token["content"]
+                                            elif parsed_token["type"] == "channel_change":
+                                                current_channel = parsed_token["channel"]
+                                        
+                                        # Keep unprocessed part in buffer
+                                        buffer = self._get_remaining_buffer(buffer)
+                                    
+                                    # Check if this is the final chunk
+                                    if finish_reason:
+                                        break
+                            
+                            except json.JSONDecodeError:
+                                continue
+                            except Exception:
+                                continue
+        else:
+            # Standard chat completions streaming (non-Harmony)
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST",
+                    f"{config.INFERENCE_URL}/v1/chat/completions",
+                    json={
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 500,
+                        "stream": True
+                    },
+                    timeout=config.INFERENCE_TIMEOUT
+                ) as response:
+                    response.raise_for_status()
+                    
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data = line[6:]
+                            
+                            if data.strip() == "[DONE]":
+                                break
+                            
+                            try:
+                                chunk_data = json.loads(data)
+                                
+                                if "choices" in chunk_data and chunk_data["choices"]:
+                                    choice = chunk_data["choices"][0]
+                                    delta = choice.get("delta", {})
+                                    token = delta.get("content", "")
+                                    finish_reason = choice.get("finish_reason")
+                                    
+                                    if token:
+                                        # For non-Harmony, parse channels from accumulated tokens
+                                        for parsed_token in self._parse_streaming_token(token):
+                                            if parsed_token["type"] == "content" and parsed_token["channel"] == "final":
+                                                yield parsed_token["content"]
+                                    
+                                    if finish_reason:
+                                        break
+                            
+                            except json.JSONDecodeError:
+                                continue
+                            except Exception:
+                                continue
+    
+    def _parse_streaming_token(self, token_buffer):
+        """
+        Parse streaming tokens for Harmony channel markers.
+        Returns list of parsed token objects with type and content.
+        """
+        results = []
+        current_channel = getattr(self, '_current_channel', 'final')  # Default to final
+        
+        # Look for channel markers in the buffer
+        import re
+        
+        # Split on harmony markers while keeping them
+        parts = re.split(r'(<\|[^|]+\|>)', token_buffer)
+        
+        for part in parts:
+            if not part.strip():
+                continue
+                
+            if part == '<|channel|>':
+                results.append({"type": "marker", "content": part})
+            elif part in ['final', 'analysis', 'commentary']:
+                current_channel = part
+                self._current_channel = current_channel
+                results.append({"type": "channel_change", "channel": current_channel})
+            elif part == '<|message|>':
+                results.append({"type": "marker", "content": part})
+            elif part in ['<|start|>', '<|end|>', '<|return|>']:
+                results.append({"type": "control", "content": part})
+            else:
+                # Regular content - only yield if we're in the final channel
+                if current_channel == 'final':
+                    results.append({
+                        "type": "content", 
+                        "content": part, 
+                        "channel": current_channel
+                    })
+        
+        return results
+    
+    def _get_remaining_buffer(self, buffer):
+        """
+        Keep unprocessed part of buffer for next iteration.
+        This is a simple implementation - you might need more sophisticated buffering.
+        """
+        # For now, clear buffer after processing
+        # In production, you'd want to keep partial tokens
+        return ""

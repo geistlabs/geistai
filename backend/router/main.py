@@ -1,6 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 import httpx
+import asyncio
+import json
 import config
 from harmony_service import HarmonyService
 
@@ -22,6 +26,7 @@ def health_check():
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
+    """Non-streaming chat endpoint for backwards compatibility"""
     # Prepare messages for the model
     messages = [{"role": "user", "content": request.message}]
     
@@ -55,6 +60,38 @@ async def chat(request: ChatRequest):
             ai_response = raw_response
     
     return {"response": ai_response}
+
+@app.post("/api/chat/stream")
+async def chat_stream(chat_request: ChatRequest, request: Request):
+    """Streaming chat endpoint using Server-Sent Events"""
+    messages = [{"role": "user", "content": chat_request.message}]
+    
+    async def event_stream():
+        chunk_sequence = 0
+        try:
+            # Stream tokens from harmony service
+            async for token in harmony_service.stream_chat_request(
+                messages, 
+                config, 
+                reasoning_effort=config.HARMONY_REASONING_EFFORT
+            ):
+                # Check if client is still connected
+                if await request.is_disconnected():
+                    break
+                
+                # Send token as SSE event (no encryption)
+                yield {"data": json.dumps({"token": token, "sequence": chunk_sequence}), "event": "chunk"}
+                chunk_sequence += 1
+            
+            # Send end event
+            yield {"data": json.dumps({"finished": True}), "event": "end"}
+            
+        except asyncio.TimeoutError as e:
+            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
+        except Exception as e:
+            yield {"data": json.dumps({"error": "Internal server error"}), "event": "error"}
+    
+    return EventSourceResponse(event_stream())
 
 if __name__ == "__main__":
     import uvicorn

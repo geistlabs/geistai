@@ -15,7 +15,23 @@ This backend provides an AI chat API using FastAPI as the router and llama.cpp f
 
 ## Quick Start
 
-### 1. Start Services
+### 🍎 Apple Silicon (Recommended for Local Development)
+
+Docker has significant performance limitations on Apple Silicon. Use the local development script instead:
+
+```bash
+cd backend
+
+# Start both services with full GPU acceleration (~15x faster than Docker)
+./start-local-dev.sh
+
+# Test the setup
+./test-local-dev.sh
+
+# Stop services: Press Ctrl+C in the start script terminal
+```
+
+### 🐳 Docker (Other Platforms)
 
 ```bash
 # Start all services

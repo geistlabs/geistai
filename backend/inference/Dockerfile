@@ -1,6 +1,6 @@
 
-  # Use pre-built llama.cpp server image for production
-  FROM ghcr.io/ggml-org/llama.cpp:server
+  # Use pre-built llama.cpp server image for ARM64/Apple Silicon
+  FROM --platform=linux/arm64 ghcr.io/ggml-org/llama.cpp:server
 
   # Install necessary tools
   USER root
@@ -31,11 +31,5 @@
   HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
       CMD curl -f http://localhost:8080/health || exit 1
 
-  # Production start command
-  CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
-       "--host", "0.0.0.0", \
-       "--port", "8080", \
-       "--ctx-size", "4096", \
-       "--threads", "0", \
-       "--n-gpu-layers", "0", \
-       "--log-disable"]
+  # Production start command - use environment variables
+  CMD ["/bin/sh", "-c", "/app/llama-server --model $MODEL_PATH --host $HOST --port $PORT --ctx-size $CONTEXT_SIZE --threads $THREADS --n-gpu-layers $GPU_LAYERS --log-disable"]
