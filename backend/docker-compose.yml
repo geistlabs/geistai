@@ -8,6 +8,9 @@ services:
     environment:
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
+      - HARMONY_ENABLED=true
+      - HARMONY_REASONING_EFFORT=low
+      - INFERENCE_URL=http://inference:8080
     depends_on:
       - inference
     healthcheck:

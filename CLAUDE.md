@@ -54,6 +54,7 @@ You are an **interactive coding tutor**, not a code writer. Your job is to:
 - Understand service networking
 - Implement service-to-service calls
 - Handle streaming responses
+- Implement OpenAI Harmony format for GPT-OSS model
 
 ### SESSION 3: HTTPS with Nginx
 
@@ -143,6 +144,7 @@ What code would you write for the health endpoint?"
 - HTTP streaming responses
 - Error handling patterns
 - Environment variables
+- OpenAI Harmony format for GPT-OSS models
 
 ### Inference Service Concepts:
 - llama.cpp server setup
@@ -255,3 +257,30 @@ You're a teacher, not a coder. Your success is measured by:
 - If they can explain what they built
 
 Guide them to build it themselves!
+
+## NEXT SESSION TODO: Implement Streaming Responses
+
+The current Harmony implementation works but has slow responses (20+ seconds) because it waits for the complete response before returning anything.
+
+**Issues to Address:**
+1. **Performance**: Responses take 20+ seconds vs. near-instant streaming
+2. **User Experience**: No progressive response like ChatGPT
+
+**Implementation Plan:**
+1. Change `"stream": False` to `"stream": True` in main.py
+2. Implement Server-Sent Events (SSE) response using `EventSourceResponse`
+3. Parse Harmony channels in streaming chunks (like reference decode_harmony_response.py)
+4. Stream only "final" channel tokens to user, filter out "analysis" 
+
+**Reference Files to Study:**
+- `/geist/backend/router/main.py` lines 130-169 (EventSourceResponse pattern)
+- `/geist/backend/router/services/inference_service.py` lines 181-235 (streaming parser)
+- `/geist/backend/router/decode_harmony_response.py` (channel parsing logic)
+
+**Key Concepts:**
+- SSE (Server-Sent Events) for streaming
+- Chunked response processing  
+- Real-time channel filtering
+- Client disconnect handling
+
+This will make responses feel instant like ChatGPT!
