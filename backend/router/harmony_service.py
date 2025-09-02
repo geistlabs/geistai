@@ -131,3 +131,127 @@ class HarmonyService:
         }
         
         return result
+    
+    def parse_harmony_channels(self, response_text):
+        """
+        Parse Harmony channel markers - exact copy of reference decode_harmony_response.py logic.
+        Moved from main.py for better organization.
+        """
+        current_channel = None
+        channels = {
+            'final': [],
+            'analysis': [],
+            'commentary': []
+        }
+        
+        def parse_harmony_content(content):
+            """Parse Harmony special tokens and channel content."""
+            nonlocal current_channel
+            # Look for channel markers
+            if content == '<|channel|>':
+                return 'channel_marker', content
+            elif content in ['final', 'analysis', 'commentary']:
+                current_channel = content
+                return 'channel_name', content
+            elif content == '<|message|>':
+                return 'message_marker', content
+            elif content in ['<|start|>', '<|end|>', '<|return|>']:
+                return 'control_token', content
+            else:
+                return 'content', content
+        
+        def add_content(content):
+            """Add content to the appropriate channel."""
+            token_type, token_content = parse_harmony_content(content)
+            
+            if token_type == 'content' and current_channel:
+                channels[current_channel].append(token_content)
+            
+            return token_type, token_content
+        
+        # Process tokens like reference
+        import re
+        tokens = re.split(r'(<\|[^|]+\|>)', response_text)
+        
+        for token in tokens:
+            if token.strip():
+                add_content(token)
+        
+        # Return final channel content like reference get_final_response()
+        final_content = ''.join(channels['final'])
+        if final_content:
+            return final_content
+        
+        # Fallback to analysis like reference
+        analysis_content = ''.join(channels['analysis'])
+        return analysis_content if analysis_content else response_text
+    
+    async def process_chat_request(self, messages, config, reasoning_effort="low"):
+        """
+        Process a chat request with Harmony encoding if enabled, or fallback to standard chat.
+        Handles all the HTTP client logic that was in main.py.
+        """
+        import httpx
+        
+        if self.enabled:
+            # Harmony path - use completion endpoint
+            harmony_tokens = self.prepare_conversation(messages, reasoning_effort)
+            harmony_prompt = self.encoding.decode(harmony_tokens)
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.INFERENCE_URL}/v1/completions",
+                    json={
+                        "prompt": harmony_prompt,
+                        "temperature": 0.7,
+                        "max_tokens": 100,
+                        "stream": False
+                    },
+                    timeout=config.INFERENCE_TIMEOUT
+                )
+            
+            # Parse the response
+            result = response.json()
+            raw_response = result.get("choices", [{}])[0].get("text", "")
+            
+            # Parse Harmony format to extract final message
+            parsed = self.parse_completion_response(raw_response)
+            return parsed["final"] if parsed["final"] else raw_response
+        
+        else:
+            # Standard chat completions (non-Harmony) 
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{config.INFERENCE_URL}/v1/chat/completions",
+                    json={
+                        "messages": messages,
+                        "temperature": 0.7,
+                        "max_tokens": 100
+                    },
+                    timeout=config.INFERENCE_TIMEOUT
+                )
+            
+            result = response.json()
+            
+            # Better error handling
+            if "choices" not in result:
+                print(f"Error: No 'choices' in response. Full response: {result}")
+                raise ValueError(f"Invalid response format from inference service: {result}")
+            
+            if not result["choices"] or not result["choices"][0]:
+                print(f"Error: Empty choices array. Full response: {result}")
+                raise ValueError(f"Empty choices in response from inference service")
+                
+            choice = result["choices"][0]
+            if "message" not in choice:
+                print(f"Error: No 'message' in choice. Choice: {choice}")
+                raise ValueError(f"No message in choice from inference service")
+                
+            if "content" not in choice["message"]:
+                print(f"Error: No 'content' in message. Message: {choice['message']}")
+                raise ValueError(f"No content in message from inference service")
+                
+            ai_response = choice["message"]["content"]
+            
+            # Parse GPT-OSS Harmony channels (based on reference decoder)
+            return self.parse_harmony_channels(ai_response)
