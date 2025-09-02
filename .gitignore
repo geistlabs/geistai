@@ -4,12 +4,21 @@ geist/
 # Ignore llama.cpp directory
 backend/inference/llama.cpp/
 
+# Frontend/Expo specific
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+frontend/expo-env.d.ts
+frontend/.metro-health-check*
+frontend/app-example/
+
 # Common ignores
 .DS_Store
 *.pyc
 __pycache__/
 *.log
 .env
+.env*.local
 .venv/
 venv/
 node_modules/
@@ -24,3 +33,15 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# TypeScript
+*.tsbuildinfo
+
+# Mobile/Native
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+.kotlin/
