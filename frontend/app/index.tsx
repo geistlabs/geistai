@@ -1,6 +1,7 @@
-import { View, Text, SafeAreaView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, FlatList } from "react-native";
+import { View, Text, SafeAreaView, KeyboardAvoidingView, Platform, FlatList } from "react-native";
 import { useState, useRef } from "react";
 import { MessageBubble } from "../components/chat/MessageBubble";
+import { InputBar } from "../components/chat/InputBar";
 
 // Type definitions for our messages
 type Message = {
@@ -19,29 +20,25 @@ export default function ChatScreen() {
       timestamp: new Date()
     }
   ]);
-  const [inputText, setInputText] = useState("");
   const flatListRef = useRef<FlatList>(null);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
-
+  const handleSend = (text: string) => {
     // Add user message
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: inputText.trim(),
+      content: text,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInputText("");
 
     // Simulate assistant response (we'll connect to API later)
     setTimeout(() => {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "I received your message: " + inputText.trim(),
+        content: "I received your message: " + text,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
@@ -73,25 +70,8 @@ export default function ChatScreen() {
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         />
 
-        {/* Input Bar - We'll build this component */}
-        <View className="bg-white border-t border-gray-200 px-4 py-3">
-          <View className="flex-row items-center space-x-2">
-            <TextInput
-              className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-base"
-              placeholder="Type a message..."
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-            />
-            <TouchableOpacity 
-              onPress={handleSend}
-              className="bg-blue-500 rounded-full p-3"
-              disabled={!inputText.trim()}
-            >
-              <Text className="text-white font-semibold">Send</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {/* Input Bar */}
+        <InputBar onSend={handleSend} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
