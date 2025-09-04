@@ -7,6 +7,7 @@
 
 ## Components
 - `components/chat/MessageBubble.tsx` - Chat message display component
+- `components/chat/InputBar.tsx` - Message input with send button
 
 ## Configuration
 - `package.json` - Dependencies (Expo, NativeWind, React Native)

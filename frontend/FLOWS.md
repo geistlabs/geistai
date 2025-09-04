@@ -33,7 +33,7 @@ User Input → API Client → Backend Stream → Parse Chunks → Update UI → 
 ```
 ChatScreen (state owner)
   ├── MessageBubble (display only)
-  └── Input Bar (sends events up)
+  └── InputBar (sends events up via onSend prop)
 ```
 
 ## Backend Integration Points
