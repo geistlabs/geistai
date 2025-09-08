@@ -23,6 +23,6 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 
 		#  docker run -d \
 		#  --name inference-server \
-		#  -p 8080:8080 \
+		#  -p 80:8080 \
 		#  -v /root/models:/models:ro \
 		#  alo42/inference:latest

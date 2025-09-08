@@ -27,3 +27,9 @@ EXPOSE 8000
 
 # Start command
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+		#  docker run -d \
+		#  --name router-server \
+		#  -p 80:8000 \
+		#  -e INFERENCE_URL=https://inference.geist.im \
+		#  alo42/router:latest
