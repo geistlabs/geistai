@@ -4,51 +4,41 @@ interface MessageBubbleProps {
   message: {
     role: "user" | "assistant" | "system";
     content: string;
+    text?: string; // Support both content and text fields
     timestamp?: Date | number;
   };
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const messageText = message.content || message.text || '';
   
-  const formatTime = () => {
-    if (!message.timestamp) return '';
-    
-    const date = typeof message.timestamp === 'number' 
-      ? new Date(message.timestamp)
-      : message.timestamp;
-      
-    return date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
   return (
-    <View className={`flex-row ${isUser ? "justify-end" : "justify-start"} mb-4`}>
-      <View
-        className={`
-          max-w-[80%] px-4 py-3 rounded-2xl
-          ${isUser 
-            ? "bg-blue-500 rounded-br-sm" 
-            : "bg-white border border-gray-200 rounded-bl-sm"
-          }
-        `}
-      >
+    <View
+      style={{
+        marginBottom: 16,
+        marginTop: 8,
+      }}
+      className={`max-w-[80%] rounded-2xl ${
+        isUser 
+          ? 'bg-blue-600 self-end' 
+          : 'bg-gray-200 self-start'
+      }`}>
+      <View style={{ 
+        paddingTop: 12, 
+        paddingLeft: 12, 
+        paddingRight: 12, 
+        paddingBottom: 12,
+      }}>
         <Text 
-          className={`text-base ${isUser ? "text-white" : "text-gray-800"}`}
+          style={{
+            color: isUser ? '#ffffff' : '#111827',
+            fontSize: 15,
+            lineHeight: 24,
+          }}
         >
-          {message.content}
+          {messageText}
         </Text>
-        
-        {/* Timestamp */}
-        {message.timestamp && (
-          <Text 
-            className={`text-xs mt-1 ${isUser ? "text-blue-100" : "text-gray-400"}`}
-          >
-            {formatTime()}
-          </Text>
-        )}
       </View>
     </View>
   );

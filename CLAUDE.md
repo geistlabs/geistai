@@ -12,16 +12,19 @@
 ### ✅ Completed
 
 #### Session 1: Foundations & Walking Skeleton
+
 - [x] Project setup with Expo
 - [x] Routing configuration
 - [x] Tailwind/NativeWind styling
 
-#### Session 2: Chat UI Components  
+#### Session 2: Chat UI Components
+
 - [x] MessageBubble component
 - [x] InputBar component
 - [x] Chat screen layout
 
 #### Session 3: Backend Integration
+
 - [x] Create `lib/api/client.ts` for HTTP client
 - [x] Create `lib/api/chat.ts` for chat endpoints
 - [x] Create `hooks/useChat.ts` for chat state management
@@ -36,13 +39,6 @@
 
 - [ ] Mirror reference project's state approach
 - [ ] Add multiple chat sessions
-- [ ] Add searchable history
-- [ ] Add draft autosave (if in reference)
-- [ ] Add sync-on-reconnect
-- [ ] Add connection status UX
-- [ ] Plan migration strategy (record in ADR)
-- [ ] Handle cache invalidation & data limits
-- [ ] Optimize derived state vs source of truth
 
 ### 🔲 Advanced UX & Performance
 
