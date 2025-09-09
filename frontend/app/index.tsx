@@ -1,12 +1,16 @@
-import { View, Text, SafeAreaView, KeyboardAvoidingView, Platform, FlatList, TouchableOpacity, Alert } from "react-native";
+import { View, Text, SafeAreaView, KeyboardAvoidingView, Platform, FlatList, TouchableOpacity, Alert, Animated, Dimensions } from "react-native";
 import { useRef, useEffect, useState } from "react";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { InputBar } from "../components/chat/InputBar";
-import { ChatDrawer } from "../components/chat/ChatDrawer";
+import ChatDrawer from "../components/chat/ChatDrawer";
+import HamburgerIcon from "../components/HamburgerIcon";
 import { NetworkStatus } from "../components/NetworkStatus";
 import { useChatWithStorage } from "../hooks/useChatWithStorage";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import '../global.css';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
@@ -14,7 +18,9 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(undefined);
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
-  const [chats, setChats] = useState<any[]>([]);
+  
+  // Animation for sliding the app content
+  const slideAnim = useRef(new Animated.Value(0)).current;
   
   const {
     messages,
@@ -27,8 +33,6 @@ export default function ChatScreen() {
     retryLastMessage,
     currentChat,
     createNewChat,
-    getAllChats,
-    deleteChat,
     storageError
   } = useChatWithStorage({ chatId: currentChatId });
 
@@ -79,10 +83,15 @@ export default function ChatScreen() {
 
   const handleNewChat = async () => {
     try {
+      // Auto-interrupt any ongoing streaming
+      if (isStreaming) {
+        stopStreaming();
+      }
+      
       const newChatId = await createNewChat();
       setCurrentChatId(newChatId);
       clearMessages();
-      await loadChats(); // Refresh chat list
+      setIsDrawerVisible(false);
     } catch (err) {
       Alert.alert('Error', 'Failed to create new chat');
     }
@@ -90,163 +99,168 @@ export default function ChatScreen() {
 
   const handleChatSelect = (chatId: number) => {
     setCurrentChatId(chatId);
+    // Drawer closing is now handled by ChatDrawer component
   };
 
-  const handleDeleteChat = async (chatId: number) => {
-    try {
-      await deleteChat(chatId);
-      if (chatId === currentChatId) {
-        setCurrentChatId(undefined);
-        clearMessages();
-      }
-      await loadChats(); // Refresh chat list
-    } catch (err) {
-      Alert.alert('Error', 'Failed to delete chat');
-    }
-  };
-
-  const loadChats = async () => {
-    try {
-      const allChats = await getAllChats({ includeArchived: false });
-      setChats(allChats);
-      console.log('Successfully loaded chats:', allChats.length);
-    } catch (err) {
-      console.error('Failed to load chats:', err);
-      // Don't show an alert for database not initialized - that's expected during startup
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      if (!errorMessage.includes('Database not initialized')) {
-        Alert.alert('Error', 'Failed to load chat history');
-      }
-    }
-  };
-
-  // Load chats when storage is initialized and not loading
+  // Handle drawer animation
   useEffect(() => {
-    if (!isLoading && !storageError) {
-      loadChats();
+    if (isDrawerVisible) {
+      Animated.timing(slideAnim, {
+        toValue: DRAWER_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      // Use a shorter duration for closing to make it more responsive
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [isLoading, storageError]);
+  }, [isDrawerVisible]);
+
+  const handleDrawerOpen = () => {
+    setIsDrawerVisible(true);
+  };
+
+  const handleDrawerClose = () => {
+    setIsDrawerVisible(false);
+  };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <KeyboardAvoidingView 
-        className="flex-1"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        {/* Network Status */}
-        {!isConnected && <NetworkStatus isOnline={isConnected} position="top" />}
-        
-        {/* Header */}
-        <View className="relative border-b border-gray-200 px-4 py-3">
-          <View className="flex-row items-center">
-            {/* Left side - Menu Button */}
-            <TouchableOpacity 
-              onPress={() => setIsDrawerVisible(true)}
-              className="mr-3 p-2"
-            >
-              <View className="space-y-1">
-                <View className="w-4 h-0.5 bg-gray-600" />
-                <View className="w-4 h-0.5 bg-gray-600" />
-                <View className="w-4 h-0.5 bg-gray-600" />
-              </View>
-            </TouchableOpacity>
-            
-            {/* Center - Title */}
-            <View className="flex-row items-center">
-              <Text className="text-lg font-medium text-black">
-                {currentChat?.title || 'Geist'}
-              </Text>
-            </View>
-            
-            {/* Right side - New Chat Button */}
-            <View className="ml-auto">
-              <TouchableOpacity 
-                onPress={handleNewChat} 
-                className="px-3 py-1.5 bg-gray-100 rounded-lg"
-              >
-                <Text className="text-sm text-gray-700">New Chat</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Messages List */}
-        <View className="flex-1 pb-2">
-          {/* Debug logging */}
-          {console.log('[ChatScreen] Messages array:', messages.map((m, i) => ({ index: i, message: m, hasRole: !!m?.role })))}
-          {isLoading && messages.length === 0 ? (
-            <View className="flex-1 items-center justify-center p-8">
-              <Text className="text-gray-500 text-center">Loading...</Text>
-              {storageError && (
-                <Text className="text-red-500 text-sm text-center mt-2">{storageError}</Text>
-              )}
-            </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages.filter(message => {
-                const isValid = message && typeof message === 'object' && message.role && 
-                  typeof message.content === 'string'; // Allow empty strings for streaming assistant messages
-                if (!isValid) {
-                  console.warn('[ChatScreen] Filtering out invalid message:', message);
-                }
-                return isValid;
-              })}
-              keyExtractor={(item, index) => {
-                try {
-                  return item?.id || item?.timestamp?.toString() || `message-${index}`;
-                } catch (err) {
-                  console.error('[ChatScreen] Error in keyExtractor:', err, item);
-                  return `error-${index}`;
-                }
-              }}
-              renderItem={({ item }) => {
-                try {
-                  return <MessageBubble message={item} />;
-                } catch (err) {
-                  console.error('[ChatScreen] Error rendering message:', err, item);
-                  return null;
-                }
-              }}
-              contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-              className="flex-1 bg-white"
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            />
-          )}
-          
-        </View>
-        
-        {/* Error with Retry */}
-        {error && !isStreaming && (
-          <TouchableOpacity 
-            onPress={retryLastMessage}
-            className="mx-4 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg"
+    <>
+      {/* Main App Content */}
+      <Animated.View
+        style={{
+          flex: 1,
+          transform: [{ translateX: slideAnim }],
+        }}>
+        <SafeAreaView className="flex-1 bg-white">
+          <KeyboardAvoidingView 
+            className="flex-1"
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <Text className="text-red-600 text-sm text-center">Failed to send. Tap to retry.</Text>
-          </TouchableOpacity>
-        )}
+            {/* Network Status */}
+            {!isConnected && <NetworkStatus isOnline={isConnected} position="top" />}
+            
+            {/* Header */}
+            <View className="relative border-b border-gray-200 px-4 py-3">
+              <View className="flex-row items-center">
+                {/* Left side - Hamburger Menu */}
+                <TouchableOpacity onPress={handleDrawerOpen} className="-ml-2 mr-2 p-2">
+                  <HamburgerIcon size={20} color="#374151" />
+                </TouchableOpacity>
 
-        {/* Input Bar */}
-        <InputBar 
-          value={input}
-          onChangeText={setInput}
-          onSend={handleSend}
-          onInterrupt={handleInterrupt}
-          disabled={isLoading || !isConnected}
-          isStreaming={isStreaming}
-        />
-      </KeyboardAvoidingView>
+                {/* Center - Title */}
+                <View className="flex-row items-center">
+                  <Text className="text-lg font-medium text-black">Geist</Text>
+                </View>
+
+                {/* Right side - New Chat Button */}
+                <View className="ml-auto">
+                  <TouchableOpacity 
+                    onPress={handleNewChat} 
+                    className="px-3 py-1.5 bg-gray-100 rounded-lg"
+                  >
+                    <Text className="text-sm text-gray-700">New Chat</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {/* Messages List */}
+            <View className="flex-1 pb-2">
+              {/* Debug logging */}
+              {console.log('[ChatScreen] Messages array:', messages.map((m, i) => ({ index: i, message: m, hasRole: !!m?.role })))}
+              {isLoading && messages.length === 0 ? (
+                <View className="flex-1 items-center justify-center p-8">
+                  <Text className="text-gray-500 text-center">Loading...</Text>
+                  {storageError && (
+                    <Text className="text-red-500 text-sm text-center mt-2">{storageError}</Text>
+                  )}
+                </View>
+              ) : (
+                <FlatList
+                  ref={flatListRef}
+                  data={messages.filter(message => {
+                    const isValid = message && typeof message === 'object' && message.role && 
+                      typeof message.content === 'string'; // Allow empty strings for streaming assistant messages
+                    if (!isValid) {
+                      console.warn('[ChatScreen] Filtering out invalid message:', message);
+                    }
+                    return isValid;
+                  })}
+                  keyExtractor={(item, index) => {
+                    try {
+                      return item?.id || item?.timestamp?.toString() || `message-${index}`;
+                    } catch (err) {
+                      console.error('[ChatScreen] Error in keyExtractor:', err, item);
+                      return `error-${index}`;
+                    }
+                  }}
+                  renderItem={({ item }) => {
+                    try {
+                      return <MessageBubble message={item} />;
+                    } catch (err) {
+                      console.error('[ChatScreen] Error rendering message:', err, item);
+                      return null;
+                    }
+                  }}
+                  contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+                  className="flex-1 bg-white"
+                  onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                />
+              )}
+              
+            </View>
+            
+            {/* Error with Retry */}
+            {error && !isStreaming && (
+              <TouchableOpacity 
+                onPress={retryLastMessage}
+                className="mx-4 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg"
+              >
+                <Text className="text-red-600 text-sm text-center">Failed to send. Tap to retry.</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Input Bar */}
+            <InputBar 
+              value={input}
+              onChangeText={setInput}
+              onSend={handleSend}
+              onInterrupt={handleInterrupt}
+              disabled={isLoading || !isConnected}
+              isStreaming={isStreaming}
+            />
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+
+        {/* Overlay for main content when drawer is open */}
+        {isDrawerVisible && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.01)',
+              zIndex: 5,
+            }}
+          />
+        )}
+      </Animated.View>
 
       {/* Chat Drawer */}
       <ChatDrawer
         isVisible={isDrawerVisible}
-        onClose={() => setIsDrawerVisible(false)}
+        onClose={handleDrawerClose}
         onChatSelect={handleChatSelect}
         activeChatId={currentChatId}
         onNewChat={handleNewChat}
-        chats={chats}
-        onDeleteChat={handleDeleteChat}
       />
-    </SafeAreaView>
+    </>
   );
 }
