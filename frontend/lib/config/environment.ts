@@ -7,16 +7,18 @@ export interface Environment {
 
 const getEnvironment = (): Environment => {
   const isProduction = !__DEV__;
-
-  // Default to development values
-  let apiUrl = 'http://localhost:8000';
+  const useLocalApi = process.env.EXPO_PUBLIC_USE_LOCAL_API === 'true';
   
-  if (isProduction) {
-    // Production API URL - you'll need to set this in your app.json or env
-    apiUrl = Constants.expoConfig?.extra?.apiUrl || 'https://your-production-api.com';
+  let apiUrl: string;
+  
+  if (useLocalApi) {
+    // Use local development API
+    apiUrl = process.env.EXPO_PUBLIC_LOCAL_API_URL || 'http://localhost:8000';
+    console.log('🔧 Using local API:', apiUrl);
   } else {
-    // Development - use localhost or env override
-    apiUrl = Constants.expoConfig?.extra?.apiUrl || process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+    // Use production API
+    apiUrl = process.env.EXPO_PUBLIC_PROD_API_URL || 'https://api.geist.im';
+    console.log('🌐 Using production API:', apiUrl);
   }
 
   return {

@@ -83,7 +83,6 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
           timestamp: msg.timestamp
         }));
       
-      console.log('[useChatWithStorage] Loading chat messages from storage:', chatMessages.length);
       setMessages(chatMessages);
     }
   }, [options.chatId, storage.isLoading]); // Only depend on chatId and loading state, not messages
@@ -118,20 +117,20 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       timestamp: Date.now()
     };
     
+    // Log input
+    console.log('[Chat] Input:', content);
+    const inputStartTime = Date.now();
+    
     // Update local state immediately
-    console.log('[useChatWithStorage] Adding user message:', userMessage);
     setMessages(prev => [...prev, userMessage]);
     
     // Save user message to storage asynchronously (don't block UI)
     // Use the current chat ID from the ref, which is kept up to date
     const currentChatId = currentChatIdRef.current;
     if (currentChatId && storage.addMessage) {
-      console.log('[useChatWithStorage] Saving user message to chat:', currentChatId);
       storage.addMessage(convertToLegacyMessage(userMessage), currentChatId).catch(err => {
-        console.error('[useChatWithStorage] Failed to save user message:', err);
+        console.error('[Chat] Failed to save user message:', err);
       });
-    } else {
-      console.warn('[useChatWithStorage] Cannot save user message - no chatId or addMessage function', { currentChatId, hasAddMessage: !!storage.addMessage });
     }
     
     const assistantMessage: ChatMessage = {
@@ -142,7 +141,6 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
     };
     
     try {
-      console.log('[useChatWithStorage] Starting stream for message:', content);
       options.onStreamStart?.();
       
       // Set streaming state FIRST to prevent storage sync conflicts
@@ -150,11 +148,12 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       isStreamingRef.current = true;
       setIsLoading(false);
       
-      console.log('[useChatWithStorage] Adding assistant message:', assistantMessage);
       setMessages(prev => [...prev, assistantMessage]);
       
       let accumulatedContent = '';
       tokenCountRef.current = 0;
+      
+      let firstTokenLogged = false;
       
       // Create token batcher for optimized streaming
       const batcher = new TokenBatcher({
@@ -162,6 +161,13 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
         flushInterval: 100, // Or flush every 100ms
         onBatch: (batchedTokens: string) => {
           accumulatedContent += batchedTokens;
+          
+          // Log first token timing
+          if (!firstTokenLogged) {
+            const firstTokenTime = Date.now() - inputStartTime;
+            console.log('[Chat] First token time:', firstTokenTime + 'ms');
+            firstTokenLogged = true;
+          }
           
           // Update UI with batched tokens
           setMessages(prev => {
@@ -173,18 +179,12 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
             return newMessages;
           });
           
-          // Log progress occasionally
           if (batcher.getTokenCount() % 100 === 0) {
-            console.log('[useChatWithStorage] Progress:', batcher.getTokenCount(), 'tokens');
             options.onTokenCount?.(batcher.getTokenCount());
           }
         },
-        onError: (error) => {
-          console.error('[useChatWithStorage] Batching error:', error);
-        },
         onComplete: () => {
           tokenCountRef.current = batcher.getTokenCount();
-          console.log('[useChatWithStorage] Stream completed. Total tokens:', tokenCountRef.current);
         }
       });
       
@@ -195,7 +195,7 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
           batcher.addToken(token);
         },
         (error) => {
-          console.error('[useChatWithStorage] Stream error:', error);
+          console.error('[Chat] Stream error:', error);
           setError(error);
           setIsStreaming(false);
           isStreamingRef.current = false;
@@ -205,6 +205,10 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
         () => {
           // Complete the batcher to flush any remaining tokens
           batcher.complete();
+          
+          // Log output
+          console.log('[Chat] Output:', accumulatedContent);
+          
           setIsStreaming(false);
           isStreamingRef.current = false;
           setIsLoading(false); // Ensure loading state is cleared on completion
@@ -214,21 +218,18 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
           // Save final assistant message to storage asynchronously (don't block completion)
           const currentChatId = currentChatIdRef.current;
           if (currentChatId && storage.addMessage && accumulatedContent) {
-            console.log('[useChatWithStorage] Saving assistant message to chat:', currentChatId);
             const finalAssistantMessage = {
               ...assistantMessage,
               content: accumulatedContent
             };
             storage.addMessage(convertToLegacyMessage(finalAssistantMessage), currentChatId).catch(err => {
-              console.error('[useChatWithStorage] Failed to save assistant message:', err);
+              console.error('[Chat] Failed to save assistant message:', err);
             });
-          } else {
-            console.warn('[useChatWithStorage] Cannot save assistant message - no chatId or addMessage function', { currentChatId, hasAddMessage: !!storage.addMessage, hasContent: !!accumulatedContent });
           }
         }
       );
     } catch (err) {
-      console.error('[useChatWithStorage] Error sending message:', err);
+      console.error('[Chat] Error sending message:', err);
       const error = err instanceof Error ? err : new Error('Failed to send message');
       setError(error);
       options.onError?.(error);
@@ -244,7 +245,6 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
 
   const stopStreaming = useCallback(() => {
     if (streamControllerRef.current) {
-      console.log('[useChatWithStorage] Stopping stream');
       streamControllerRef.current.abort();
       streamControllerRef.current = null;
       setIsStreaming(false);

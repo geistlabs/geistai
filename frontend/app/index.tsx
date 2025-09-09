@@ -64,10 +64,8 @@ export default function ChatScreen() {
     let chatId = currentChatId;
     if (!chatId) {
       try {
-        console.log('Creating new chat before sending message');
         chatId = await createNewChat();
         setCurrentChatId(chatId);
-        console.log('Created new chat with ID:', chatId);
         
         // Wait a frame for React to update the hook
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -80,7 +78,6 @@ export default function ChatScreen() {
     
     const message = input;
     setInput('');
-    console.log('Sending message with chatId:', chatId);
     await sendMessage(message);
   };
 

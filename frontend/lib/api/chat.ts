@@ -46,7 +46,8 @@ export class ChatAPI {
       const baseUrl = this.apiClient.getBaseUrl();
       const url = `${baseUrl}/api/chat/stream`;
       
-      console.log('[ChatAPI] Creating EventSource for:', url);
+      console.log('[Chat] Starting SSE connection to:', url);
+      const connectionStartTime = Date.now();
       
       const es = new EventSource(url, {
         method: 'POST',
@@ -61,52 +62,45 @@ export class ChatAPI {
       // Store EventSource in controller for cleanup
       (controller as any).eventSource = es;
       
-      let chunkCount = 0;
       es.addEventListener('chunk', (event: any) => {
         try {
           const data = JSON.parse(event.data) as StreamChunk;
-          chunkCount++;
-          
-          // Log progress occasionally instead of every chunk
-          if (chunkCount % 100 === 0) {
-            console.log('[ChatAPI] Received', chunkCount, 'chunks');
-          }
           
           // Skip only truly empty tokens, but preserve space-only tokens
           if (data.token !== undefined && data.token !== '') {
             onChunk(data.token);
           }
         } catch (e) {
-          console.error('[ChatAPI] Failed to parse chunk:', e);
+          console.error('[Chat] Failed to parse chunk:', e);
         }
       });
       
+      es.addEventListener('open', (event: any) => {
+        const connectionTime = Date.now() - connectionStartTime;
+        console.log('[Chat] SSE connection established in:', connectionTime + 'ms');
+      });
+      
       es.addEventListener('end', (event: any) => {
-        console.log('[ChatAPI] Stream ended');
+        const totalTime = Date.now() - connectionStartTime;
+        console.log('[Chat] Stream completed in:', totalTime + 'ms');
         onComplete?.();
         es.close();
         resolve(controller);
       });
       
       es.addEventListener('error', (event: any) => {
-        console.error('[ChatAPI] EventSource error:', event);
-        console.error('[ChatAPI] Error type:', event.type);
-        console.error('[ChatAPI] Error message:', event.message);
-        console.error('[ChatAPI] Error target:', event.target);
+        const errorTime = Date.now() - connectionStartTime;
         const errorMessage = event.message || event.type || 'Stream connection failed';
+        console.error('[Chat] Stream connection error after', errorTime + 'ms:', errorMessage);
         onError?.(new Error(errorMessage));
         es.close();
         resolve(controller);
       });
       
-      es.addEventListener('open', () => {
-        console.log('[ChatAPI] EventSource connection opened');
-      });
       
       // Override abort to close EventSource
       const originalAbort = controller.abort.bind(controller);
       controller.abort = () => {
-        console.log('[ChatAPI] Aborting stream');
         es.close();
         originalAbort();
       };

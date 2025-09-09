@@ -23,7 +23,6 @@ export default function RootLayout() {
       try {
         await initializeDatabase();
         setDbReady(true);
-        console.log('App-level database initialization completed');
       } catch (error) {
         console.error('App-level database initialization failed:', error);
         setDbError(error instanceof Error ? error.message : 'Database initialization failed');

@@ -47,7 +47,6 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "https://api.geist.im",
       "router": {},
       "eas": {
         "projectId": "37ee3bb2-75d7-46f2-8ec2-f48fbd02c1fa"
