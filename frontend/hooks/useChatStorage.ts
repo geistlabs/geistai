@@ -83,17 +83,21 @@ export const useChatStorage = (chatId?: number) => {
     }
   };
 
-  const addMessage = async (message: LegacyMessage): Promise<void> => {
-    if (!chatId) {
+  const addMessage = async (message: LegacyMessage, targetChatId?: number): Promise<void> => {
+    const effectiveChatId = targetChatId || chatId;
+    if (!effectiveChatId) {
       throw new Error('No active chat');
     }
 
     try {
+      console.log('[useChatStorage] Adding message to chat:', effectiveChatId, 'Role:', message.role);
       // Add message to SQLite
-      await addMessageToChat(chatId, message.role, message.text);
+      await addMessageToChat(effectiveChatId, message.role, message.text);
       
-      // Update local state only (don't reload during streaming to avoid conflicts)
-      setMessages(prev => [...prev, message]);
+      // Update local state only if this is for the current chat (don't reload during streaming to avoid conflicts)
+      if (effectiveChatId === chatId) {
+        setMessages(prev => [...prev, message]);
+      }
       
       // Note: We don't reload the chat here to avoid interfering with streaming
       // The chat title will be updated when the user switches chats or reloads

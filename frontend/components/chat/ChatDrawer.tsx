@@ -28,7 +28,7 @@ export default function ChatDrawer({
   activeChatId,
   onNewChat,
 }: ChatDrawerProps) {
-  const { getChats, deleteChat, renameChat, pinChat, archiveChat } = useChatStorage();
+  const storage = useChatStorage(); // Don't destructure, use the storage object directly
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [showActionMenu, setShowActionMenu] = useState<number | null>(null);
   const [renameId, setRenameId] = useState<number | null>(null);
@@ -59,9 +59,11 @@ export default function ChatDrawer({
 
   const loadChats = async () => {
     try {
-      const allChats = await getChats({ includeArchived: false });
+      const allChats = await storage.getAllChats({ includeArchived: false });
       setChats(allChats);
+      console.log('Loaded chats:', allChats.length);
     } catch (error) {
+      console.error('Failed to load chats:', error);
       // Failed to load chats
     }
   };
@@ -81,42 +83,27 @@ export default function ChatDrawer({
   };
 
   const handleRename = async (chatId: number, newTitle: string) => {
-    try {
-      await renameChat(chatId, newTitle.trim() || 'New Chat');
-      await loadChats();
-      setRenameId(null);
-      setRenameText('');
-    } catch (error) {
-      // Failed to rename chat
-    }
+    // TODO: Implement rename functionality
+    console.log('Rename not implemented yet');
   };
 
   const handlePin = async (chatId: number, pinned: boolean) => {
-    try {
-      await pinChat(chatId, !pinned);
-      await loadChats();
-      setShowActionMenu(null);
-    } catch (error) {
-      // Failed to pin chat
-    }
+    // TODO: Implement pin functionality
+    console.log('Pin not implemented yet');
   };
 
   const handleArchive = async (chatId: number) => {
-    try {
-      await archiveChat(chatId, true);
-      await loadChats();
-      setShowActionMenu(null);
-    } catch (error) {
-      // Failed to archive chat
-    }
+    // TODO: Implement archive functionality
+    console.log('Archive not implemented yet');
   };
 
   const handleDelete = async (chatId: number) => {
     try {
-      await deleteChat(chatId);
+      await storage.deleteChat(chatId);
       await loadChats();
       setShowActionMenu(null);
     } catch (error) {
+      console.error('Failed to delete chat:', error);
       // Failed to delete chat
     }
   };

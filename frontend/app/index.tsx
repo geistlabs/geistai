@@ -60,13 +60,19 @@ export default function ChatScreen() {
     }
     if (!input.trim() || isStreaming) return;
     
-    // If no chat is active, create a new one
+    // If no chat is active, create a new one FIRST
     let chatId = currentChatId;
     if (!chatId) {
       try {
+        console.log('Creating new chat before sending message');
         chatId = await createNewChat();
         setCurrentChatId(chatId);
+        console.log('Created new chat with ID:', chatId);
+        
+        // Wait a frame for React to update the hook
+        await new Promise(resolve => setTimeout(resolve, 0));
       } catch (err) {
+        console.error('Failed to create new chat:', err);
         Alert.alert('Error', 'Failed to create new chat');
         return;
       }
@@ -74,6 +80,7 @@ export default function ChatScreen() {
     
     const message = input;
     setInput('');
+    console.log('Sending message with chatId:', chatId);
     await sendMessage(message);
   };
 

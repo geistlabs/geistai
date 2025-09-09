@@ -124,16 +124,17 @@ export const createChat = async (title: string = ''): Promise<number> => {
   const now = Date.now();
 
   try {
+    console.log('[chatStorage] Creating new chat with title:', title);
     const result = await database.runAsync(
       'INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)',
       [title, now, now]
     );
 
     const chatId = result.lastInsertRowId;
-    console.log('Created new chat with ID:', chatId);
+    console.log('[chatStorage] Created new chat with ID:', chatId);
     return chatId;
   } catch (error) {
-    console.error('Failed to create chat:', error);
+    console.error('[chatStorage] Failed to create chat:', error);
     throw error;
   }
 };
@@ -176,6 +177,7 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
   const { includeArchived = false } = options;
 
   try {
+    console.log('[chatStorage] Getting all chats, includeArchived:', includeArchived);
     let query = 'SELECT * FROM chats';
     const params: any[] = [];
 
@@ -186,6 +188,7 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
     query += ' ORDER BY pinned DESC, updated_at DESC';
 
     const result = await database.getAllAsync<Chat>(query, params);
+    console.log('[chatStorage] Found', result.length, 'chats in database');
     const chats: Chat[] = [];
 
     for (const chat of result) {
@@ -198,9 +201,10 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
       });
     }
 
+    console.log('[chatStorage] Returning', chats.length, 'chats with titles');
     return chats;
   } catch (error) {
-    console.error('Failed to get chats:', error);
+    console.error('[chatStorage] Failed to get chats:', error);
     throw error;
   }
 };
@@ -251,6 +255,7 @@ export const addMessage = async (
   const now = Date.now();
 
   try {
+    console.log('[chatStorage] Adding message to chat:', chatId, 'Role:', role, 'Content length:', content.length);
     let messageId = 0;
     
     await database.withTransactionAsync(async () => {
@@ -269,10 +274,10 @@ export const addMessage = async (
       messageId = messageResult.lastInsertRowId;
     });
 
-    console.log('Added message to chat:', chatId, 'Message ID:', messageId);
+    console.log('[chatStorage] Added message to chat:', chatId, 'Message ID:', messageId);
     return messageId;
   } catch (error) {
-    console.error('Failed to add message:', error);
+    console.error('[chatStorage] Failed to add message:', error);
     throw error;
   }
 };

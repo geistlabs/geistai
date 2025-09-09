@@ -50,6 +50,7 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
   const tokenCountRef = useRef(0);
   const lastUserMessageRef = useRef<string | null>(null);
   const isStreamingRef = useRef(false); // Keep a ref to avoid dependency issues in effects
+  const currentChatIdRef = useRef<number | undefined>(options.chatId); // Track current chat ID
   
   const apiClient = useRef(new ApiClient({ ...defaultApiConfig, ...options.apiConfig }));
   const chatApi = useRef(new ChatAPI(apiClient.current));
@@ -61,6 +62,11 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
   useEffect(() => {
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
+
+  // Keep currentChatIdRef in sync with options.chatId
+  useEffect(() => {
+    currentChatIdRef.current = options.chatId;
+  }, [options.chatId]);
 
   // Sync storage messages with local messages ONLY on chatId changes or initial load
   // Never during streaming to avoid conflicts
@@ -115,10 +121,15 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
     setMessages(prev => [...prev, userMessage]);
     
     // Save user message to storage asynchronously (don't block UI)
-    if (options.chatId && storage.addMessage) {
-      storage.addMessage(convertToLegacyMessage(userMessage)).catch(err => {
+    // Use the current chat ID from the ref, which is kept up to date
+    const currentChatId = currentChatIdRef.current;
+    if (currentChatId && storage.addMessage) {
+      console.log('[useChatWithStorage] Saving user message to chat:', currentChatId);
+      storage.addMessage(convertToLegacyMessage(userMessage), currentChatId).catch(err => {
         console.error('[useChatWithStorage] Failed to save user message:', err);
       });
+    } else {
+      console.warn('[useChatWithStorage] Cannot save user message - no chatId or addMessage function', { currentChatId, hasAddMessage: !!storage.addMessage });
     }
     
     const assistantMessage: ChatMessage = {
@@ -182,14 +193,18 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
           options.onStreamEnd?.();
           
           // Save final assistant message to storage asynchronously (don't block completion)
-          if (options.chatId && storage.addMessage && accumulatedContent) {
+          const currentChatId = currentChatIdRef.current;
+          if (currentChatId && storage.addMessage && accumulatedContent) {
+            console.log('[useChatWithStorage] Saving assistant message to chat:', currentChatId);
             const finalAssistantMessage = {
               ...assistantMessage,
               content: accumulatedContent
             };
-            storage.addMessage(convertToLegacyMessage(finalAssistantMessage)).catch(err => {
+            storage.addMessage(convertToLegacyMessage(finalAssistantMessage), currentChatId).catch(err => {
               console.error('[useChatWithStorage] Failed to save assistant message:', err);
             });
+          } else {
+            console.warn('[useChatWithStorage] Cannot save assistant message - no chatId or addMessage function', { currentChatId, hasAddMessage: !!storage.addMessage, hasContent: !!accumulatedContent });
           }
         }
       );
