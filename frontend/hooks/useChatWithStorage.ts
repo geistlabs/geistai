@@ -146,8 +146,9 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       streamControllerRef.current = await chatApi.current.streamMessage(
         content,
         (token: string) => {
-          console.log('[useChatWithStorage] Received token:', token);
+          console.log('[useChatWithStorage] Received token:', JSON.stringify(token), 'Length:', token.length);
           accumulatedContent += token;
+          console.log('[useChatWithStorage] Accumulated content so far:', JSON.stringify(accumulatedContent.substring(Math.max(0, accumulatedContent.length - 50))));
           tokenCountRef.current++;
           
           setMessages(prev => {

@@ -66,8 +66,12 @@ export class ChatAPI {
           const data = JSON.parse(event.data) as StreamChunk;
           console.log('[ChatAPI] Received chunk:', data);
           
-          if (data.token) {
+          // Skip only truly empty tokens, but preserve space-only tokens
+          if (data.token !== undefined && data.token !== '') {
+            console.log('[ChatAPI] Processing token:', JSON.stringify(data.token), 'Length:', data.token.length);
             onChunk(data.token);
+          } else {
+            console.log('[ChatAPI] Skipping empty token:', JSON.stringify(data.token));
           }
         } catch (e) {
           console.error('[ChatAPI] Failed to parse chunk:', e);
