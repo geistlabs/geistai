@@ -35,10 +35,14 @@
 - [x] Implement real-time token rendering during stream
 - [x] Add retry mechanism for failed messages
 
-### 🔲 State & Persistence
+### ✅ State & Persistence
 
-- [ ] Mirror reference project's state approach
-- [ ] Add multiple chat sessions
+- [x] Mirror reference project's state approach (SQLite with react-native-sqlite-storage)
+- [x] Add multiple chat sessions
+- [x] Create chat storage with SQLite database
+- [x] Implement chat history persistence
+- [x] Add chat session management UI with drawer
+- [x] Update chat UI to support session switching
 
 ### 🔲 Advanced UX & Performance
 
@@ -62,4 +66,6 @@
 
 ## Current Focus
 
-**Next up:** State & Persistence - Implement multiple chat sessions and history
+**Just completed:** State & Persistence - Multiple chat sessions with SQLite storage
+
+**Next up:** Advanced UX & Performance - Add enhanced UI patterns and optimizations

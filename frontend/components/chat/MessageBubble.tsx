@@ -10,8 +10,17 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
+  // Defensive check for undefined message or missing role
+  if (!message || !message.role) {
+    console.error('MessageBubble received invalid message:', message);
+    return null;
+  }
+  
   const isUser = message.role === "user";
   const messageText = message.content || message.text || '';
+  
+  // Show a typing indicator for empty assistant messages
+  const showTypingIndicator = message.role === "assistant" && !messageText.trim();
   
   return (
     <View
@@ -30,15 +39,23 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         paddingRight: 12, 
         paddingBottom: 12,
       }}>
-        <Text 
-          style={{
-            color: isUser ? '#ffffff' : '#111827',
-            fontSize: 15,
-            lineHeight: 24,
-          }}
-        >
-          {messageText}
-        </Text>
+        {showTypingIndicator ? (
+          <View className="flex-row items-center space-x-1">
+            <View className="w-2 h-2 bg-gray-500 rounded-full" />
+            <View className="w-2 h-2 bg-gray-500 rounded-full mx-1" />
+            <View className="w-2 h-2 bg-gray-500 rounded-full" />
+          </View>
+        ) : (
+          <Text 
+            style={{
+              color: isUser ? '#ffffff' : '#111827',
+              fontSize: 15,
+              lineHeight: 24,
+            }}
+          >
+            {messageText}
+          </Text>
+        )}
       </View>
     </View>
   );
