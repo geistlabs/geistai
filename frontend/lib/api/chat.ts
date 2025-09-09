@@ -61,17 +61,20 @@ export class ChatAPI {
       // Store EventSource in controller for cleanup
       (controller as any).eventSource = es;
       
+      let chunkCount = 0;
       es.addEventListener('chunk', (event: any) => {
         try {
           const data = JSON.parse(event.data) as StreamChunk;
-          console.log('[ChatAPI] Received chunk:', data);
+          chunkCount++;
+          
+          // Log progress occasionally instead of every chunk
+          if (chunkCount % 100 === 0) {
+            console.log('[ChatAPI] Received', chunkCount, 'chunks');
+          }
           
           // Skip only truly empty tokens, but preserve space-only tokens
           if (data.token !== undefined && data.token !== '') {
-            console.log('[ChatAPI] Processing token:', JSON.stringify(data.token), 'Length:', data.token.length);
             onChunk(data.token);
-          } else {
-            console.log('[ChatAPI] Skipping empty token:', JSON.stringify(data.token));
           }
         } catch (e) {
           console.error('[ChatAPI] Failed to parse chunk:', e);

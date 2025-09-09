@@ -3,6 +3,7 @@ import { ChatAPI, ChatMessage } from '../lib/api/chat';
 import { ApiClient, ApiConfig, ApiError } from '../lib/api/client';
 import { useChatStorage, LegacyMessage } from './useChatStorage';
 import { ENV } from '../lib/config/environment';
+import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 export interface UseChatWithStorageOptions {
   chatId?: number;
@@ -37,7 +38,7 @@ export interface UseChatWithStorageReturn {
 
 const defaultApiConfig: ApiConfig = {
   baseUrl: ENV.API_URL,
-  timeout: 30000,
+  timeout: 120000, // Increased to 2 minutes for long responses
   maxRetries: 3
 };
 
@@ -155,14 +156,14 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       let accumulatedContent = '';
       tokenCountRef.current = 0;
       
-      streamControllerRef.current = await chatApi.current.streamMessage(
-        content,
-        (token: string) => {
-          console.log('[useChatWithStorage] Received token:', JSON.stringify(token), 'Length:', token.length);
-          accumulatedContent += token;
-          console.log('[useChatWithStorage] Accumulated content so far:', JSON.stringify(accumulatedContent.substring(Math.max(0, accumulatedContent.length - 50))));
-          tokenCountRef.current++;
+      // Create token batcher for optimized streaming
+      const batcher = new TokenBatcher({
+        batchSize: 10, // Batch 10 tokens before updating UI
+        flushInterval: 100, // Or flush every 100ms
+        onBatch: (batchedTokens: string) => {
+          accumulatedContent += batchedTokens;
           
+          // Update UI with batched tokens
           setMessages(prev => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
@@ -172,10 +173,26 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
             return newMessages;
           });
           
-          if (tokenCountRef.current % 10 === 0) {
-            console.log('[useChatWithStorage] Token count:', tokenCountRef.current);
-            options.onTokenCount?.(tokenCountRef.current);
+          // Log progress occasionally
+          if (batcher.getTokenCount() % 100 === 0) {
+            console.log('[useChatWithStorage] Progress:', batcher.getTokenCount(), 'tokens');
+            options.onTokenCount?.(batcher.getTokenCount());
           }
+        },
+        onError: (error) => {
+          console.error('[useChatWithStorage] Batching error:', error);
+        },
+        onComplete: () => {
+          tokenCountRef.current = batcher.getTokenCount();
+          console.log('[useChatWithStorage] Stream completed. Total tokens:', tokenCountRef.current);
+        }
+      });
+      
+      streamControllerRef.current = await chatApi.current.streamMessage(
+        content,
+        (token: string) => {
+          // Add token to batcher instead of processing immediately
+          batcher.addToken(token);
         },
         (error) => {
           console.error('[useChatWithStorage] Stream error:', error);
@@ -186,7 +203,8 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
           options.onError?.(error);
         },
         () => {
-          console.log('[useChatWithStorage] Stream completed. Total tokens:', tokenCountRef.current);
+          // Complete the batcher to flush any remaining tokens
+          batcher.complete();
           setIsStreaming(false);
           isStreamingRef.current = false;
           setIsLoading(false); // Ensure loading state is cleared on completion
@@ -232,6 +250,16 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       setIsStreaming(false);
       isStreamingRef.current = false;
       setIsLoading(false); // Ensure loading state is cleared when interrupting
+      
+      // Clean up the last assistant message if it's empty
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage?.role === 'assistant' && !lastMessage.content) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+      
       options.onStreamEnd?.();
     }
   }, [options]);

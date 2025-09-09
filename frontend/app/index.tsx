@@ -178,8 +178,6 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className="flex-1 pb-2">
-              {/* Debug logging */}
-              {console.log('[ChatScreen] Messages array:', messages.map((m, i) => ({ index: i, message: m, hasRole: !!m?.role })))}
               {isLoading && messages.length === 0 ? (
                 <View className="flex-1 items-center justify-center p-8">
                   <Text className="text-gray-500 text-center">Loading...</Text>
