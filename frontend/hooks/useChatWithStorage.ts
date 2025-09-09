@@ -167,12 +167,16 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
         (error) => {
           console.error('[useChatWithStorage] Stream error:', error);
           setError(error);
+          setIsStreaming(false);
+          isStreamingRef.current = false;
+          setIsLoading(false); // Ensure loading state is cleared on stream error
           options.onError?.(error);
         },
         () => {
           console.log('[useChatWithStorage] Stream completed. Total tokens:', tokenCountRef.current);
           setIsStreaming(false);
           isStreamingRef.current = false;
+          setIsLoading(false); // Ensure loading state is cleared on completion
           options.onTokenCount?.(tokenCountRef.current);
           options.onStreamEnd?.();
           
@@ -210,6 +214,7 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
       streamControllerRef.current = null;
       setIsStreaming(false);
       isStreamingRef.current = false;
+      setIsLoading(false); // Ensure loading state is cleared when interrupting
       options.onStreamEnd?.();
     }
   }, [options]);
