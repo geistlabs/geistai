@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { ChatAPI, ChatMessage } from '../lib/api/chat';
 import { ApiClient, ApiConfig, ApiError } from '../lib/api/client';
 import { useChatStorage, LegacyMessage } from './useChatStorage';
+import { ENV } from '../lib/config/environment';
 
 export interface UseChatWithStorageOptions {
   chatId?: number;
@@ -35,7 +36,7 @@ export interface UseChatWithStorageReturn {
 }
 
 const defaultApiConfig: ApiConfig = {
-  baseUrl: process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000',
+  baseUrl: ENV.API_URL,
   timeout: 30000,
   maxRetries: 3
 };
