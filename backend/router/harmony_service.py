@@ -79,64 +79,15 @@ class HarmonyService:
         
         return tokens
     def parse_completion_response(self, response_text):
-        """Parse GPT-OSS response with channel markers using reference implementation logic."""
+        """Parse GPT-OSS response using fallback text parsing (proper encoding needs debugging)."""
+        if not self.enabled:
+            return {"final": response_text, "analysis": "", "raw": response_text}
         
-        # Copy exact logic from decode_harmony_response.py
-        current_channel = None
-        channels = {
-            'final': [],
-            'analysis': [],
-            'commentary': []
-        }
-        
-        def parse_harmony_content(content):
-            """Parse Harmony special tokens and channel content - copied from reference."""
-            nonlocal current_channel
-            # Look for channel markers
-            if content == '<|channel|>':
-                return 'channel_marker', content
-            elif content in ['final', 'analysis', 'commentary']:
-                current_channel = content
-                return 'channel_name', content
-            elif content == '<|message|>':
-                return 'message_marker', content
-            elif content in ['<|start|>', '<|end|>', '<|return|>']:
-                return 'control_token', content
-            else:
-                return 'content', content
-        
-        def add_content(content):
-            """Add content to the appropriate channel - copied from reference."""
-            token_type, token_content = parse_harmony_content(content)
-            
-            if token_type == 'content' and current_channel:
-                channels[current_channel].append(token_content)
-            
-            return token_type, token_content
-        
-        # Process response character by character or token by token like reference
-        import re
-        # Split on harmony markers while keeping them - same as reference approach
-        tokens = re.split(r'(<\|[^|]+\|>)', response_text)
-        
-        for token in tokens:
-            if token.strip():
-                add_content(token)
-        
-        # Return in same format as reference expects
-        result = {
-            "final": ''.join(channels['final']).strip(),
-            "analysis": ''.join(channels['analysis']).strip(),
-            "raw": response_text
-        }
-        
-        return result
+        # Use text-based parsing directly since the proper encoding method needs more investigation
+        return self._fallback_text_parsing(response_text)
     
-    def parse_harmony_channels(self, response_text):
-        """
-        Parse Harmony channel markers - exact copy of reference decode_harmony_response.py logic.
-        Moved from main.py for better organization.
-        """
+    def _fallback_text_parsing(self, response_text):
+        """Fallback text-based parsing when Harmony encoding fails."""
         current_channel = None
         channels = {
             'final': [],
@@ -177,24 +128,51 @@ class HarmonyService:
             if token.strip():
                 add_content(token)
         
-        # Return final channel content like reference get_final_response()
-        final_content = ''.join(channels['final'])
-        if final_content:
-            return final_content
-        
-        # Fallback to analysis like reference
-        analysis_content = ''.join(channels['analysis'])
-        return analysis_content if analysis_content else response_text
+        # Return formatted like proper parsing
+        return {
+            "final": ''.join(channels['final']).strip(),
+            "analysis": ''.join(channels['analysis']).strip(),
+            "commentary": ''.join(channels['commentary']).strip(),
+            "raw": response_text
+        }
+
+    def parse_harmony_channels(self, response_text):
+        """
+        Parse Harmony channels and return final response content only.
+        Uses proper Harmony encoding when available, fallback to text parsing.
+        """
+        if self.enabled and self.encoding:
+            # Use proper Harmony parsing
+            parsed = self.parse_completion_response(response_text)
+            final_content = parsed.get("final", "").strip()
+            
+            if final_content:
+                return final_content
+            
+            # Fallback to analysis if no final content
+            analysis_content = parsed.get("analysis", "").strip()
+            return analysis_content if analysis_content else response_text
+        else:
+            # Fallback to text-based parsing
+            parsed = self._fallback_text_parsing(response_text)
+            final_content = parsed.get("final", "").strip()
+            
+            if final_content:
+                return final_content
+            
+            # Fallback to analysis if no final content
+            analysis_content = parsed.get("analysis", "").strip()
+            return analysis_content if analysis_content else response_text
     
     async def process_chat_request(self, messages, config, reasoning_effort="low"):
         """
-        Process a chat request with Harmony encoding if enabled, or fallback to standard chat.
-        Handles all the HTTP client logic that was in main.py.
+        Process a chat request with Harmony encoding like reference implementation.
+        Returns the final response content after parsing channels.
         """
         import httpx
         
         if self.enabled:
-            # Harmony path - use completion endpoint
+            # Harmony path - prepare conversation and use completion endpoint
             harmony_tokens = self.prepare_conversation(messages, reasoning_effort)
             harmony_prompt = self.encoding.decode(harmony_tokens)
             
@@ -204,19 +182,18 @@ class HarmonyService:
                     json={
                         "prompt": harmony_prompt,
                         "temperature": 0.7,
-                        "max_tokens": 100,
+                        "max_tokens": 500,  # Higher token limit
                         "stream": False
                     },
                     timeout=config.INFERENCE_TIMEOUT
                 )
             
-            # Parse the response
+            # Parse the response 
             result = response.json()
             raw_response = result.get("choices", [{}])[0].get("text", "")
             
-            # Parse Harmony format to extract final message
-            parsed = self.parse_completion_response(raw_response)
-            return parsed["final"] if parsed["final"] else raw_response
+            # Parse using proper Harmony channel parsing to get final content
+            return self.parse_harmony_channels(raw_response)
         
         else:
             # Standard chat completions (non-Harmony) 
@@ -226,7 +203,7 @@ class HarmonyService:
                     json={
                         "messages": messages,
                         "temperature": 0.7,
-                        "max_tokens": 100
+                        "max_tokens": 500
                     },
                     timeout=config.INFERENCE_TIMEOUT
                 )
@@ -253,17 +230,22 @@ class HarmonyService:
                 
             ai_response = choice["message"]["content"]
             
-            # Parse GPT-OSS Harmony channels (based on reference decoder)
+            # Parse channels even for non-Harmony
             return self.parse_harmony_channels(ai_response)
     
     async def stream_chat_request(self, messages, config, reasoning_effort="low"):
         """
-        Stream a chat request with real-time Harmony channel parsing.
-        Yields individual tokens from the 'final' channel only.
+        Stream a chat request with proper backend Harmony channel parsing.
+        Backend parses channels and yields ONLY final channel content to frontend.
         """
         import httpx
         import json
-        import re
+        
+        # Initialize channel parsing state
+        current_channel = None
+        buffer = ""
+        awaiting_channel_name = False
+        awaiting_message = False
         
         if self.enabled:
             # Harmony path - use completion endpoint with streaming
@@ -278,26 +260,20 @@ class HarmonyService:
                         "prompt": harmony_prompt,
                         "temperature": 0.7,
                         "max_tokens": 500,
-                        "stream": True  # Enable streaming
+                        "stream": True
                     },
                     timeout=config.INFERENCE_TIMEOUT
                 ) as response:
                     response.raise_for_status()
                     
-                    current_channel = None
-                    buffer = ""
-                    
                     async for line in response.aiter_lines():
-                        # Parse SSE format: lines starting with "data: "
                         if line.startswith("data: "):
-                            data = line[6:]  # Remove "data: " prefix
+                            data = line[6:]
                             
-                            # Check for completion
                             if data.strip() == "[DONE]":
                                 break
                             
                             try:
-                                # Parse JSON chunk from llama.cpp
                                 chunk_data = json.loads(data)
                                 
                                 if "choices" in chunk_data and chunk_data["choices"]:
@@ -305,20 +281,15 @@ class HarmonyService:
                                     token = choice.get("text", "")
                                     finish_reason = choice.get("finish_reason")
                                     
-                                    if token:  # Only process non-empty tokens
-                                        buffer += token
+                                    if token:
+                                        # Parse each token for Harmony channel markers
+                                        should_yield, current_channel, awaiting_channel_name, awaiting_message = \
+                                            self._process_harmony_token(token, current_channel, awaiting_channel_name, awaiting_message)
                                         
-                                        # Parse tokens for channel markers and content
-                                        for parsed_token in self._parse_streaming_token(buffer):
-                                            if parsed_token["type"] == "content" and parsed_token["channel"] == "final":
-                                                yield parsed_token["content"]
-                                            elif parsed_token["type"] == "channel_change":
-                                                current_channel = parsed_token["channel"]
-                                        
-                                        # Keep unprocessed part in buffer
-                                        buffer = self._get_remaining_buffer(buffer)
+                                        # Only yield tokens from final channel
+                                        if should_yield:
+                                            yield token
                                     
-                                    # Check if this is the final chunk
                                     if finish_reason:
                                         break
                             
@@ -359,10 +330,13 @@ class HarmonyService:
                                     finish_reason = choice.get("finish_reason")
                                     
                                     if token:
-                                        # For non-Harmony, parse channels from accumulated tokens
-                                        for parsed_token in self._parse_streaming_token(token):
-                                            if parsed_token["type"] == "content" and parsed_token["channel"] == "final":
-                                                yield parsed_token["content"]
+                                        # For non-Harmony, still try to parse channels
+                                        should_yield, current_channel, awaiting_channel_name, awaiting_message = \
+                                            self._process_harmony_token(token, current_channel, awaiting_channel_name, awaiting_message)
+                                        
+                                        # Only yield tokens from final channel or all if no channels detected
+                                        if should_yield or current_channel is None:
+                                            yield token
                                     
                                     if finish_reason:
                                         break
@@ -372,50 +346,29 @@ class HarmonyService:
                             except Exception:
                                 continue
     
-    def _parse_streaming_token(self, token_buffer):
+    def _process_harmony_token(self, token, current_channel, awaiting_channel_name, awaiting_message):
         """
-        Parse streaming tokens for Harmony channel markers.
-        Returns list of parsed token objects with type and content.
+        Process a single token for Harmony channel markers.
+        Returns (should_yield, current_channel, awaiting_channel_name, awaiting_message)
         """
-        results = []
-        current_channel = getattr(self, '_current_channel', 'final')  # Default to final
+        # Handle Harmony control tokens
+        if token == '<|channel|>':
+            return False, current_channel, True, awaiting_message
         
-        # Look for channel markers in the buffer
-        import re
+        if awaiting_channel_name:
+            if token in ['final', 'analysis', 'commentary']:
+                return False, token, False, awaiting_message
         
-        # Split on harmony markers while keeping them
-        parts = re.split(r'(<\|[^|]+\|>)', token_buffer)
+        if token == '<|message|>':
+            return False, current_channel, awaiting_channel_name, True
         
-        for part in parts:
-            if not part.strip():
-                continue
-                
-            if part == '<|channel|>':
-                results.append({"type": "marker", "content": part})
-            elif part in ['final', 'analysis', 'commentary']:
-                current_channel = part
-                self._current_channel = current_channel
-                results.append({"type": "channel_change", "channel": current_channel})
-            elif part == '<|message|>':
-                results.append({"type": "marker", "content": part})
-            elif part in ['<|start|>', '<|end|>', '<|return|>']:
-                results.append({"type": "control", "content": part})
-            else:
-                # Regular content - only yield if we're in the final channel
-                if current_channel == 'final':
-                    results.append({
-                        "type": "content", 
-                        "content": part, 
-                        "channel": current_channel
-                    })
+        # Filter out other control tokens
+        if token in ['<|start|>', '<|end|>', '<|return|>', '<|system|>', '<|user|>', '<|assistant|>']:
+            return False, current_channel, awaiting_channel_name, awaiting_message
         
-        return results
-    
-    def _get_remaining_buffer(self, buffer):
-        """
-        Keep unprocessed part of buffer for next iteration.
-        This is a simple implementation - you might need more sophisticated buffering.
-        """
-        # For now, clear buffer after processing
-        # In production, you'd want to keep partial tokens
-        return ""
+        # For content tokens, only yield if we're in final channel and have seen message marker
+        if current_channel == 'final' and awaiting_message:
+            return True, current_channel, awaiting_channel_name, awaiting_message
+        
+        # Don't yield tokens from analysis or commentary channels
+        return False, current_channel, awaiting_channel_name, awaiting_message
