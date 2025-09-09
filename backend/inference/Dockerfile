@@ -20,14 +20,14 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 			"--parallel", "1", \
 			"--cont-batching", \
 			"--mlock", \
-			"--n-gpu-layers", "35"]
+			"--n-gpu-layers", "-1"]
 
-		 docker run -d \
-		 --name inference-server \
-		--gpus all \
-		 -p 80:8080 \
-		 -v /root/models:/models:ro \
-		 alo42/inference:latest
+		#  docker run -d \
+		#  --name inference-server \
+		# --gpus all \
+		#  -p 80:8080 \
+		#  -v /root/models:/models:ro \
+		#  alo42/inference:1.0.0
 
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.
