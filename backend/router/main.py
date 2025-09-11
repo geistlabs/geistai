@@ -5,12 +5,19 @@ from pydantic import BaseModel
 import httpx
 import asyncio
 import json
+import logging
 import config
 from harmony_service import HarmonyService
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class HealthCheckResponse(BaseModel):
     status: str
+    ssl_enabled: bool
+    ssl_status: str
 
 
 class ChatRequest(BaseModel):
@@ -22,10 +29,69 @@ app = FastAPI(title="Geist Router")
 # Initialize Harmony service if enabled
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
 
+# Validate SSL configuration on startup
+ssl_valid, ssl_message = config.validate_ssl_config()
+if config.SSL_ENABLED and not ssl_valid:
+    logger.error(f"SSL configuration error: {ssl_message}")
+    raise RuntimeError(f"SSL configuration error: {ssl_message}")
+elif config.SSL_ENABLED:
+    logger.info(f"SSL enabled: {ssl_message}")
+else:
+    logger.info("SSL disabled - running in HTTP mode")
+
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy ser"}
+    """Health check endpoint that includes SSL status."""
+    ssl_valid, ssl_message = config.validate_ssl_config()
+    return {
+        "status": "healthy",
+        "ssl_enabled": config.SSL_ENABLED,
+        "ssl_status": ssl_message
+    }
+
+
+@app.get("/ssl/info")
+def ssl_info():
+    """Get SSL configuration and certificate information."""
+    ssl_valid, ssl_message = config.validate_ssl_config()
+    
+    info = {
+        "ssl_enabled": config.SSL_ENABLED,
+        "ssl_valid": ssl_valid,
+        "ssl_status": ssl_message,
+        "cert_path": config.SSL_CERT_PATH,
+        "key_path": config.SSL_KEY_PATH
+    }
+    
+    if config.SSL_ENABLED and ssl_valid:
+        try:
+            import ssl
+            import socket
+            from datetime import datetime
+            
+            # Load certificate and get basic info
+            with open(config.SSL_CERT_PATH, 'rb') as f:
+                cert_data = f.read()
+            
+            # Parse certificate (basic info)
+            cert_lines = cert_data.decode('utf-8').split('\n')
+            cert_info = {}
+            
+            for line in cert_lines:
+                if 'BEGIN CERTIFICATE' in line:
+                    cert_info['format'] = 'PEM'
+                    break
+            
+            info['certificate'] = {
+                "format": cert_info.get('format', 'Unknown'),
+                "size_bytes": len(cert_data)
+            }
+            
+        except Exception as e:
+            info['certificate'] = {"error": f"Could not read certificate: {str(e)}"}
+    
+    return info
 
 
 @app.post("/api/chat")
@@ -99,8 +165,33 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
 if __name__ == "__main__":
     import uvicorn
+    import sys
 
-    uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)
+    try:
+        if config.SSL_ENABLED:
+            logger.info(f"Starting server with SSL on {config.API_HOST}:{config.API_PORT}")
+            logger.info(f"SSL Certificate: {config.SSL_CERT_PATH}")
+            logger.info(f"SSL Private Key: {config.SSL_KEY_PATH}")
+            
+            uvicorn.run(
+                app, 
+                host=config.API_HOST, 
+                port=config.API_PORT,
+                ssl_keyfile=config.SSL_KEY_PATH,
+                ssl_certfile=config.SSL_CERT_PATH,
+                log_level="info"
+            )
+        else:
+            logger.info(f"Starting server without SSL on {config.API_HOST}:{config.API_PORT}")
+            uvicorn.run(
+                app, 
+                host=config.API_HOST, 
+                port=config.API_PORT,
+                log_level="info"
+            )
+    except Exception as e:
+        logger.error(f"Failed to start server: {str(e)}")
+        sys.exit(1)
 
 # TEST INFERENCE SERVER CONNECTION
 # curl -X POST https://inference.geist.im/v1/chat/completions -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"hello how are you"}],"temperature":0.7,"max_tokens":100}'

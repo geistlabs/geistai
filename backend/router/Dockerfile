@@ -15,6 +15,9 @@ COPY main.py .
 COPY config.py .
 COPY harmony_service.py .
 
+# Copy certificates directory (if it exists)
+COPY certificates/ ./certificates/
+
 # Install dependencies 
 RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette
 
@@ -22,14 +25,30 @@ RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette
 RUN useradd -m -u 1000 router && chown -R router:router /app
 USER router
 
-# Expose port
-EXPOSE 8000
+# Expose ports (8000 for HTTP, 8443 for HTTPS)
+EXPOSE 8000 8443
 
 # Start command
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
-		#  docker run -d \
-		#  --name router-server \
-		#  -p 80:8000 \
-		#  -e INFERENCE_URL=https://inference.geist.im \
-		#  alo42/router:latest
+# Example Docker run commands:
+
+# HTTP mode (default):
+# docker run -d \
+#   --name router-server \
+#   -p 80:8000 \
+#   -e INFERENCE_URL=https://inference.geist.im \
+#   alo42/router:latest
+
+# SSL/HTTPS mode:
+# docker run -d \
+#   --name router-server \
+#   -p 80:8000 \
+#   -p 443:8443 \
+#   -e INFERENCE_URL=https://inference.geist.im \
+#   -e SSL_ENABLED=true \
+#   -e SSL_CERT_PATH=/app/certificates/cert.pem \
+#   -e SSL_KEY_PATH=/app/certificates/key.pem \
+#   -e API_PORT=8443 \
+#   -v /path/to/your/certificates:/app/certificates:ro \
+#   alo42/router:latest
