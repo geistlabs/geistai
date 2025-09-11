@@ -1,5 +1,24 @@
-import React from 'react';
-import { View, Text } from "react-native";
+import React from "react";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
+import * as Clipboard from "expo-clipboard";
+import Svg, { Path } from "react-native-svg";
+
+const CopyIcon = ({ color = "currentColor", size = 16 }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M15 2a2 2 0 0 1 1.414.586l4 4A2 2 0 0 1 21 8v7a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+    <Path d="M15 2v4a2 2 0 0 0 2 2h4" />
+    <Path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />
+  </Svg>
+);
 
 interface MessageBubbleProps {
   message: {
@@ -11,9 +30,12 @@ interface MessageBubbleProps {
 }
 
 // Simple markdown text component that handles basic formatting without spacing issues
-const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text, isUser }) => {
+const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
+  text,
+  isUser,
+}) => {
   const baseStyle = {
-    color: '#111827', // Both user and AI messages use black text
+    color: "#111827", // Both user and AI messages use black text
     fontSize: 15,
     lineHeight: 24,
     // fontFamily: 'Geist-Regular',
@@ -22,35 +44,45 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text,
   // Split text into parts and format basic markdown
   const renderText = (text: string) => {
     const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
-    
+
     return parts.map((part, index) => {
       // Bold text **text**
-      if (part.startsWith('**') && part.endsWith('**')) {
+      if (part.startsWith("**") && part.endsWith("**")) {
         return (
-          <Text key={index} style={[baseStyle, { fontWeight: '700' }]}>
+          <Text key={index} style={[baseStyle, { fontWeight: "700" }]}>
             {part.slice(2, -2)}
           </Text>
         );
       }
       // Italic text *text*
-      if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**')) {
+      if (
+        part.startsWith("*") &&
+        part.endsWith("*") &&
+        !part.startsWith("**")
+      ) {
         return (
-          <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>
+          <Text key={index} style={[baseStyle, { fontStyle: "italic" }]}>
             {part.slice(1, -1)}
           </Text>
         );
       }
       // Inline code `code`
-      if (part.startsWith('`') && part.endsWith('`')) {
+      if (part.startsWith("`") && part.endsWith("`")) {
         return (
-          <Text key={index} style={[baseStyle, { 
-            backgroundColor: '#f3f4f6', // Same background for both user and AI
-            paddingHorizontal: 4,
-            paddingVertical: 2,
-            borderRadius: 4,
-            fontFamily: 'monospace',
-            fontSize: 14,
-          }]}>
+          <Text
+            key={index}
+            style={[
+              baseStyle,
+              {
+                backgroundColor: "#f3f4f6", // Same background for both user and AI
+                paddingHorizontal: 4,
+                paddingVertical: 2,
+                borderRadius: 4,
+                fontFamily: "monospace",
+                fontSize: 14,
+              },
+            ]}
+          >
             {part.slice(1, -1)}
           </Text>
         );
@@ -70,61 +102,75 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text,
 export function MessageBubble({ message }: MessageBubbleProps) {
   // Defensive check for undefined message or missing role
   if (!message || !message.role) {
-    console.error('MessageBubble received invalid message:', message);
+    console.error("MessageBubble received invalid message:", message);
     return null;
   }
-  
+
   const isUser = message.role === "user";
-  const messageText = message.content || message.text || '';
-  
+  const messageText = message.content || message.text || "";
+
   // Show a typing indicator for empty assistant messages
-  const showTypingIndicator = message.role === "assistant" && !messageText.trim();
-  
+  const showTypingIndicator =
+    message.role === "assistant" && !messageText.trim();
+
+  const handleCopy = async () => {
+    try {
+      await Clipboard.setStringAsync(messageText);
+      // Optionally show a subtle feedback
+      // Alert.alert('', 'Copied to clipboard', [{ text: 'OK' }], { duration: 1000 });
+    } catch (error) {
+      console.error("Failed to copy text:", error);
+    }
+  };
+
   // Process text to ensure proper line breaks for markdown
   const processMessageText = (text: string): string => {
-    if (!text || typeof text !== 'string') return '';
-    
+    if (!text || typeof text !== "string") return "";
+
     // First, trim all whitespace and normalize line endings
-    let processed = text.trim().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    
+    let processed = text.trim().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
     // Only add line breaks in very safe, specific cases:
-    
+
     // 1. Add line break after numbered list items that are immediately followed by another number
     // But only if we can be 100% sure it's a list (check for multiple occurrences)
     const numberedListPattern = /^(\d+\.\s+.+)(\d+\.\s+)/gm;
     if (numberedListPattern.test(text)) {
-      processed = processed.replace(/^(\d+\.\s+.+?)(?=^\d+\.\s+)/gm, '$1\n');
+      processed = processed.replace(/^(\d+\.\s+.+?)(?=^\d+\.\s+)/gm, "$1\n");
     }
-    
+
     // 2. Add line break before markdown headers that start at beginning of line
-    processed = processed.replace(/^(#{1,6}\s+)/gm, '\n$1');
-    
+    processed = processed.replace(/^(#{1,6}\s+)/gm, "\n$1");
+
     // 3. Add line break after sentences that end with period and are followed by capital letter
     // Only if the sentence is longer than 20 chars to avoid abbreviations
-    processed = processed.replace(/([.!?]\s+)([A-Z][a-z]{3,})/g, (match, ending, nextWord) => {
-      // Find the sentence start to check length
-      const beforeMatch = processed.substring(0, processed.indexOf(match));
-      const lastSentenceStart = Math.max(
-        beforeMatch.lastIndexOf('. '),
-        beforeMatch.lastIndexOf('! '),
-        beforeMatch.lastIndexOf('? '),
-        beforeMatch.lastIndexOf('\n')
-      );
-      const sentenceLength = beforeMatch.length - lastSentenceStart;
-      
-      // Only add line break for longer sentences
-      if (sentenceLength > 30) {
-        return ending + '\n' + nextWord;
+    processed = processed.replace(
+      /([.!?]\s+)([A-Z][a-z]{3,})/g,
+      (match, ending, nextWord) => {
+        // Find the sentence start to check length
+        const beforeMatch = processed.substring(0, processed.indexOf(match));
+        const lastSentenceStart = Math.max(
+          beforeMatch.lastIndexOf(". "),
+          beforeMatch.lastIndexOf("! "),
+          beforeMatch.lastIndexOf("? "),
+          beforeMatch.lastIndexOf("\n")
+        );
+        const sentenceLength = beforeMatch.length - lastSentenceStart;
+
+        // Only add line break for longer sentences
+        if (sentenceLength > 30) {
+          return ending + "\n" + nextWord;
+        }
+        return match;
       }
-      return match;
-    });
-    
+    );
+
     // 4. Clean up excessive line breaks (more than 2 consecutive)
-    processed = processed.replace(/\n{3,}/g, '\n\n');
-    
+    processed = processed.replace(/\n{3,}/g, "\n\n");
+
     return processed.trim();
   };
-  
+
   return (
     <View
       style={{
@@ -132,27 +178,44 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         marginTop: 8,
       }}
       className={`max-w-[80%] rounded-2xl ${
-        isUser 
-          ? 'bg-gray-200 self-end' 
-          : 'self-start'
-      }`}>
-      <View style={{ 
-        paddingTop: 12, 
-        paddingLeft: 12, 
-        paddingRight: 12, 
-        paddingBottom: 12,
-      }}>
-        {showTypingIndicator ? (
-          <View className="flex-row items-center space-x-1">
-            <View className="w-2 h-2 bg-gray-500 rounded-full" />
-            <View className="w-2 h-2 bg-gray-500 rounded-full mx-1" />
-            <View className="w-2 h-2 bg-gray-500 rounded-full" />
-          </View>
-        ) : (
-          <SimpleMarkdownText 
-            text={processMessageText(messageText)}
-            isUser={isUser}
-          />
+        isUser ? "bg-gray-200 self-end" : "self-start"
+      }`}
+    >
+      <View>
+        <View
+          style={{
+            paddingTop: 10,
+            paddingLeft: 12,
+            paddingRight: 12,
+            paddingBottom: 8,
+          }}
+        >
+          {showTypingIndicator ? (
+            <View className="flex-row items-center space-x-1">
+              <View className="w-2 h-2 bg-gray-500 rounded-full" />
+              <View className="w-2 h-2 bg-gray-500 rounded-full mx-1" />
+              <View className="w-2 h-2 bg-gray-500 rounded-full" />
+            </View>
+          ) : (
+            <SimpleMarkdownText
+              text={processMessageText(messageText)}
+              isUser={isUser}
+            />
+          )}
+        </View>
+        {!showTypingIndicator && messageText.trim() && !isUser && (
+          <TouchableOpacity
+            onPress={handleCopy}
+            style={{
+              paddingLeft: 12,
+              paddingBottom: 8,
+              paddingRight: 12,
+              marginTop: -2,
+            }}
+            className="flex-row items-center"
+          >
+            <CopyIcon color="#6B7280" size={14} />
+          </TouchableOpacity>
         )}
       </View>
     </View>
