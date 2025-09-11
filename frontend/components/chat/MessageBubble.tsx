@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import Svg, { Path } from "react-native-svg";
 
@@ -20,6 +20,23 @@ const CopyIcon = ({ color = "currentColor", size = 16 }) => (
   </Svg>
 );
 
+const ShareIcon = ({ color = "currentColor", size = 16 }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M12 2v13" />
+    <Path d="m16 6-4-4-4 4" />
+    <Path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+  </Svg>
+);
+
 interface MessageBubbleProps {
   message: {
     role: "user" | "assistant" | "system";
@@ -27,6 +44,13 @@ interface MessageBubbleProps {
     text?: string; // Support both content and text fields
     timestamp?: Date | number;
   };
+  allMessages?: Array<{
+    role: "user" | "assistant" | "system";
+    content: string;
+    text?: string;
+    timestamp?: Date | number;
+  }>;
+  messageIndex?: number;
 }
 
 // Simple markdown text component that handles basic formatting without spacing issues
@@ -99,7 +123,7 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
   return <Text style={baseStyle}>{renderText(text)}</Text>;
 };
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, allMessages = [], messageIndex }: MessageBubbleProps) {
   // Defensive check for undefined message or missing role
   if (!message || !message.role) {
     console.error("MessageBubble received invalid message:", message);
@@ -120,6 +144,36 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       // Alert.alert('', 'Copied to clipboard', [{ text: 'OK' }], { duration: 1000 });
     } catch (error) {
       console.error("Failed to copy text:", error);
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      // Find the user question that corresponds to this assistant answer
+      let shareText = messageText;
+      
+      if (message.role === "assistant" && allMessages && messageIndex !== undefined && messageIndex > 0) {
+        // Look for the previous user message
+        const userMessage = allMessages[messageIndex - 1];
+        if (userMessage && userMessage.role === "user") {
+          const userText = userMessage.content || userMessage.text || "";
+          shareText = `Q: ${userText}\n\nA: ${messageText}`;
+        }
+      }
+      
+      await Share.share({
+        message: shareText,
+        title: 'Chat Message'
+      });
+    } catch (error) {
+      console.error("Failed to share text:", error);
+      // Fallback to clipboard if sharing fails
+      try {
+        await Clipboard.setStringAsync(shareText);
+        Alert.alert('Shared', 'Content copied to clipboard');
+      } catch (clipboardError) {
+        console.error("Failed to copy to clipboard:", clipboardError);
+      }
     }
   };
 
@@ -204,18 +258,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           )}
         </View>
         {!showTypingIndicator && messageText.trim() && !isUser && (
-          <TouchableOpacity
-            onPress={handleCopy}
+          <View
             style={{
               paddingLeft: 12,
               paddingBottom: 8,
               paddingRight: 12,
               marginTop: -2,
             }}
-            className="flex-row items-center"
+            className="flex-row items-center space-x-3"
           >
-            <CopyIcon color="#6B7280" size={14} />
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handleCopy}>
+              <CopyIcon color="#6B7280" size={14} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleShare}>
+              <ShareIcon color="#6B7280" size={14} />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </View>

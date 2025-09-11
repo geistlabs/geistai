@@ -201,9 +201,9 @@ export default function ChatScreen() {
                       return `error-${index}`;
                     }
                   }}
-                  renderItem={({ item }) => {
+                  renderItem={({ item, index }) => {
                     try {
-                      return <MessageBubble message={item} />;
+                      return <MessageBubble message={item} allMessages={messages} messageIndex={index} />;
                     } catch (err) {
                       console.error('[ChatScreen] Error rendering message:', err, item);
                       return null;
