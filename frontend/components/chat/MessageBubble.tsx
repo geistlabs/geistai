@@ -139,7 +139,11 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
   return <Text style={baseStyle}>{renderText(text)}</Text>;
 };
 
-export function MessageBubble({ message, allMessages = [], messageIndex }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  allMessages = [],
+  messageIndex,
+}: MessageBubbleProps) {
   const [isCopied, setIsCopied] = useState(false);
 
   // Defensive check for undefined message or missing role
@@ -169,8 +173,13 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
     try {
       // Find the user question that corresponds to this assistant answer
       let shareText = messageText;
-      
-      if (message.role === "assistant" && allMessages && messageIndex !== undefined && messageIndex > 0) {
+
+      if (
+        message.role === "assistant" &&
+        allMessages &&
+        messageIndex !== undefined &&
+        messageIndex > 0
+      ) {
         // Look for the previous user message
         const userMessage = allMessages[messageIndex - 1];
         if (userMessage && userMessage.role === "user") {
@@ -178,17 +187,17 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
           shareText = `Q: ${userText}\n\nA: ${messageText}`;
         }
       }
-      
+
       await Share.share({
         message: shareText,
-        title: 'Chat Message'
+        title: "Chat Message",
       });
     } catch (error) {
       console.error("Failed to share text:", error);
       // Fallback to clipboard if sharing fails
       try {
         await Clipboard.setStringAsync(shareText);
-        Alert.alert('Shared', 'Content copied to clipboard');
+        Alert.alert("Shared", "Content copied to clipboard");
       } catch (clipboardError) {
         console.error("Failed to copy to clipboard:", clipboardError);
       }
@@ -259,7 +268,7 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
             paddingTop: 10,
             paddingLeft: 12,
             paddingRight: 12,
-            paddingBottom: 8,
+            paddingBottom: 6,
           }}
         >
           {showTypingIndicator ? (
