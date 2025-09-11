@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import Svg, { Path } from "react-native-svg";
@@ -34,6 +34,21 @@ const ShareIcon = ({ color = "currentColor", size = 16 }) => (
     <Path d="M12 2v13" />
     <Path d="m16 6-4-4-4 4" />
     <Path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+  </Svg>
+);
+
+const CheckIcon = ({ color = "currentColor", size = 16 }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M20 6 9 17l-5-5" />
   </Svg>
 );
 
@@ -124,6 +139,8 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
 };
 
 export function MessageBubble({ message, allMessages = [], messageIndex }: MessageBubbleProps) {
+  const [isCopied, setIsCopied] = useState(false);
+
   // Defensive check for undefined message or missing role
   if (!message || !message.role) {
     console.error("MessageBubble received invalid message:", message);
@@ -140,8 +157,8 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
   const handleCopy = async () => {
     try {
       await Clipboard.setStringAsync(messageText);
-      // Optionally show a subtle feedback
-      // Alert.alert('', 'Copied to clipboard', [{ text: 'OK' }], { duration: 1000 });
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
       console.error("Failed to copy text:", error);
     }
@@ -268,7 +285,11 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
             className="flex-row items-center space-x-3"
           >
             <TouchableOpacity onPress={handleCopy}>
-              <CopyIcon color="#6B7280" size={14} />
+              {isCopied ? (
+                <CheckIcon color="#6B7280" size={14} />
+              ) : (
+                <CopyIcon color="#6B7280" size={14} />
+              )}
             </TouchableOpacity>
             <TouchableOpacity onPress={handleShare}>
               <ShareIcon color="#6B7280" size={14} />
