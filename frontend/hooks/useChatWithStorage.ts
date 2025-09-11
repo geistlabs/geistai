@@ -121,6 +121,9 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
     console.log('[Chat] Input:', content);
     const inputStartTime = Date.now();
     
+    // Get current messages before updating state for passing to API
+    const currentMessages = messages;
+    
     // Update local state immediately
     setMessages(prev => [...prev, userMessage]);
     
@@ -226,7 +229,8 @@ export function useChatWithStorage(options: UseChatWithStorageOptions = {}): Use
               console.error('[Chat] Failed to save assistant message:', err);
             });
           }
-        }
+        },
+        currentMessages // Pass the conversation history (without the new user message)
       );
     } catch (err) {
       console.error('[Chat] Error sending message:', err);

@@ -10,6 +10,7 @@ export interface ChatMessage {
 
 export interface ChatRequest {
   message: string;
+  messages?: ChatMessage[];
 }
 
 export interface ChatResponse {
@@ -38,7 +39,8 @@ export class ChatAPI {
     message: string,
     onChunk: (token: string) => void,
     onError?: (error: Error) => void,
-    onComplete?: () => void
+    onComplete?: () => void,
+    messages?: ChatMessage[]
   ): Promise<AbortController> {
     const controller = new AbortController();
     
@@ -49,7 +51,7 @@ export class ChatAPI {
       console.log('[Chat] Starting SSE connection to:', url);
       const connectionStartTime = Date.now();
       
-      const requestBody = { message };
+      const requestBody = { message, messages: messages || [] };
       console.log('[Chat API] Sending to backend:', JSON.stringify(requestBody, null, 2));
       
       const es = new EventSource(url, {

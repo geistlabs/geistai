@@ -75,6 +75,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       timestamp: Date.now()
     };
     
+    // Get current messages before updating state for passing to API
+    const currentMessages = messages;
+    
     setMessages(prev => [...prev, userMessage]);
     
     const assistantMessage: ChatMessage = {
@@ -150,7 +153,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           setIsStreaming(false);
           options.onTokenCount?.(tokenCountRef.current);
           options.onStreamEnd?.();
-        }
+        },
+        currentMessages // Pass the conversation history (without the new user message)
       );
     } catch (err) {
       console.error('[Chat] Error sending message:', err);
