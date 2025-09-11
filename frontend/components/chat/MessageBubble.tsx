@@ -13,7 +13,7 @@ interface MessageBubbleProps {
 // Simple markdown text component that handles basic formatting without spacing issues
 const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text, isUser }) => {
   const baseStyle = {
-    color: isUser ? '#ffffff' : '#111827',
+    color: '#111827', // Both user and AI messages use black text
     fontSize: 15,
     lineHeight: 24,
     // fontFamily: 'Geist-Regular',
@@ -44,7 +44,7 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text,
       if (part.startsWith('`') && part.endsWith('`')) {
         return (
           <Text key={index} style={[baseStyle, { 
-            backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
+            backgroundColor: '#f3f4f6', // Same background for both user and AI
             paddingHorizontal: 4,
             paddingVertical: 2,
             borderRadius: 4,
@@ -133,8 +133,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       }}
       className={`max-w-[80%] rounded-2xl ${
         isUser 
-          ? 'bg-blue-600 self-end' 
-          : 'bg-gray-200 self-start'
+          ? 'bg-gray-200 self-end' 
+          : 'self-start'
       }`}>
       <View style={{ 
         paddingTop: 12, 
