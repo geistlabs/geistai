@@ -45,3 +45,12 @@ htmlcov/
 *.mobileprovision
 *.orig.*
 .kotlin/
+
+# SSL Certificates
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+backend/*/certificates/
+backend/*/ssl/

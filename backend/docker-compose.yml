@@ -5,16 +5,23 @@ services:
     build: ./router
     ports:
       - "8000:8000"
+      - "8443:8443"  # HTTPS port (uncomment if using SSL)
     environment:
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
       - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
+      # SSL Configuration (uncomment to enable)
+      # - SSL_ENABLED=true
+      # - SSL_CERT_PATH=/app/certificates/cert.pem
+      # - SSL_KEY_PATH=/app/certificates/key.pem
+      # - API_PORT=8443
     depends_on:
       - inference
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Use HTTP for healthcheck (SSL_ENABLED=false) or HTTPS (SSL_ENABLED=true)
+      test: ["CMD", "sh", "-c", "if [ \"$SSL_ENABLED\" = \"true\" ]; then curl -f -k https://localhost:8443/health; else curl -f http://localhost:8000/health; fi"]
       interval: 30s
       timeout: 10s
       retries: 3
