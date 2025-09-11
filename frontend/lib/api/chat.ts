@@ -49,13 +49,16 @@ export class ChatAPI {
       console.log('[Chat] Starting SSE connection to:', url);
       const connectionStartTime = Date.now();
       
+      const requestBody = { message };
+      console.log('[Chat API] Sending to backend:', JSON.stringify(requestBody, null, 2));
+      
       const es = new EventSource(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream'
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(requestBody),
         withCredentials: false
       });
       

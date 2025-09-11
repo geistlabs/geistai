@@ -63,7 +63,9 @@ async def chat(request: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(chat_request: ChatRequest, request: Request):
     """Streaming chat endpoint using Server-Sent Events"""
+    print(f"[Backend] Received from frontend: {chat_request.model_dump_json(indent=2)}")
     messages = [{"role": "user", "content": chat_request.message}]
+    print(f"[Backend] Created messages array: {json.dumps(messages, indent=2)}")
 
     async def event_stream():
         chunk_sequence = 0
