@@ -40,15 +40,15 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 #   -e INFERENCE_URL=https://inference.geist.im \
 #   alo42/router:latest
 
-# SSL/HTTPS mode:
-# docker run -d \
-#   --name router-server \
-#   -p 80:8000 \
-#   -p 443:8443 \
-#   -e INFERENCE_URL=https://inference.geist.im \
-#   -e SSL_ENABLED=true \
-#   -e SSL_CERT_PATH=/app/certificates/cert.pem \
-#   -e SSL_KEY_PATH=/app/certificates/key.pem \
-#   -e API_PORT=8443 \
-#   -v /path/to/your/certificates:/app/certificates:ro \
-#   alo42/router:latest
+SSL/HTTPS mode:
+docker run -d \
+  --name router-server \
+  -p 80:8000 \
+  -p 443:8443 \
+  -e INFERENCE_URL=https://inference.geist.im \
+  -e SSL_ENABLED=true \
+  -e SSL_CERT_PATH=/app/certificates/cert.pem \
+  -e SSL_KEY_PATH=/app/certificates/key.pem \
+  -e API_PORT=8443 \
+  -v /path/to/your/certificates:/app/certificates:ro \
+  alo42/router:latest
