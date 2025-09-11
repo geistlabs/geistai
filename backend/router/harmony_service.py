@@ -182,7 +182,7 @@ class HarmonyService:
                     json={
                         "prompt": harmony_prompt,
                         "temperature": 0.7,
-                        "max_tokens": 500,  # Higher token limit
+                        "max_tokens": config.MAX_TOKENS,
                         "stream": False
                     },
                     timeout=config.INFERENCE_TIMEOUT
@@ -203,7 +203,7 @@ class HarmonyService:
                     json={
                         "messages": messages,
                         "temperature": 0.7,
-                        "max_tokens": 500
+                        "max_tokens": config.MAX_TOKENS
                     },
                     timeout=config.INFERENCE_TIMEOUT
                 )
@@ -259,7 +259,7 @@ class HarmonyService:
                     json={
                         "prompt": harmony_prompt,
                         "temperature": 0.7,
-                        "max_tokens": 500,
+                        "max_tokens": config.MAX_TOKENS,
                         "stream": True
                     },
                     timeout=config.INFERENCE_TIMEOUT
@@ -306,7 +306,7 @@ class HarmonyService:
                     json={
                         "messages": messages,
                         "temperature": 0.7,
-                        "max_tokens": 500,
+                        "max_tokens": config.MAX_TOKENS,
                         "stream": True
                     },
                     timeout=config.INFERENCE_TIMEOUT

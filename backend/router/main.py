@@ -44,7 +44,7 @@ async def chat(request: ChatRequest):
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{config.INFERENCE_URL}/v1/chat/completions",
-                json={"messages": messages, "temperature": 0.7, "max_tokens": 100},
+                json={"messages": messages, "temperature": 0.7, "max_tokens": config.MAX_TOKENS},
                 timeout=config.INFERENCE_TIMEOUT,
             )
 
