@@ -16,6 +16,7 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({ text,
     color: isUser ? '#ffffff' : '#111827',
     fontSize: 15,
     lineHeight: 24,
+    // fontFamily: 'Geist-Regular',
   };
 
   // Split text into parts and format basic markdown

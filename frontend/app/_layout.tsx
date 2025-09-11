@@ -13,6 +13,12 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    // 'Geist-Regular': require('../assets/fonts/geist/Geist-Regular.otf'),
+    // 'Geist-Medium': require('../assets/fonts/geist/Geist-Medium.otf'),
+    // 'Geist-SemiBold': require('../assets/fonts/geist/Geist-SemiBold.otf'),
+    // 'Geist-Bold': require('../assets/fonts/geist/Geist-Bold.otf'),
+    // 'GeistMono-Regular': require('../assets/fonts/geist/GeistMono-Regular.otf'),
+    // 'GeistMono-Medium': require('../assets/fonts/geist/GeistMono-Medium.otf'),
   });
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
