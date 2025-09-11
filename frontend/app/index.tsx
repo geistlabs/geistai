@@ -2,6 +2,7 @@ import { View, Text, SafeAreaView, KeyboardAvoidingView, Platform, FlatList, Tou
 import { useRef, useEffect, useState } from "react";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { InputBar } from "../components/chat/InputBar";
+import { LoadingIndicator } from "../components/chat/LoadingIndicator";
 import ChatDrawer from "../components/chat/ChatDrawer";
 import HamburgerIcon from "../components/HamburgerIcon";
 import { NetworkStatus } from "../components/NetworkStatus";
@@ -177,7 +178,7 @@ export default function ChatScreen() {
             <View className="flex-1 pb-2">
               {isLoading && messages.length === 0 ? (
                 <View className="flex-1 items-center justify-center p-8">
-                  <Text className="text-gray-500 text-center">Loading...</Text>
+                  <LoadingIndicator size="medium" />
                   {storageError && (
                     <Text className="text-red-500 text-sm text-center mt-2">{storageError}</Text>
                   )}

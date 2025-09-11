@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import Svg, { Path } from "react-native-svg";
+import { LoadingIndicator } from "./LoadingIndicator";
 
 const CopyIcon = ({ color = "currentColor", size = 16 }) => (
   <Svg
@@ -262,11 +263,7 @@ export function MessageBubble({ message, allMessages = [], messageIndex }: Messa
           }}
         >
           {showTypingIndicator ? (
-            <View className="flex-row items-center space-x-1">
-              <View className="w-2 h-2 bg-gray-500 rounded-full" />
-              <View className="w-2 h-2 bg-gray-500 rounded-full mx-1" />
-              <View className="w-2 h-2 bg-gray-500 rounded-full" />
-            </View>
+            <LoadingIndicator size="small" />
           ) : (
             <SimpleMarkdownText
               text={processMessageText(messageText)}
