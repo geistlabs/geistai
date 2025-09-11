@@ -15,16 +15,16 @@ export function InputBar({ value, onChangeText, onSend, onInterrupt, disabled = 
   
   return (
     <View className="p-2">
-      <View className="flex-row items-center">
-        <View className="flex-1 h-11 rounded-full px-4 justify-center" style={{backgroundColor: '#f8f8f8'}}>
+      <View className="flex-row items-end">
+        <View className="flex-1 min-h-11 max-h-20 rounded-full px-4 py-2" style={{backgroundColor: '#f8f8f8'}}>
           <TextInput
             className="bg-transparent pl-2"
             value={value}
             onChangeText={onChangeText}
             placeholder="Ask anything"
-            multiline={false}
+            multiline={true}
             editable={!disabled}
-            style={{fontSize: 15, paddingTop: 0, paddingBottom: 0}}
+            style={{fontSize: 15, paddingTop: 8, paddingBottom: 8, textAlignVertical: 'center'}}
           />
         </View>
         <TouchableOpacity 
