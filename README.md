@@ -56,8 +56,9 @@ curl -X POST http://localhost:8000/api/chat \
 ## Services
 
 ### Router Service (Port 8000)
+
 - **Purpose**: API gateway and request handler
-- **Features**: 
+- **Features**:
   - OpenAI Harmony format support
   - Request routing to inference service
   - Response parsing and cleanup
@@ -66,6 +67,7 @@ curl -X POST http://localhost:8000/api/chat \
   - `POST /api/chat` - Chat completion
 
 ### Inference Service (Port 8080)
+
 - **Purpose**: Runs the GPT-OSS 20B model
 - **Engine**: llama.cpp server
 - **Model**: `gpt-oss-20b-Q4_K_S.gguf` (quantized)
@@ -78,12 +80,14 @@ curl -X POST http://localhost:8000/api/chat \
 ### Environment Variables
 
 #### Router Service
+
 - `HARMONY_ENABLED` - Enable/disable Harmony format (default: true)
 - `HARMONY_REASONING_EFFORT` - Reasoning depth: low/medium/high (default: low)
 - `INFERENCE_URL` - Inference service URL (default: http://inference:8080)
 - `LOG_LEVEL` - Logging level (default: DEBUG)
 
 #### Inference Service
+
 - `MODEL_PATH` - Path to GGUF model file
 - `HOST` - Server host (default: 0.0.0.0)
 - `PORT` - Server port (default: 8080)
@@ -134,6 +138,7 @@ The backend uses OpenAI Harmony format to improve GPT-OSS model responses:
 - **Disabled**: Standard chat completion format
 
 Harmony provides:
+
 - Better reasoning with analysis channels
 - Cleaner final responses
 - Mobile-optimized brevity
@@ -142,6 +147,7 @@ Harmony provides:
 ## Troubleshooting
 
 ### Container Won't Start
+
 ```bash
 # Check logs
 docker-compose logs router
@@ -152,6 +158,7 @@ docker-compose ps
 ```
 
 ### Model Loading Issues
+
 ```bash
 # Check if model file exists
 docker-compose exec inference ls -la /models/
@@ -161,12 +168,14 @@ docker-compose logs inference | grep -i error
 ```
 
 ### Harmony Import Errors
+
 ```bash
 # Rebuild router with fresh dependencies
 docker-compose build --no-cache router
 ```
 
 ### Port Conflicts
+
 ```bash
 # Check if ports are in use
 lsof -i :8000
@@ -178,6 +187,7 @@ lsof -i :8080
 ## Testing Harmony
 
 ### With Harmony (default)
+
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
@@ -185,6 +195,7 @@ curl -X POST http://localhost:8000/api/chat \
 ```
 
 ### Without Harmony
+
 ```bash
 # Modify docker-compose.yml: HARMONY_ENABLED=false
 docker-compose up -d router
@@ -218,3 +229,9 @@ backend/
 - [ ] Add request caching
 - [ ] Set up monitoring/metrics
 - [ ] Configure HTTPS with nginx
+
+## Status
+
+- 4CST in CET doesnt work in prod but in dev
+- Follow up on exercise works in prod but not in dev
+- I guess it has something to do with harmony main prompt
