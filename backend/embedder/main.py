@@ -12,8 +12,6 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckResponse(BaseModel):
     status: str
-    ssl_enabled: bool
-    ssl_status: str
 
 class EmbedRequest(BaseModel):
     input: Union[str, List[str]]
@@ -26,16 +24,6 @@ class EmbedResponse(BaseModel):
     usage: dict
 
 app = FastAPI(title="Geist Embedder")
-
-# Validate SSL configuration on startup
-ssl_valid, ssl_message = config.validate_ssl_config()
-if config.SSL_ENABLED and not ssl_valid:
-    logger.error(f"SSL configuration error: {ssl_message}")
-    raise RuntimeError(f"SSL configuration error: {ssl_message}")
-elif config.SSL_ENABLED:
-    logger.info(f"SSL enabled: {ssl_message}")
-else:
-    logger.info("SSL disabled - running in HTTP mode")
 
 # Global model cache
 _model_cache = {}
@@ -54,56 +42,8 @@ def get_model(model_name: str) -> SentenceTransformer:
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint that includes SSL status."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
-    return {
-        "status": "healthy",
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_status": ssl_message,
-    }
-
-
-@app.get("/ssl/info")
-def ssl_info():
-    """Get SSL configuration and certificate information."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
-    
-    info = {
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_valid": ssl_valid,
-        "ssl_status": ssl_message,
-        "cert_path": config.SSL_CERT_PATH,
-        "key_path": config.SSL_KEY_PATH,
-    }
-    
-    if config.SSL_ENABLED and ssl_valid:
-        try:
-            import ssl
-            import socket
-            from datetime import datetime
-            
-            # Load certificate and get basic info
-            with open(config.SSL_CERT_PATH, "rb") as f:
-                cert_data = f.read()
-            
-            # Parse certificate (basic info)
-            cert_lines = cert_data.decode("utf-8").split("\n")
-            cert_info = {}
-            
-            for line in cert_lines:
-                if "BEGIN CERTIFICATE" in line:
-                    cert_info["format"] = "PEM"
-                    break
-            
-            info["certificate"] = {
-                "format": cert_info.get("format", "Unknown"),
-                "size_bytes": len(cert_data),
-            }
-            
-        except Exception as e:
-            info["certificate"] = {"error": f"Could not read certificate: {str(e)}"}
-    
-    return info
+    """Health check endpoint."""
+    return {"status": "healthy"}
 
 
 @app.post("/embed", response_model=EmbedResponse)
@@ -177,31 +117,6 @@ def list_models():
 
 if __name__ == "__main__":
     import uvicorn
-    import sys
-
-    try:
-        if config.SSL_ENABLED:
-            logger.info(
-                f"Starting server with SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            logger.info(f"SSL Certificate: {config.SSL_CERT_PATH}")
-            logger.info(f"SSL Private Key: {config.SSL_KEY_PATH}")
-            
-            uvicorn.run(
-                app,
-                host=config.API_HOST,
-                port=config.API_PORT,
-                ssl_keyfile=config.SSL_KEY_PATH,
-                ssl_certfile=config.SSL_CERT_PATH,
-                log_level="info",
-            )
-        else:
-            logger.info(
-                f"Starting server without SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            uvicorn.run(
-                app, host=config.API_HOST, port=config.API_PORT, log_level="info"
-            )
-    except Exception as e:
-        logger.error(f"Failed to start server: {str(e)}")
-        sys.exit(1)
+    
+    logger.info(f"Starting embedder server on {config.API_HOST}:{config.API_PORT}")
+    uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)
