@@ -23,6 +23,53 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: 🐛 DEBUG - Print all environment and secret info
+        run: |
+          echo "🔍 =========================== DEBUG INFO ==========================="
+          echo "📅 Timestamp: $(date)"
+          echo "🏃 Runner OS: ${{ runner.os }}"
+          echo "🏃 Runner Arch: ${{ runner.arch }}"
+          echo "📂 Workspace: ${{ github.workspace }}"
+          echo "🔧 GitHub Actor: ${{ github.actor }}"
+          echo "🌿 GitHub Ref: ${{ github.ref }}"
+          echo "📦 Repository: ${{ github.repository }}"
+          echo ""
+          echo "📋 =========================== INPUTS ==========================="
+          echo "🌍 Environment: '${{ inputs.environment }}'"
+          echo "🏷️  Version: '${{ inputs.version }}'"
+          echo ""
+          echo "🔐 =========================== SECRETS DEBUG ==========================="
+          echo "👤 DOCKER_USERNAME exists: ${{ secrets.DOCKER_USERNAME != '' }}"
+          echo "🔑 DOCKER_PASSWORD exists: ${{ secrets.DOCKER_PASSWORD != '' }}"
+          echo "👤 DOCKER_USERNAME length: ${#DOCKER_USERNAME}"
+          echo "🔑 DOCKER_PASSWORD length: ${#DOCKER_PASSWORD}"
+          echo "👤 DOCKER_USERNAME first 3 chars: ${DOCKER_USERNAME:0:3}***"
+          echo "🔑 DOCKER_PASSWORD first 3 chars: ${DOCKER_PASSWORD:0:3}***"
+          echo ""
+          echo "🔍 =========================== SECRET VALUES CHECK ==========================="
+          if [ -z "$DOCKER_USERNAME" ]; then
+            echo "❌ DOCKER_USERNAME is EMPTY or NULL"
+          else
+            echo "✅ DOCKER_USERNAME has value"
+          fi
+          if [ -z "$DOCKER_PASSWORD" ]; then
+            echo "❌ DOCKER_PASSWORD is EMPTY or NULL"
+          else
+            echo "✅ DOCKER_PASSWORD has value"
+          fi
+          echo ""
+          echo "🐳 =========================== DOCKER INFO ==========================="
+          docker --version
+          docker info --format '{{json .}}' | jq -r '.ServerVersion // "No server info"'
+          echo ""
+          echo "🔍 =========================== ENVIRONMENT VARIABLES ==========================="
+          env | grep -E "(DOCKER|GITHUB)" | sort
+          echo ""
+          echo "🔍 =========================== END DEBUG INFO ==========================="
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
