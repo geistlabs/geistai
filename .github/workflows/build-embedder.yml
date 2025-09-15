@@ -6,16 +6,17 @@ on:
       environment:
         required: true
         type: string
-        description: 'Environment (development, staging, production)'
+        description: "Environment (development, staging, production)"
       version:
         required: true
         type: string
-        description: 'Version number (semver)'
+        description: "Version number (semver)"
 
 jobs:
   build_and_push:
     name: Build and Push Embedder Docker Image
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
