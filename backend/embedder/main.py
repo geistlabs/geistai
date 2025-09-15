@@ -10,12 +10,15 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class HealthCheckResponse(BaseModel):
     status: str
+
 
 class EmbedRequest(BaseModel):
     input: Union[str, List[str]]
     model: str = "all-MiniLM-L6-v2"
+
 
 class EmbedResponse(BaseModel):
     object: str = "list"
@@ -23,10 +26,12 @@ class EmbedResponse(BaseModel):
     model: str
     usage: dict
 
+
 app = FastAPI(title="Geist Embedder")
 
 # Global model cache
 _model_cache = {}
+
 
 def get_model(model_name: str) -> SentenceTransformer:
     """Load and cache the sentence transformer model"""
@@ -37,8 +42,11 @@ def get_model(model_name: str) -> SentenceTransformer:
             logger.info(f"Successfully loaded model: {model_name}")
         except Exception as e:
             logger.error(f"Failed to load model {model_name}: {e}")
-            raise HTTPException(status_code=500, f"Failed to load model: {model_name}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to load model: {model_name}"
+            )
     return _model_cache[model_name]
+
 
 @app.get("/health")
 def health_check():
@@ -52,41 +60,39 @@ async def embed(request: EmbedRequest):
     try:
         # Get the model
         model = get_model(request.model)
-        
+
         # Prepare input texts
         if isinstance(request.input, str):
             texts = [request.input]
         else:
             texts = request.input
-        
+
         # Generate embeddings
         logger.info(f"Generating embeddings for {len(texts)} text(s)")
         embeddings = model.encode(texts, convert_to_numpy=True)
-        
+
         # Format response data
         data = []
         for i, embedding in enumerate(embeddings):
-            data.append({
-                "object": "embedding",
-                "embedding": embedding.tolist(),
-                "index": i
-            })
-        
+            data.append(
+                {"object": "embedding", "embedding": embedding.tolist(), "index": i}
+            )
+
         # Calculate token usage (rough estimate)
         total_tokens = sum(len(text.split()) for text in texts)
-        
+
         return EmbedResponse(
             data=data,
             model=request.model,
-            usage={
-                "prompt_tokens": total_tokens,
-                "total_tokens": total_tokens
-            }
+            usage={"prompt_tokens": total_tokens, "total_tokens": total_tokens},
         )
-        
+
     except Exception as e:
         logger.error(f"Error generating embeddings: {e}")
-        raise HTTPException(status_code=500, detail=f"Error generating embeddings: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Error generating embeddings: {str(e)}"
+        )
+
 
 @app.get("/models")
 def list_models():
@@ -98,25 +104,26 @@ def list_models():
                 "id": "all-MiniLM-L6-v2",
                 "object": "model",
                 "created": 1677610602,
-                "owned_by": "sentence-transformers"
+                "owned_by": "sentence-transformers",
             },
             {
-                "id": "all-mpnet-base-v2", 
+                "id": "all-mpnet-base-v2",
                 "object": "model",
                 "created": 1677610602,
-                "owned_by": "sentence-transformers"
+                "owned_by": "sentence-transformers",
             },
             {
                 "id": "paraphrase-MiniLM-L6-v2",
-                "object": "model", 
+                "object": "model",
                 "created": 1677610602,
-                "owned_by": "sentence-transformers"
-            }
-        ]
+                "owned_by": "sentence-transformers",
+            },
+        ],
     }
+
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     logger.info(f"Starting embedder server on {config.API_HOST}:{config.API_PORT}")
     uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)
