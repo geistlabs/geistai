@@ -15,8 +15,7 @@ COPY main.py .
 COPY config.py .
 COPY harmony_service.py .
 
-# Copy certificates directory (if it exists)
-COPY certificates/ ./certificates/
+# Note: Certificates should be mounted as a volume at runtime
 
 # Install dependencies 
 RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette
@@ -41,7 +40,7 @@ CMD ["python", "main.py"]
 #   -e EMBEDDER_URL=https://embedder.geist.im \
 #   alo42/router:latest
 
-## SSL/HTTPS mode:
+# SSL/HTTPS mode with mounted certificates:
 # docker run -d \
 #   --name router-server \
 #   -p 80:8000 \
@@ -52,4 +51,5 @@ CMD ["python", "main.py"]
 #   -e SSL_CERT_PATH=/app/certificates/cert.pem \
 #   -e SSL_KEY_PATH=/app/certificates/key.pem \
 #   -e API_PORT=8443 \
+#   -v /root/certificates:/app/certificates:ro \
 #   alo42/router:latest

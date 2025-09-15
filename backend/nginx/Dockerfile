@@ -10,8 +10,7 @@ RUN mkdir -p /app/certificates /var/log/nginx
 # Copy nginx configuration
 COPY conf/nginx.conf /etc/nginx/nginx.conf
 
-# Copy certificates directory (if it exists)
-COPY certificates/ /app/certificates/
+# Note: Certificates should be mounted as a volume at runtime
 
 # Copy startup script
 COPY start-nginx.sh /app/start-nginx.sh
@@ -39,8 +38,7 @@ CMD ["/app/start-nginx.sh"]
 #   --network host \
 #   alo42/nginx-server:latest
 
-# SSL/HTTPS mode (standalone containers on host port 443):
-# Option 1: With real SSL certificates
+# SSL/HTTPS mode with mounted certificates:
 # docker run -d \
 #   --name nginx-server \
 #   -p 80:80 \
@@ -49,9 +47,10 @@ CMD ["/app/start-nginx.sh"]
 #   -e SSL_ENABLED=true \
 #   -e INFERENCE_CERT_PATH=/app/certificates/cert.pem \
 #   -e INFERENCE_KEY_PATH=/app/certificates/key.pem \
+#   -v /root/certificates:/app/certificates:ro \
 #   alo42/nginx-server:latest
 
-# Option 2: Auto-generate self-signed certificates (recommended for testing)
+# Auto-generate self-signed certificates (recommended for testing):
 # docker run -d \
 #   --name nginx-server \
 #   -p 80:80 \
