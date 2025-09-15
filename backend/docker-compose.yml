@@ -1,31 +1,55 @@
-version: "3.8"
-
 services:
   router:
     build: ./router
     ports:
       - "8000:8000"
-      - "8443:8443"  # HTTPS port (uncomment if using SSL)
+      - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
       - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
+      # Development-specific Python settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - WATCHDOG_POLLING=true
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem
       # - SSL_KEY_PATH=/app/certificates/key.pem
       # - API_PORT=8443
+    volumes:
+      # Mount source code for live reloading
+      - ./router:/app
+      # Mount certificates directory if needed (read-only is fine for certs)
+      - ./router/certificates:/app/certificates:ro
+    command:
+      [
+        "python",
+        "-c",
+        "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True, reload_dirs=['/app'])",
+      ]
     depends_on:
       - inference
     healthcheck:
       # Use HTTP for healthcheck (SSL_ENABLED=false) or HTTPS (SSL_ENABLED=true)
-      test: ["CMD", "sh", "-c", "if [ \"$SSL_ENABLED\" = \"true\" ]; then curl -f -k https://localhost:8443/health; else curl -f http://localhost:8000/health; fi"]
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'if [ "$SSL_ENABLED" = "true" ]; then curl -f -k https://localhost:8443/health; else curl -f http://localhost:8000/health; fi',
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    # Development settings
+    restart: "no"
+    labels:
+      - "dev.environment=development"
+      - "dev.service=router"
     networks:
       - geist-network
 
@@ -33,7 +57,7 @@ services:
     build: ./inference
     ports:
       - "8080:8080"
-    platform: linux/arm64  # Force ARM64 for Apple Silicon
+    platform: linux/arm64 # Force ARM64 for Apple Silicon
     environment:
       - MODEL_PATH=/models/gpt-oss-20b-Q4_K_S.gguf
       - HOST=0.0.0.0
@@ -55,6 +79,9 @@ services:
           memory: 4G
     # Apple Silicon M3 GPU acceleration happens automatically via Metal backend
     restart: unless-stopped
+    labels:
+      - "dev.environment=development"
+      - "dev.service=inference"
     networks:
       - geist-network
 
@@ -69,8 +96,27 @@ services:
       - API_PORT=8001
       - DEFAULT_MODEL=all-MiniLM-L6-v2
       - MODEL_CACHE_DIR=/app/models
+      # Development-specific Python settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - WATCHDOG_POLLING=true
     volumes:
+      # Mount source code for live reloading (read-write to allow model directory creation)
+      - ./embedder:/app
+      # Keep model cache volume for performance (this will override the /app/models from above)
       - embedder-models:/app/models
+    command:
+      [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+        "--reload",
+        "--reload-dir",
+        "/app",
+      ]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
@@ -83,7 +129,11 @@ services:
           memory: 4G
         reservations:
           memory: 1G
-    restart: unless-stopped
+    # Development settings
+    restart: "no"
+    labels:
+      - "dev.environment=development"
+      - "dev.service=embedder"
     networks:
       - geist-network
 
