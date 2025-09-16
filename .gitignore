@@ -55,5 +55,4 @@ htmlcov/
 backend/*/certificates/
 backend/*/ssl/
 
-backend/*/models/*
-!backend/*/models/
+backend/*/models/
