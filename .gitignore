@@ -56,3 +56,4 @@ backend/*/certificates/
 backend/*/ssl/
 
 backend/*/models/
+models/
