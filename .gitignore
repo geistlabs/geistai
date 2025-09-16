@@ -54,3 +54,6 @@ htmlcov/
 *.pfx
 backend/*/certificates/
 backend/*/ssl/
+
+backend/*/models/*
+!backend/*/models/

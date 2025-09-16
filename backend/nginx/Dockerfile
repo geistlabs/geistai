@@ -39,16 +39,16 @@ CMD ["/app/start-nginx.sh"]
 #   alo42/nginx:latest
 
 # SSL/HTTPS mode with mounted certificates:
-docker run -d \
-  --name nginx \
-  -p 80:80 \
-  -p 443:443 \
-  --add-host=host.docker.internal:host-gateway \
-  -e SSL_ENABLED=true \
-  -e INFERENCE_CERT_PATH=/app/certificates/cert.pem \
-  -e INFERENCE_KEY_PATH=/app/certificates/key.pem \
-  -v /root/certificates:/app/certificates:ro \
-  alo42/nginx:latest
+# docker run -d \
+#   --name nginx \
+#   -p 80:80 \
+#   -p 443:443 \
+#   --add-host=host.docker.internal:host-gateway \
+#   -e SSL_ENABLED=true \
+#   -e INFERENCE_CERT_PATH=/app/certificates/cert.pem \
+#   -e INFERENCE_KEY_PATH=/app/certificates/key.pem \
+#   -v /root/certificates:/app/certificates:ro \
+#   alo42/nginx:latest
 
 # Auto-generate self-signed certificates (recommended for testing):
 # docker run -d \

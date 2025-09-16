@@ -33,7 +33,7 @@ EXPOSE 8001
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
 
 # Example usage:
-docker run -d \
-  --name embeddings-server \
-  -p 8001:8001 \
-  alo42/embeddings:latest
+# docker run -d \
+#   --name embeddings-server \
+#   -p 8001:8001 \
+#   alo42/embeddings:latest
