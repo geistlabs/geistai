@@ -5,11 +5,11 @@ services:
       - "8000:8000"
       - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
-      - ENVIRONMENT=development
       - LOG_LEVEL=DEBUG
       - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
+      - SSL_ENABLED=false
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -33,14 +33,8 @@ services:
     depends_on:
       - inference
     healthcheck:
-      # Use HTTP for healthcheck (SSL_ENABLED=false) or HTTPS (SSL_ENABLED=true)
-      test:
-        [
-          "CMD",
-          "sh",
-          "-c",
-          'if [ "$SSL_ENABLED" = "true" ]; then curl -f -k https://localhost:8443/health; else curl -f http://localhost:8000/health; fi',
-        ]
+      # Use HTTP for healthcheck in local development
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -71,6 +65,9 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s # Model loading takes time
+    volumes:
+      # Mount the models directory
+      - ./inference/models:/models:ro
     deploy:
       resources:
         limits:
