@@ -37,7 +37,7 @@ CMD ["python", "main.py"]
 #   --name router-server \
 #   -p 80:8000 \
 #   -e INFERENCE_URL=https://inference.geist.im \
-#   -e EMBEDDER_URL=https://embedder.geist.im \
+#   -e EMBEDDINGS_URL=https://embeddings.geist.im \
 #   alo42/router:latest
 
 # SSL/HTTPS mode with mounted certificates:
@@ -46,7 +46,7 @@ CMD ["python", "main.py"]
 #   -p 80:8000 \
 #   -p 443:8443 \
 #   -e INFERENCE_URL=https://inference.geist.im \
-#   -e EMBEDDER_URL=https://embedder.geist.im \
+#   -e EMBEDDINGS_URL=https://embeddings.geist.im \
 #   -e SSL_ENABLED=true \
 #   -e SSL_CERT_PATH=/app/certificates/cert.pem \
 #   -e SSL_KEY_PATH=/app/certificates/key.pem \

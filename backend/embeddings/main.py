@@ -125,5 +125,5 @@ def list_models():
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info(f"Starting embedder server on {config.API_HOST}:{config.API_PORT}")
+    logger.info(f"Starting embeddings server on {config.API_HOST}:{config.API_PORT}")
     uvicorn.run(app, host=config.API_HOST, port=config.API_PORT)

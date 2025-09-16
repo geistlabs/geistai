@@ -163,16 +163,16 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
     return EventSourceResponse(event_stream())
 
 
-# Proxy route for embedder service
+# Proxy route for embeddings service
 @app.api_route(
-    "/embedder/{path:path}",
+    "/embeddings/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
 )
-async def proxy_embedder(request: Request, path: str):
-    """Proxy requests to the embedder service"""
+async def proxy_embeddings(request: Request, path: str):
+    """Proxy requests to the embeddings service"""
     try:
         # Build the target URL
-        target_url = f"{config.EMBEDDER_URL}/{path}"
+        target_url = f"{config.EMBEDDINGS_URL}/{path}"
 
         # Get query parameters
         query_params = str(request.url.query)
@@ -191,7 +191,7 @@ async def proxy_embedder(request: Request, path: str):
                 url=target_url,
                 headers=dict(request.headers),
                 content=body,
-                timeout=config.EMBEDDER_TIMEOUT,
+                timeout=config.EMBEDDINGS_TIMEOUT,
             )
 
         # Return the response
@@ -203,8 +203,8 @@ async def proxy_embedder(request: Request, path: str):
         )
 
     except Exception as e:
-        logger.error(f"Error proxying to embedder service: {str(e)}")
-        return {"error": "Failed to proxy request to embedder service"}
+        logger.error(f"Error proxying to embeddings service: {str(e)}")
+        return {"error": "Failed to proxy request to embeddings service"}
 
 
 if __name__ == "__main__":

@@ -152,7 +152,7 @@ For rapid development with automatic code reloading:
 ```
 
 **Features**:
-- 🔄 **Auto-restart** on code changes (router & embedder services)
+- 🔄 **Auto-restart** on code changes (router & embeddings services)
 - 📁 **Volume mounts** for real-time file sync
 - 🚀 **Fast iteration** - no rebuild needed for code changes
 - 📊 **Live logs** monitoring
@@ -161,7 +161,7 @@ For rapid development with automatic code reloading:
 
 **What gets live-reloaded**:
 - `./router/` - FastAPI router service (Python files)
-- `./embedder/` - Embedding service (Python files)
+- `./embeddings/` - Embedding service (Python files)
 - Configuration changes in `config.py`
 - New endpoints, middleware, or business logic
 
@@ -184,7 +184,7 @@ For rapid development with automatic code reloading:
 # 1. Start development mode
 ./start-dev.sh
 
-# 2. Edit files in ./router/ or ./embedder/
+# 2. Edit files in ./router/ or ./embeddings/
 # Changes are automatically detected and services restart
 
 # 3. Test your changes immediately
@@ -204,7 +204,7 @@ docker compose build
 ```bash
 # View logs for specific service
 docker compose logs -f router
-docker compose logs -f embedder
+docker compose logs -f embeddings
 docker compose logs -f inference
 
 # Check service status

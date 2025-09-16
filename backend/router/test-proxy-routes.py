@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script for the new proxy routes in the router service.
-This script tests the /inference/* and /embedder/* proxy endpoints.
+This script tests the /inference/* and /embeddings/* proxy endpoints.
 """
 
 import requests
@@ -46,32 +46,32 @@ def main():
     print("\n📡 Testing HTTP proxy endpoints (port 80):")
     http_base = "http://localhost"
 
-    # Test embedder proxy routes
+    # Test embeddings proxy routes
     print("\n📊 Testing Embedder Service Proxy:")
-    test_proxy_endpoint(http_base, "embedder", "health")
-    test_proxy_endpoint(http_base, "embedder", "models")
+    test_proxy_endpoint(http_base, "embeddings", "health")
+    test_proxy_endpoint(http_base, "embeddings", "models")
 
     # Test HTTPS endpoints if SSL is enabled
     print("\n🔒 Testing HTTPS proxy endpoints (port 443):")
     https_base = "https://localhost"
 
     print("\n📊 Testing Embedder Service Proxy (HTTPS):")
-    test_proxy_endpoint(https_base, "embedder", "health", use_ssl=True)
+    test_proxy_endpoint(https_base, "embeddings", "health", use_ssl=True)
 
     print("\n" + "=" * 50)
     print("📖 Usage Examples:")
-    print("# Direct access to embedder service:")
-    print("curl http://localhost/embedder/health")
-    print("curl http://localhost/embedder/models")
+    print("# Direct access to embeddings service:")
+    print("curl http://localhost/embeddings/health")
+    print("curl http://localhost/embeddings/models")
     print("")
     print("# Generate embeddings:")
-    print("curl -X POST http://localhost/embedder/embeddings \\")
+    print("curl -X POST http://localhost/embeddings/embeddings \\")
     print('  -H "Content-Type: application/json" \\')
     print('  -d \'{"input":"hello world","model":"all-MiniLM-L6-v2"}\'')
     print("")
     print("# With SSL enabled:")
-    print("curl -k https://localhost/embedder/health")
-    print("curl -k https://localhost/embedder/embeddings")
+    print("curl -k https://localhost/embeddings/health")
+    print("curl -k https://localhost/embeddings/embeddings")
 
 
 if __name__ == "__main__":

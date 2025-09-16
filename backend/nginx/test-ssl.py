@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script for the nginx reverse proxy SSL configuration.
-This script tests routing to both inference and embedder services.
+This script tests routing to both inference and embeddings services.
 """
 
 import requests
@@ -72,9 +72,9 @@ def test_inference_functionality(base_url, use_ssl=False):
         print(f"❌ Inference completion: {str(e)}")
 
 
-def test_embedder_functionality(base_url, use_ssl=False):
-    """Test embedder service functionality."""
-    print(f"\n📊 Testing embedder service functionality:")
+def test_embeddings_functionality(base_url, use_ssl=False):
+    """Test embeddings service functionality."""
+    print(f"\n📊 Testing embeddings service functionality:")
 
     # Test models endpoint
     test_endpoint(base_url, "/models", use_ssl, "Embedder")
@@ -129,25 +129,25 @@ def main():
     if inference_https:
         test_inference_functionality("https://inference.geist.im", use_ssl=True)
 
-    # Test embedder service
-    print("\n\n📊 Testing Embedder Service (embedder.geist.im)")
+    # Test embeddings service
+    print("\n\n📊 Testing Embedder Service (embeddings.geist.im)")
     print("-" * 50)
 
     # HTTP
     print("\n📡 HTTP (port 80):")
-    embedder_http = test_endpoint(
-        "http://embedder.geist.im", "/health", False, "Embedder"
+    embeddings_http = test_endpoint(
+        "http://embeddings.geist.im", "/health", False, "Embedder"
     )
-    if embedder_http:
-        test_embedder_functionality("http://embedder.geist.im")
+    if embeddings_http:
+        test_embeddings_functionality("http://embeddings.geist.im")
 
     # HTTPS
     print("\n🔒 HTTPS (port 443):")
-    embedder_https = test_endpoint(
-        "https://embedder.geist.im", "/health", True, "Embedder"
+    embeddings_https = test_endpoint(
+        "https://embeddings.geist.im", "/health", True, "Embedder"
     )
-    if embedder_https:
-        test_embedder_functionality("https://embedder.geist.im", use_ssl=True)
+    if embeddings_https:
+        test_embeddings_functionality("https://embeddings.geist.im", use_ssl=True)
 
     # Summary
     print("\n" + "=" * 40)
@@ -163,12 +163,12 @@ def main():
     else:
         print("❌ Inference HTTPS service is not responding (normal if SSL disabled)")
 
-    if embedder_http:
+    if embeddings_http:
         print("✅ Embedder HTTP service is working")
     else:
         print("❌ Embedder HTTP service is not responding")
 
-    if embedder_https:
+    if embeddings_https:
         print("✅ Embedder HTTPS service is working")
     else:
         print("❌ Embedder HTTPS service is not responding (normal if SSL disabled)")
@@ -176,7 +176,7 @@ def main():
     print("\n📖 Architecture:")
     print("   nginx (SSL termination) routes:")
     print("   - inference.geist.im → inference-server:8080")
-    print("   - embedder.geist.im → embedder-server:8001")
+    print("   - embeddings.geist.im → embeddings-server:8001")
 
 
 if __name__ == "__main__":

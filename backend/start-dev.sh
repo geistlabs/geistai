@@ -6,7 +6,7 @@
 set -e
 
 echo "🚀 Starting GeistAI backend services in development mode..."
-echo "📝 Live reloading enabled for router and embedder services"
+echo "📝 Live reloading enabled for router and embeddings services"
 echo ""
 
 # Colors for output
@@ -51,10 +51,10 @@ echo "  - Inference:      http://localhost:8080"
 echo ""
 echo "🔄 Live reload is enabled for:"
 echo "  - Router service (./router/ directory)"
-echo "  - Embedder service (./embedder/ directory)"
+echo "  - Embeddings service (./embeddings/ directory)"
 echo ""
 echo "💡 Tips:"
-echo "  - Edit files in ./router/ or ./embedder/ to see live changes"
+echo "  - Edit files in ./router/ or ./embeddings/ to see live changes"
 echo "  - Use Ctrl+C to stop all services"
 echo "  - Check logs with: docker compose logs -f [service-name]"
 echo ""

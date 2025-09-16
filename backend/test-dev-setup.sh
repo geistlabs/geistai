@@ -45,8 +45,8 @@ else
     exit 1
 fi
 
-if grep -q "./embedder:/app" docker-compose.yml; then
-    echo -e "${GREEN}✅ Embedder volume mount configured${NC}"
+if grep -q "./embeddings:/app" docker-compose.yml; then
+    echo -e "${GREEN}✅ Embeddings volume mount configured${NC}"
 else
     echo -e "${RED}❌ Embedder volume mount not found${NC}"
     exit 1
@@ -102,7 +102,7 @@ echo -e "${GREEN}🎉 All tests passed! Development setup is ready.${NC}"
 echo ""
 echo -e "${YELLOW}💡 Next steps:${NC}"
 echo "  1. Run './start-dev.sh' to start development mode"
-echo "  2. Edit files in ./router/ or ./embedder/ to test live reload"
+echo "  2. Edit files in ./router/ or ./embeddings/ to test live reload"
 echo "  3. Check http://localhost:8000/health to verify services"
 echo ""
 echo -e "${BLUE}🚀 Happy coding!${NC}"

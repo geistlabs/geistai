@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # SSL Setup Script for Embedder Service
-# This script helps you set up SSL certificates for the embedder service
+# This script helps you set up SSL certificates for the embeddings service
 
 set -e
 
-CERT_DIR="/home/alo/geistai/backend/embedder/certificates"
+CERT_DIR="/home/alo/geistai/backend/embeddings/certificates"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🔐 SSL Setup for Embedder Service"
@@ -63,18 +63,18 @@ if [ -f "$CERT_DIR/cert.pem" ] && [ -f "$CERT_DIR/key.pem" ]; then
     fi
     
     echo ""
-    echo "🚀 To enable SSL, run the embedder with SSL configuration:"
+    echo "🚀 To enable SSL, run the embeddings with SSL configuration:"
     echo "   docker run -d \\"
-    echo "     --name embedder-server \\"
+    echo "     --name embeddings-server \\"
     echo "     -p 80:8001 \\"
     echo "     -p 443:8443 \\"
     echo "     -e SSL_ENABLED=true \\"
     echo "     -e SSL_CERT_PATH=/app/certificates/cert.pem \\"
     echo "     -e SSL_KEY_PATH=/app/certificates/key.pem \\"
     echo "     -e API_PORT=8443 \\"
-    echo "     -v embedder-models:/app/models \\"
+    echo "     -v embeddings-models:/app/models \\"
     echo "     -v $CERT_DIR:/app/certificates:ro \\"
-    echo "     alo42/embedder:latest"
+    echo "     alo42/embeddings:latest"
     echo ""
     echo "🧪 Test the SSL setup with:"
     echo "   python3 $SCRIPT_DIR/test-ssl.py"
@@ -89,7 +89,7 @@ else
     echo "Then run this script again."
     echo ""
     echo "💡 If you need to generate a test certificate, you can use:"
-    echo "   openssl req -x509 -newkey rsa:2048 -keyout $CERT_DIR/key.pem -out $CERT_DIR/cert.pem -days 365 -nodes -subj '/CN=embedder.geist.im'"
+    echo "   openssl req -x509 -newkey rsa:2048 -keyout $CERT_DIR/key.pem -out $CERT_DIR/cert.pem -days 365 -nodes -subj '/CN=embeddings.geist.im'"
 fi
 
 echo ""

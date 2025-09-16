@@ -23,12 +23,12 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 		"--n-gpu-layers", "-1"]
 
 # Example usage:
-# docker run -d \
-#   --name inference-server \
-#   --gpus all \
-#   -p 8080:8080 \
-#   -v /root/models:/models:ro \
-#   alo42/inference:latest
+docker run -d \
+  --name inference-server \
+  --gpus all \
+  -p 8080:8080 \
+  -v /root/models:/models:ro \
+  alo42/inference:latest
 
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.

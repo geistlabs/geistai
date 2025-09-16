@@ -23,8 +23,8 @@ RUN pip install --no-cache-dir fastapi uvicorn sentence-transformers numpy pydan
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 # Create non-root user
-RUN useradd -m -u 1000 embedder && chown -R embedder:embedder /app
-USER embedder
+RUN useradd -m -u 1000 embeddings && chown -R embeddings:embeddings /app
+USER embeddings
 
 # Expose port
 EXPOSE 8001
@@ -33,8 +33,7 @@ EXPOSE 8001
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
 
 # Example usage:
-# docker run -d \
-#   --name embedder-server \
-#   -p 8001:8001 \
-#   -v embedder-models:/app/models \
-#   alo42/embedder:latest
+docker run -d \
+  --name embeddings-server \
+  -p 8001:8001 \
+  alo42/embeddings:latest

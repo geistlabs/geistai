@@ -85,8 +85,8 @@ services:
     networks:
       - geist-network
 
-  embedder:
-    build: ./embedder
+  embeddings:
+    build: ./embeddings
     ports:
       - "8001:8001"
     environment:
@@ -102,9 +102,9 @@ services:
       - WATCHDOG_POLLING=true
     volumes:
       # Mount source code for live reloading (read-write to allow model directory creation)
-      - ./embedder:/app
+      - ./embeddings:/app
       # Keep model cache volume for performance (this will override the /app/models from above)
-      - embedder-models:/app/models
+      - embeddings-models:/app/models
     command:
       [
         "uvicorn",
@@ -133,12 +133,12 @@ services:
     restart: "no"
     labels:
       - "dev.environment=development"
-      - "dev.service=embedder"
+      - "dev.service=embeddings"
     networks:
       - geist-network
 
 volumes:
-  embedder-models:
+  embeddings-models:
     driver: local
 
 networks:

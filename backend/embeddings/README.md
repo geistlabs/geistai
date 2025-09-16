@@ -70,8 +70,8 @@ The service is included in the main docker-compose.yml and will start automatica
 
 ### Standalone Docker
 ```bash
-docker build -t embedder .
-docker run -p 8001:8001 embedder
+docker build -t embeddings .
+docker run -p 8001:8001 embeddings
 ```
 
 ### Local Development

@@ -1,5 +1,5 @@
 [project]
-name = "embedder"
+name = "embeddings"
 version = "0.1.0"
 description = "Self-hosted embeddings API using SentenceTransformers"
 readme = "README.md"

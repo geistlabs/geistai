@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for SSL configuration in the embedder service.
+Test script for SSL configuration in the embeddings service.
 This script tests both HTTP and HTTPS endpoints.
 """
 
@@ -82,16 +82,16 @@ def main():
         print("❌ HTTPS service is not responding (this is normal if SSL is disabled)")
 
     print("\n📖 To enable SSL:")
-    print("1. Place your certificate files in backend/embedder/certificates/")
+    print("1. Place your certificate files in backend/embeddings/certificates/")
     print("2. Run with SSL configuration:")
     print("   docker run -d \\")
-    print("     --name embedder-server \\")
+    print("     --name embeddings-server \\")
     print("     -p 80:8001 \\")
     print("     -p 443:8443 \\")
     print("     -e SSL_ENABLED=true \\")
     print("     -e API_PORT=8443 \\")
     print("     -v /path/to/certificates:/app/certificates:ro \\")
-    print("     alo42/embedder:latest")
+    print("     alo42/embeddings:latest")
 
 
 if __name__ == "__main__":

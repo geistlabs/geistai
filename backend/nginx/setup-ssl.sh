@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SSL Setup Script for Nginx Reverse Proxy
-# This script helps you set up SSL certificates for both inference and embedder services
+# This script helps you set up SSL certificates for both inference and embeddings services
 
 set -e
 
@@ -40,13 +40,13 @@ else
     echo "❌ SSL certificates not found"
 fi
 
-if [ -f "$CERT_DIR/embedder-cert.pem" ] && [ -f "$CERT_DIR/embedder-key.pem" ]; then
+if [ -f "$CERT_DIR/embeddings-cert.pem" ] && [ -f "$CERT_DIR/embeddings-key.pem" ]; then
     echo "✅ Embedder SSL certificates found!"
     EMBEDDER_CERT_EXISTS=true
     
     # Set proper permissions
-    chmod 644 "$CERT_DIR/embedder-cert.pem"
-    chmod 600 "$CERT_DIR/embedder-key.pem"
+    chmod 644 "$CERT_DIR/embeddings-cert.pem"
+    chmod 600 "$CERT_DIR/embeddings-key.pem"
 else
     echo "❌ Embedder SSL certificates not found"
 fi
@@ -60,7 +60,7 @@ if [ "$INFERENCE_CERT_EXISTS" = true ] && [ "$EMBEDDER_CERT_EXISTS" = true ]; th
     echo "     -p 443:443 \\"
     echo "     -e SSL_ENABLED=true \\"
     echo "     -e INFERENCE_HOST=inference-server \\"
-    echo "     -e EMBEDDER_HOST=embedder-server \\"
+    echo "     -e EMBEDDER_HOST=embeddings-server \\"
     echo "     -v $CERT_DIR:/app/certificates:ro \\"
     echo "     alo42/nginx:latest"
     echo ""
@@ -89,4 +89,4 @@ echo "🏗️  Architecture:"
 echo "   Client → nginx (SSL termination) → Backend Services (HTTP)"
 echo "   - nginx: ports 80 (HTTP) and 443 (HTTPS)"
 echo "   - Routes inference.geist.im → inference-server:8080"
-echo "   - Routes embedder.geist.im → embedder-server:8001"
+echo "   - Routes embeddings.geist.im → embeddings-server:8001"
