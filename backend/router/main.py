@@ -36,7 +36,14 @@ app = FastAPI(title="Geist Router")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Allow webapp origin
+    allow_origins=[
+        "http://localhost:3000", 
+        "http://127.0.0.1:3000",
+        "https://geist.im",
+        "https://*.geist.im",
+        "http://geist.im",
+        "http://*.geist.im"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
