@@ -134,6 +134,36 @@ services:
     networks:
       - geist-network
 
+  webapp:
+    build: ./webapp
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - NODE_ENV=development
+    volumes:
+      # Mount source code for live reloading
+      - ./webapp/src:/app/src
+      - ./webapp/public:/app/public
+      - ./webapp/index.html:/app/index.html
+      - ./webapp/vite.config.ts:/app/vite.config.ts
+      - ./webapp/tsconfig.json:/app/tsconfig.json
+      - ./webapp/tsconfig.node.json:/app/tsconfig.node.json
+    depends_on:
+      - router
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "dev.environment=development"
+      - "dev.service=webapp"
+    networks:
+      - geist-network
+
 volumes:
   embeddings-models:
     driver: local

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -31,6 +32,15 @@ class ChatRequest(BaseModel):
 
 
 app = FastAPI(title="Geist Router")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Allow webapp origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize Harmony service if enabled
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
