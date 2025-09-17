@@ -75,6 +75,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       timestamp: Date.now()
     };
     
+    // Get current messages before updating state for passing to API
+    const currentMessages = messages;
+    
     setMessages(prev => [...prev, userMessage]);
     
     const assistantMessage: ChatMessage = {
@@ -84,8 +87,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       timestamp: Date.now()
     };
     
+    // Log input
+    console.log('[Chat] Input:', content);
+    const inputStartTime = Date.now();
+    
     try {
-      console.log('[useChat] Starting stream for message:', content);
       options.onStreamStart?.();
       
       setMessages(prev => [...prev, assistantMessage]);
@@ -94,13 +100,21 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       
       let accumulatedContent = '';
       tokenCountRef.current = 0;
+      let firstTokenLogged = false;
       
       // Create token batcher for optimized streaming
       const batcher = new TokenBatcher({
-        batchSize: 10, // Batch 10 tokens before updating UI
-        flushInterval: 100, // Or flush every 100ms
+        batchSize: 3, // Batch fewer tokens for faster first response
+        flushInterval: 16, // Flush every 16ms (~60fps) for smoother rendering
         onBatch: (batchedTokens: string) => {
           accumulatedContent += batchedTokens;
+          
+          // Log first token timing
+          if (!firstTokenLogged) {
+            const firstTokenTime = Date.now() - inputStartTime;
+            console.log('[Chat] First token time:', firstTokenTime + 'ms');
+            firstTokenLogged = true;
+          }
           
           // Update UI with batched tokens
           setMessages(prev => {
@@ -112,18 +126,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             return newMessages;
           });
           
-          // Log progress occasionally
           if (batcher.getTokenCount() % 100 === 0) {
-            console.log('[useChat] Progress:', batcher.getTokenCount(), 'tokens');
             options.onTokenCount?.(batcher.getTokenCount());
           }
         },
-        onError: (error) => {
-          console.error('[useChat] Batching error:', error);
-        },
         onComplete: () => {
           tokenCountRef.current = batcher.getTokenCount();
-          console.log('[useChat] Stream completed. Total tokens:', tokenCountRef.current);
         }
       });
       
@@ -134,21 +142,22 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           batcher.addToken(token);
         },
         (error) => {
-          console.error('[useChat] Stream error:', error);
-          console.error('[useChat] Error details:', error.message, error.stack);
+          console.error('[Chat] Stream error:', error);
           setError(error);
           options.onError?.(error);
         },
         () => {
           // Complete the batcher to flush any remaining tokens
           batcher.complete();
+          console.log('[Chat] Output:', accumulatedContent);
           setIsStreaming(false);
           options.onTokenCount?.(tokenCountRef.current);
           options.onStreamEnd?.();
-        }
+        },
+        currentMessages // Pass the conversation history (without the new user message)
       );
     } catch (err) {
-      console.error('[useChat] Error sending message:', err);
+      console.error('[Chat] Error sending message:', err);
       const error = err instanceof Error ? err : new Error('Failed to send message');
       setError(error);
       options.onError?.(error);
@@ -165,7 +174,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   const stopStreaming = useCallback(() => {
     if (streamControllerRef.current) {
-      console.log('[useChat] Stopping stream');
       streamControllerRef.current.abort();
       streamControllerRef.current = null;
       setIsStreaming(false);

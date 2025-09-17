@@ -13,6 +13,12 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    // 'Geist-Regular': require('../assets/fonts/geist/Geist-Regular.otf'),
+    // 'Geist-Medium': require('../assets/fonts/geist/Geist-Medium.otf'),
+    // 'Geist-SemiBold': require('../assets/fonts/geist/Geist-SemiBold.otf'),
+    // 'Geist-Bold': require('../assets/fonts/geist/Geist-Bold.otf'),
+    // 'GeistMono-Regular': require('../assets/fonts/geist/GeistMono-Regular.otf'),
+    // 'GeistMono-Medium': require('../assets/fonts/geist/GeistMono-Medium.otf'),
   });
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
@@ -23,7 +29,6 @@ export default function RootLayout() {
       try {
         await initializeDatabase();
         setDbReady(true);
-        console.log('App-level database initialization completed');
       } catch (error) {
         console.error('App-level database initialization failed:', error);
         setDbError(error instanceof Error ? error.message : 'Database initialization failed');

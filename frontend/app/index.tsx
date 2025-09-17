@@ -2,6 +2,7 @@ import { View, Text, SafeAreaView, KeyboardAvoidingView, Platform, FlatList, Tou
 import { useRef, useEffect, useState } from "react";
 import { MessageBubble } from "../components/chat/MessageBubble";
 import { InputBar } from "../components/chat/InputBar";
+import { LoadingIndicator } from "../components/chat/LoadingIndicator";
 import ChatDrawer from "../components/chat/ChatDrawer";
 import HamburgerIcon from "../components/HamburgerIcon";
 import { NetworkStatus } from "../components/NetworkStatus";
@@ -64,10 +65,8 @@ export default function ChatScreen() {
     let chatId = currentChatId;
     if (!chatId) {
       try {
-        console.log('Creating new chat before sending message');
         chatId = await createNewChat();
         setCurrentChatId(chatId);
-        console.log('Created new chat with ID:', chatId);
         
         // Wait a frame for React to update the hook
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -80,7 +79,6 @@ export default function ChatScreen() {
     
     const message = input;
     setInput('');
-    console.log('Sending message with chatId:', chatId);
     await sendMessage(message);
   };
 
@@ -180,7 +178,7 @@ export default function ChatScreen() {
             <View className="flex-1 pb-2">
               {isLoading && messages.length === 0 ? (
                 <View className="flex-1 items-center justify-center p-8">
-                  <Text className="text-gray-500 text-center">Loading...</Text>
+                  <LoadingIndicator size="medium" />
                   {storageError && (
                     <Text className="text-red-500 text-sm text-center mt-2">{storageError}</Text>
                   )}
@@ -204,9 +202,9 @@ export default function ChatScreen() {
                       return `error-${index}`;
                     }
                   }}
-                  renderItem={({ item }) => {
+                  renderItem={({ item, index }) => {
                     try {
-                      return <MessageBubble message={item} />;
+                      return <MessageBubble message={item} allMessages={messages} messageIndex={index} />;
                     } catch (err) {
                       console.error('[ChatScreen] Error rendering message:', err, item);
                       return null;

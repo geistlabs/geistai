@@ -90,7 +90,6 @@ export const useChatStorage = (chatId?: number) => {
     }
 
     try {
-      console.log('[useChatStorage] Adding message to chat:', effectiveChatId, 'Role:', message.role);
       // Add message to SQLite
       await addMessageToChat(effectiveChatId, message.role, message.text);
       

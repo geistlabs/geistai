@@ -1,5 +1,5 @@
-# Ignore geist directory
-geist/
+# Ignore notes
+rick-notes.md
 
 # Ignore llama.cpp directory
 backend/inference/llama.cpp/

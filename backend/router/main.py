@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
+from typing import List, Optional
 import httpx
 import asyncio
 import json
@@ -20,8 +21,13 @@ class HealthCheckResponse(BaseModel):
     ssl_status: str
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatRequest(BaseModel):
     message: str
+    messages: Optional[List[ChatMessage]] = None
 
 
 app = FastAPI(title="Geist Router")
@@ -98,7 +104,13 @@ def ssl_info():
 async def chat(request: ChatRequest):
     """Non-streaming chat endpoint for backwards compatibility"""
     # Prepare messages for the model
-    messages = [{"role": "user", "content": request.message}]
+    if request.messages:
+        # Use provided conversation history and add the new message
+        messages = [msg.dict() for msg in request.messages]
+        messages.append({"role": "user", "content": request.message})
+    else:
+        # Fallback to single message if no history provided
+        messages = [{"role": "user", "content": request.message}]
 
     # Process chat request through harmony service
     if harmony_service and config.HARMONY_ENABLED:
@@ -110,7 +122,7 @@ async def chat(request: ChatRequest):
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{config.INFERENCE_URL}/v1/chat/completions",
-                json={"messages": messages, "temperature": 0.7, "max_tokens": 100},
+                json={"messages": messages, "temperature": 0.7, "max_tokens": config.MAX_TOKENS},
                 timeout=config.INFERENCE_TIMEOUT,
             )
 
@@ -129,7 +141,18 @@ async def chat(request: ChatRequest):
 @app.post("/api/chat/stream")
 async def chat_stream(chat_request: ChatRequest, request: Request):
     """Streaming chat endpoint using Server-Sent Events"""
-    messages = [{"role": "user", "content": chat_request.message}]
+    print(f"[Backend] Received from frontend: {chat_request.model_dump_json(indent=2)}")
+    
+    # Build messages array with conversation history
+    if chat_request.messages:
+        # Use provided conversation history and add the new message
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        # Fallback to single message if no history provided
+        messages = [{"role": "user", "content": chat_request.message}]
+    
+    print(f"[Backend] Created messages array with {len(messages)} messages")
 
     async def event_stream():
         chunk_sequence = 0

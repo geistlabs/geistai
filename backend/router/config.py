@@ -22,6 +22,9 @@ EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
+# Token settings
+MAX_TOKENS = 1500
+
 # SSL settings
 SSL_ENABLED = os.getenv("SSL_ENABLED", "false").lower() == "true"
 SSL_CERT_PATH = os.getenv("SSL_CERT_PATH", "/app/certificates/cert.pem")
