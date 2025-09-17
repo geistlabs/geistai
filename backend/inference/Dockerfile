@@ -11,23 +11,24 @@ EXPOSE 8080
 
 # Just provide the arguments (ENTRYPOINT already has /app/llama-server)
 CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
-			"--host", "0.0.0.0", \
-			"--port", "8080", \
-			"--ctx-size", "4096", \
-			"--threads", "4", \
-			"--batch-size", "512", \
-			"--ubatch-size", "512", \
-			"--parallel", "1", \
-			"--cont-batching", \
-			"--mlock", \
-			"--n-gpu-layers", "-1"]
+		"--host", "0.0.0.0", \
+		"--port", "8080", \
+		"--ctx-size", "4096", \
+		"--threads", "4", \
+		"--batch-size", "512", \
+		"--ubatch-size", "512", \
+		"--parallel", "1", \
+		"--cont-batching", \
+		"--mlock", \
+		"--n-gpu-layers", "-1"]
 
-		#  docker run -d \
-		#  --name inference-server \
-		# --gpus all \
-		#  -p 80:8080 \
-		#  -v /root/models:/models:ro \
-		#  alo42/inference:1.0.0
+# Example usage:
+# docker run -d \
+#   --name inference-server \
+#   --gpus all \
+#   -p 8080:8080 \
+#   -v /root/models:/models:ro \
+#   alo42/inference:latest
 
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.

@@ -36,10 +36,10 @@ For Linux/Windows or deployment:
 
 ```bash
 # Start services
-docker-compose up
+docker compose up
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 **⚠️ GPU Configuration Required**: Update `docker-compose.yml` GPU settings based on your hardware:
@@ -124,7 +124,7 @@ Environment variables:
 **Port conflicts**:
 ```bash
 # Stop Docker first
-docker-compose down
+docker compose down
 
 # Kill processes on specific ports
 lsof -ti :8080 | xargs kill -9  # Inference
@@ -142,10 +142,74 @@ lsof -ti :8000 | xargs kill -9  # Router
 
 ## Development Workflow
 
+### 🔥 Live Development Mode (NEW!)
+
+For rapid development with automatic code reloading:
+
+```bash
+# Start all services with live reload enabled
+./start-dev.sh
+```
+
+**Features**:
+- 🔄 **Auto-restart** on code changes (router & embeddings services)
+- 📁 **Volume mounts** for real-time file sync
+- 🚀 **Fast iteration** - no rebuild needed for code changes
+- 📊 **Live logs** monitoring
+- 🛑 **Easy cleanup** with Ctrl+C
+- 📝 **Single config file** - all settings in one docker-compose.yml
+
+**What gets live-reloaded**:
+- `./router/` - FastAPI router service (Python files)
+- `./embeddings/` - Embedding service (Python files)
+- Configuration changes in `config.py`
+- New endpoints, middleware, or business logic
+
+**What doesn't get live-reloaded**:
+- `./inference/` - Model server (expensive to restart)
+- Docker configuration changes (requires rebuild)
+- New Python dependencies (requires rebuild)
+
+### Traditional Development Options
+
 1. **Apple Silicon**: Use `./start-local-dev.sh` for maximum performance
-2. **Other platforms**: Use `docker-compose up` with proper GPU configuration
+2. **Other platforms**: Use `docker compose up` with proper GPU configuration
 3. **Testing**: Use `./test-local-dev.sh` or manual curl commands
 4. **Monitoring**: Check logs in `/tmp/` (local) or `docker logs` (container)
+
+### Development Tips
+
+**Making Code Changes**:
+```bash
+# 1. Start development mode
+./start-dev.sh
+
+# 2. Edit files in ./router/ or ./embeddings/
+# Changes are automatically detected and services restart
+
+# 3. Test your changes immediately
+curl http://localhost:8000/health
+```
+
+**Adding New Dependencies**:
+```bash
+# 1. Stop services (Ctrl+C)
+# 2. Update pyproject.toml
+# 3. Rebuild and restart
+docker compose build
+./start-dev.sh
+```
+
+**Debugging**:
+```bash
+# View logs for specific service
+docker compose logs -f router
+docker compose logs -f embeddings
+docker compose logs -f inference
+
+# Check service status
+docker compose ps
+```
 
 ---
 
