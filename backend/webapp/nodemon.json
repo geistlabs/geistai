@@ -1,0 +1,10 @@
+{
+  "watch": ["src"],
+  "ext": "ts,tsx,js,jsx,json,css,html",
+  "ignore": ["node_modules", "dist", "build"],
+  "exec": "vite --host 0.0.0.0 --port 3000",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": 1000
+}
