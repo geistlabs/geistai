@@ -11,19 +11,20 @@ echo "📡 Mode: HTTP only"
 
 # Start llama.cpp server in the background
 echo ""
-echo "🧠 Starting llama.cpp server on port 8080..."
+echo "🧠 Starting llama.cpp server on port 8080 with GPU acceleration..."
 /app/llama-server \
     --model /models/gpt-oss-20b-Q4_K_S.gguf \
     --host 127.0.0.1 \
     --port 8080 \
     --ctx-size 4096 \
-    --threads 4 \
-    --batch-size 512 \
-    --ubatch-size 512 \
+    --threads 8 \
+    --batch-size 1024 \
+    --ubatch-size 1024 \
     --parallel 1 \
     --cont-batching \
     --mlock \
-    --n-gpu-layers -1 &
+    --n-gpu-layers -1 \
+    --gpu-split auto &
 
 LLAMA_PID=$!
 

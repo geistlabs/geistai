@@ -10,17 +10,19 @@ USER 1000
 EXPOSE 8080
 
 # Just provide the arguments (ENTRYPOINT already has /app/llama-server)
+# Optimized for NVIDIA RTX 5070 (8GB VRAM)
 CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 		"--host", "0.0.0.0", \
 		"--port", "8080", \
 		"--ctx-size", "4096", \
-		"--threads", "4", \
-		"--batch-size", "512", \
-		"--ubatch-size", "512", \
+		"--threads", "8", \
+		"--batch-size", "1024", \
+		"--ubatch-size", "1024", \
 		"--parallel", "1", \
 		"--cont-batching", \
 		"--mlock", \
-		"--n-gpu-layers", "-1"]
+		"--n-gpu-layers", "-1", \
+		"--gpu-split", "auto"]
 
 # Example usage:
 # docker run -d \
