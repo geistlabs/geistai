@@ -19,7 +19,7 @@ export interface ChatError {
   error: string
 }
 
-// Send a message to the chat API
+// Send a message to the chat API (non-streaming)
 export async function sendMessage(message: string, conversationHistory?: ChatMessage[]): Promise<{ content: string }> {
   const requestBody: ChatRequest = {
     message,
@@ -45,6 +45,96 @@ export async function sendMessage(message: string, conversationHistory?: ChatMes
   } catch (error) {
     console.error('Error sending message:', error)
     throw error
+  }
+}
+
+// Streaming chat interface
+export interface StreamChunk {
+  token: string;
+  sequence: number;
+}
+
+export interface StreamEnd {
+  finished: boolean;
+}
+
+export interface StreamError {
+  error: string;
+}
+
+export type StreamEvent = StreamChunk | StreamEnd | StreamError;
+
+// Send a streaming message to the chat API
+export async function sendStreamingMessage(
+  message: string, 
+  conversationHistory: ChatMessage[],
+  onToken: (token: string) => void,
+  onComplete: () => void,
+  onError: (error: string) => void
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    if (!response.body) {
+      throw new Error('No response body received')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          break
+        }
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.token) {
+                onToken(data.token)
+              } else if (data.finished) {
+                onComplete()
+                return
+              } else if (data.error) {
+                onError(data.error)
+                return
+              }
+            } catch (parseError) {
+              console.warn('Failed to parse SSE data:', parseError)
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  } catch (error) {
+    console.error('Error in streaming chat:', error)
+    onError(error instanceof Error ? error.message : 'Unknown error occurred')
   }
 }
 

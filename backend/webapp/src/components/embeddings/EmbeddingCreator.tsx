@@ -4,9 +4,10 @@ import { embeddingDB, StoredEmbedding } from '../../lib/indexedDB';
 
 interface EmbeddingCreatorProps {
   onEmbeddingCreated: (embedding: StoredEmbedding) => void;
+  chatId?: string; // Optional chat ID to associate with the embedding
 }
 
-const EmbeddingCreator: React.FC<EmbeddingCreatorProps> = ({ onEmbeddingCreated }) => {
+const EmbeddingCreator: React.FC<EmbeddingCreatorProps> = ({ onEmbeddingCreated, chatId }) => {
   const [text, setText] = useState('');
   const [model, setModel] = useState('all-MiniLM-L6-v2');
   const [isLoading, setIsLoading] = useState(false);
@@ -48,8 +49,10 @@ const EmbeddingCreator: React.FC<EmbeddingCreatorProps> = ({ onEmbeddingCreated 
           text: text.trim(),
           embedding: embeddingData.embedding,
           model: response.model,
+          chatId: chatId, // Associate with chat if provided
           metadata: {
-            usage: response.usage
+            usage: response.usage,
+            source: 'manual_creation'
           }
         };
 

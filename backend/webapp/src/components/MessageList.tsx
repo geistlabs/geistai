@@ -32,10 +32,23 @@ const MessageList: React.FC<MessageListProps> = ({ messages, isLoading }) => {
               color: message.role === 'user' ? 'white' : 'black',
               fontSize: '14px',
               lineHeight: '1.4',
-              wordWrap: 'break-word'
+              wordWrap: 'break-word',
+              position: 'relative'
             }}
           >
             {message.content}
+            {message.isStreaming && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '8px',
+                  height: '14px',
+                  backgroundColor: '#007bff',
+                  marginLeft: '4px',
+                  animation: 'blink 1s infinite'
+                }}
+              />
+            )}
           </div>
         </div>
       ))}

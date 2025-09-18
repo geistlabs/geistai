@@ -25,3 +25,13 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Streaming cursor animation */
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}

@@ -6,11 +6,13 @@ export interface StoredEmbedding {
   embedding: number[];
   model: string;
   createdAt: Date;
+  chatId?: string; // ID of the chat conversation this embedding belongs to
+  messageId?: string; // ID of the specific message this embedding represents
   metadata?: Record<string, any>;
 }
 
 const DB_NAME = 'GeistAIEmbeddings';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Increment version to add new indexes
 const STORE_NAME = 'embeddings';
 
 class EmbeddingDB {
@@ -37,6 +39,19 @@ class EmbeddingDB {
           store.createIndex('text', 'text', { unique: false });
           store.createIndex('model', 'model', { unique: false });
           store.createIndex('createdAt', 'createdAt', { unique: false });
+          store.createIndex('chatId', 'chatId', { unique: false });
+          store.createIndex('messageId', 'messageId', { unique: false });
+        } else {
+          // Handle version upgrade - add new indexes if they don't exist
+          const transaction = (event.target as IDBOpenDBRequest).transaction!;
+          const store = transaction.objectStore(STORE_NAME);
+          
+          if (!store.indexNames.contains('chatId')) {
+            store.createIndex('chatId', 'chatId', { unique: false });
+          }
+          if (!store.indexNames.contains('messageId')) {
+            store.createIndex('messageId', 'messageId', { unique: false });
+          }
         }
       };
     });
@@ -127,6 +142,67 @@ class EmbeddingDB {
         resolve(filtered);
       };
       request.onerror = () => reject(new Error('Failed to search embeddings'));
+    });
+  }
+
+  async getEmbeddingsByChatId(chatId: string): Promise<StoredEmbedding[]> {
+    if (!this.db) {
+      await this.init();
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const index = store.index('chatId');
+      const request = index.getAll(chatId);
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new Error('Failed to get embeddings by chat ID'));
+    });
+  }
+
+  async getEmbeddingByMessageId(messageId: string): Promise<StoredEmbedding | null> {
+    if (!this.db) {
+      await this.init();
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const index = store.index('messageId');
+      const request = index.get(messageId);
+
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(new Error('Failed to get embedding by message ID'));
+    });
+  }
+
+  async deleteEmbeddingsByChatId(chatId: string): Promise<void> {
+    if (!this.db) {
+      await this.init();
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+      const store = transaction.objectStore(STORE_NAME);
+      const index = store.index('chatId');
+      const request = index.getAll(chatId);
+
+      request.onsuccess = () => {
+        const embeddings = request.result;
+        const deletePromises = embeddings.map(embedding => {
+          return new Promise<void>((deleteResolve, deleteReject) => {
+            const deleteRequest = store.delete(embedding.id);
+            deleteRequest.onsuccess = () => deleteResolve();
+            deleteRequest.onerror = () => deleteReject(new Error('Failed to delete embedding'));
+          });
+        });
+
+        Promise.all(deletePromises)
+          .then(() => resolve())
+          .catch(reject);
+      };
+      request.onerror = () => reject(new Error('Failed to get embeddings for deletion'));
     });
   }
 }

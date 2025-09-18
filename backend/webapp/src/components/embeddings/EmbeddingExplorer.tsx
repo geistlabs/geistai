@@ -12,13 +12,15 @@ const EmbeddingExplorer: React.FC<EmbeddingExplorerProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedModel, setSelectedModel] = useState<string>('all');
+  const [selectedChatId, setSelectedChatId] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'text'>('newest');
 
   const filteredEmbeddings = embeddings
     .filter(embedding => {
       const matchesSearch = embedding.text.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesModel = selectedModel === 'all' || embedding.model === selectedModel;
-      return matchesSearch && matchesModel;
+      const matchesChat = selectedChatId === 'all' || embedding.chatId === selectedChatId;
+      return matchesSearch && matchesModel && matchesChat;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -34,6 +36,7 @@ const EmbeddingExplorer: React.FC<EmbeddingExplorerProps> = ({
     });
 
   const uniqueModels = Array.from(new Set(embeddings.map(e => e.model)));
+  const uniqueChatIds = Array.from(new Set(embeddings.map(e => e.chatId).filter(Boolean)));
 
   const containerStyle: React.CSSProperties = {
     padding: '20px',
@@ -152,6 +155,19 @@ const EmbeddingExplorer: React.FC<EmbeddingExplorerProps> = ({
         </select>
 
         <select
+          value={selectedChatId}
+          onChange={(e) => setSelectedChatId(e.target.value)}
+          style={selectStyle}
+        >
+          <option value="all">All Chats</option>
+          {uniqueChatIds.map(chatId => (
+            <option key={chatId} value={chatId}>
+              Chat: {chatId.substring(0, 8)}...
+            </option>
+          ))}
+        </select>
+
+        <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
           style={selectStyle}
@@ -181,6 +197,12 @@ const EmbeddingExplorer: React.FC<EmbeddingExplorerProps> = ({
                 <span>Model: {embedding.model}</span>
                 <span>Created: {new Date(embedding.createdAt).toLocaleString()}</span>
                 <span>Dimensions: {embedding.embedding.length}</span>
+                {embedding.chatId && (
+                  <span>Chat: {embedding.chatId.substring(0, 8)}...</span>
+                )}
+                {embedding.metadata?.role && (
+                  <span>Role: {embedding.metadata.role}</span>
+                )}
               </div>
 
               <div style={embeddingInfoStyle}>
