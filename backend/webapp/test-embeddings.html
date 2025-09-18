@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Embeddings Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Embeddings Feature Test</h1>
+    
+    <div class="test-section">
+        <h2>API Health Check</h2>
+        <button onclick="testAPI()">Test Embeddings API</button>
+        <div id="api-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>IndexedDB Test</h2>
+        <button onclick="testIndexedDB()">Test IndexedDB</button>
+        <div id="db-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Create Test Embedding</h2>
+        <input type="text" id="test-text" placeholder="Enter test text" value="Hello, this is a test embedding!" style="width: 300px; padding: 5px;">
+        <button onclick="createTestEmbedding()">Create Embedding</button>
+        <div id="embedding-result"></div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.innerHTML = '<span class="info">Testing...</span>';
+            
+            try {
+                const response = await fetch('http://localhost:8001/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    resultDiv.innerHTML = `<span class="success">✅ API is online: ${data.status}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ API returned status: ${response.status}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ API is offline: ${error.message}</span>`;
+            }
+        }
+
+        async function testIndexedDB() {
+            const resultDiv = document.getElementById('db-result');
+            resultDiv.innerHTML = '<span class="info">Testing...</span>';
+            
+            try {
+                if (!window.indexedDB) {
+                    throw new Error('IndexedDB not supported');
+                }
+                
+                const request = indexedDB.open('GeistAIEmbeddings', 1);
+                
+                request.onerror = () => {
+                    resultDiv.innerHTML = '<span class="error">❌ IndexedDB failed to open</span>';
+                };
+                
+                request.onsuccess = () => {
+                    resultDiv.innerHTML = '<span class="success">✅ IndexedDB is working</span>';
+                    request.result.close();
+                };
+                
+                request.onupgradeneeded = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains('embeddings')) {
+                        const store = db.createObjectStore('embeddings', { keyPath: 'id' });
+                        store.createIndex('text', 'text', { unique: false });
+                        store.createIndex('model', 'model', { unique: false });
+                        store.createIndex('createdAt', 'createdAt', { unique: false });
+                    }
+                };
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ IndexedDB error: ${error.message}</span>`;
+            }
+        }
+
+        async function createTestEmbedding() {
+            const resultDiv = document.getElementById('embedding-result');
+            const text = document.getElementById('test-text').value;
+            
+            if (!text.trim()) {
+                resultDiv.innerHTML = '<span class="error">❌ Please enter some text</span>';
+                return;
+            }
+            
+            resultDiv.innerHTML = '<span class="info">Creating embedding...</span>';
+            
+            try {
+                const response = await fetch('http://localhost:8001/embed', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        input: text,
+                        model: 'all-MiniLM-L6-v2'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const embedding = data.data[0];
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Embedding created successfully!</span><br>
+                        <small>Dimensions: ${embedding.embedding.length}<br>
+                        Preview: [${embedding.embedding.slice(0, 5).map(n => n.toFixed(4)).join(', ')}...]</small>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Failed to create embedding: ${response.statusText}</span>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Auto-test on page load
+        window.onload = () => {
+            testAPI();
+            testIndexedDB();
+        };
+    </script>
+</body>
+</html>
