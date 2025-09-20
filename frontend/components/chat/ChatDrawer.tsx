@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, Animated, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  Animated,
+  Dimensions,
+} from 'react-native';
+
 import { useChatStorage } from '../../hooks/useChatStorage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -108,7 +116,6 @@ export default function ChatDrawer({
     }
   };
 
-
   const renderChatItem = ({ item: chat }: { item: ChatItem }) => {
     const isActive = chat.id === activeChatId;
 
@@ -118,37 +125,49 @@ export default function ChatDrawer({
         onLongPress={() => handleLongPress(chat)}
         className={`mx-2 mb-1 rounded-xl px-3 py-3 ${
           isActive ? 'bg-gray-100' : 'hover:bg-gray-100'
-        }`}>
-        <View className="flex-row items-start justify-between">
-          <View className="mr-2 flex-1">
-            <Text numberOfLines={1} className="text-base font-medium text-gray-900">
+        }`}
+      >
+        <View className='flex-row items-start justify-between'>
+          <View className='mr-2 flex-1'>
+            <Text
+              numberOfLines={1}
+              className='text-base font-medium text-gray-900'
+            >
               {chat.pinned ? '📌 ' : ''}
               {chat.title}
             </Text>
           </View>
 
           {showActionMenu === chat.id && (
-            <View className="absolute right-0 top-0 z-10 rounded-lg border border-gray-200 bg-white shadow-lg">
+            <View className='absolute right-0 top-0 z-10 rounded-lg border border-gray-200 bg-white shadow-lg'>
               <TouchableOpacity
                 onPress={() => setRenameId(chat.id)}
-                className="border-b border-gray-200 px-4 py-2">
-                <Text className="text-gray-900">Rename</Text>
+                className='border-b border-gray-200 px-4 py-2'
+              >
+                <Text className='text-gray-900'>Rename</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => handlePin(chat.id, !!chat.pinned)}
-                className="border-b border-gray-200 px-4 py-2">
-                <Text className="text-gray-900">{chat.pinned ? 'Unpin' : 'Pin'}</Text>
+                className='border-b border-gray-200 px-4 py-2'
+              >
+                <Text className='text-gray-900'>
+                  {chat.pinned ? 'Unpin' : 'Pin'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => handleArchive(chat.id)}
-                className="border-b border-gray-200 px-4 py-2">
-                <Text className="text-gray-900">Archive</Text>
+                className='border-b border-gray-200 px-4 py-2'
+              >
+                <Text className='text-gray-900'>Archive</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => handleDelete(chat.id)} className="px-4 py-2">
-                <Text className="text-red-600">Delete</Text>
+              <TouchableOpacity
+                onPress={() => handleDelete(chat.id)}
+                className='px-4 py-2'
+              >
+                <Text className='text-red-600'>Delete</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -158,8 +177,8 @@ export default function ChatDrawer({
   };
 
   // Separate pinned and regular chats
-  const pinnedChats = chats.filter((chat) => chat.pinned);
-  const regularChats = chats.filter((chat) => !chat.pinned);
+  const pinnedChats = chats.filter(chat => chat.pinned);
+  const regularChats = chats.filter(chat => !chat.pinned);
 
   return (
     <>
@@ -192,53 +211,64 @@ export default function ChatDrawer({
               backgroundColor: 'white',
               zIndex: 20,
             }}
-            className="border-r border-gray-200 bg-white">
+            className='border-r border-gray-200 bg-white'
+          >
             <TouchableOpacity activeOpacity={1} style={{ flex: 1 }}>
               {/* Header - Match main app header height exactly */}
               <View
-                className="border-b border-gray-200 px-4"
-                style={{ paddingTop: 62, paddingBottom: 12 }}>
-                <Text className="text-lg font-semibold text-black">Chats</Text>
+                className='border-b border-gray-200 px-4'
+                style={{ paddingTop: 62, paddingBottom: 12 }}
+              >
+                <Text className='text-lg font-semibold text-black'>Chats</Text>
               </View>
 
               {/* Chat List */}
-              <View className="flex-1">
+              <View className='flex-1'>
                 <FlatList
                   data={[]}
                   ListHeaderComponent={
                     <View>
                       {/* Pinned Section */}
                       {pinnedChats.length > 0 && (
-                        <View className="px-4 py-2">
-                          <Text className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                        <View className='px-4 py-2'>
+                          <Text className='mb-2 text-xs font-medium uppercase tracking-wide text-gray-500'>
                             Pinned
                           </Text>
-                          {pinnedChats.map((chat) => (
-                            <View key={chat.id}>{renderChatItem({ item: chat })}</View>
+                          {pinnedChats.map(chat => (
+                            <View key={chat.id}>
+                              {renderChatItem({ item: chat })}
+                            </View>
                           ))}
                         </View>
                       )}
 
                       {/* Recent Section */}
                       {regularChats.length > 0 && (
-                        <View className="px-4 py-2">
-                          <Text className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                        <View className='px-4 py-2'>
+                          <Text className='mb-2 text-xs font-medium uppercase tracking-wide text-gray-500'>
                             Recent
                           </Text>
-                          {regularChats.map((chat) => (
-                            <View key={chat.id}>{renderChatItem({ item: chat })}</View>
+                          {regularChats.map(chat => (
+                            <View key={chat.id}>
+                              {renderChatItem({ item: chat })}
+                            </View>
                           ))}
                         </View>
                       )}
 
                       {/* Empty State */}
                       {chats.length === 0 && (
-                        <View className="flex-1 items-center justify-center py-12">
-                          <Text className="mb-4 text-base text-gray-500">No chats yet</Text>
+                        <View className='flex-1 items-center justify-center py-12'>
+                          <Text className='mb-4 text-base text-gray-500'>
+                            No chats yet
+                          </Text>
                           <TouchableOpacity
                             onPress={onNewChat}
-                            className="rounded-lg bg-black px-6 py-3">
-                            <Text className="font-medium text-white">Start your first chat</Text>
+                            className='rounded-lg bg-black px-6 py-3'
+                          >
+                            <Text className='font-medium text-white'>
+                              Start your first chat
+                            </Text>
                           </TouchableOpacity>
                         </View>
                       )}

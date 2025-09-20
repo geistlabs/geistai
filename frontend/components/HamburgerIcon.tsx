@@ -6,23 +6,18 @@ interface HamburgerIconProps {
   color?: string;
 }
 
-export default function HamburgerIcon({ 
-  size = 24, 
-  color = '#374151'
+export default function HamburgerIcon({
+  size = 24,
+  color = '#374151',
 }: HamburgerIconProps) {
   return (
-    <Svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none"
-    >
+    <Svg width={size} height={size} viewBox='0 0 24 24' fill='none'>
       <Path
-        d="M3.75 9h16.5m-16.5 6.75h16.5"
+        d='M3.75 9h16.5m-16.5 6.75h16.5'
         stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeWidth='1.5'
+        strokeLinecap='round'
+        strokeLinejoin='round'
       />
     </Svg>
   );

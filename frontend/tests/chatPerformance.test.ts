@@ -27,12 +27,16 @@ class ChatPerformanceTester {
     this.apiClient = new ApiClient({
       baseUrl: API_URL,
       timeout: TEST_TIMEOUT,
-      maxRetries: 1
+      maxRetries: 1,
     });
     this.chatApi = new ChatAPI(this.apiClient);
   }
 
-  async runTest(testName: string, prompt: string, expectedMinTokens: number = 10): Promise<TestResult> {
+  async runTest(
+    testName: string,
+    prompt: string,
+    expectedMinTokens: number = 10,
+  ): Promise<TestResult> {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`Running Test: ${testName}`);
     console.log(`Prompt: "${prompt}"`);
@@ -46,12 +50,12 @@ class ChatPerformanceTester {
       firstTokenTime: 0,
       averageTokenDelay: 0,
       response: '',
-      passed: false
+      passed: false,
     };
 
     const startTime = Date.now();
     let firstTokenTime = 0;
-    let tokenTimestamps: number[] = [];
+    const tokenTimestamps: number[] = [];
     let accumulatedResponse = '';
 
     try {
@@ -61,7 +65,7 @@ class ChatPerformanceTester {
         flushInterval: 100,
         onBatch: (batchedTokens: string) => {
           accumulatedResponse += batchedTokens;
-          
+
           // Track timing metrics
           const currentTime = Date.now() - startTime;
           if (tokenTimestamps.length === 0) {
@@ -69,17 +73,19 @@ class ChatPerformanceTester {
             console.log(`✓ First tokens received at: ${firstTokenTime}ms`);
           }
           tokenTimestamps.push(currentTime);
-          
+
           // Log progress
           const tokenCount = batcher.getTokenCount();
           if (tokenCount % 50 === 0) {
-            console.log(`  Progress: ${tokenCount} tokens received (${currentTime}ms)`);
+            console.log(
+              `  Progress: ${tokenCount} tokens received (${currentTime}ms)`,
+            );
           }
         },
         onComplete: () => {
           result.tokenCount = batcher.getTokenCount();
           console.log(`✓ Stream completed: ${result.tokenCount} tokens`);
-        }
+        },
       });
 
       await this.chatApi.streamMessage(
@@ -87,14 +93,14 @@ class ChatPerformanceTester {
         (token: string) => {
           batcher.addToken(token);
         },
-        (error) => {
+        error => {
           console.error('Stream error:', error);
           result.error = error.message;
           batcher.abort();
         },
         () => {
           batcher.complete();
-        }
+        },
       );
 
       // Wait for completion
@@ -112,15 +118,25 @@ class ChatPerformanceTester {
         for (let i = 1; i < tokenTimestamps.length; i++) {
           delays.push(tokenTimestamps[i] - tokenTimestamps[i - 1]);
         }
-        result.averageTokenDelay = delays.reduce((a, b) => a + b, 0) / delays.length;
+        result.averageTokenDelay =
+          delays.reduce((a, b) => a + b, 0) / delays.length;
       }
 
       // Validation
       const validations = [
-        { check: result.tokenCount >= expectedMinTokens, message: `Token count (${result.tokenCount}) >= ${expectedMinTokens}` },
-        { check: result.firstTokenTime < 5000, message: `First token time (${result.firstTokenTime}ms) < 5000ms` },
-        { check: result.response.length > 0, message: `Response not empty (${result.response.length} chars)` },
-        { check: !result.error, message: 'No errors occurred' }
+        {
+          check: result.tokenCount >= expectedMinTokens,
+          message: `Token count (${result.tokenCount}) >= ${expectedMinTokens}`,
+        },
+        {
+          check: result.firstTokenTime < 5000,
+          message: `First token time (${result.firstTokenTime}ms) < 5000ms`,
+        },
+        {
+          check: result.response.length > 0,
+          message: `Response not empty (${result.response.length} chars)`,
+        },
+        { check: !result.error, message: 'No errors occurred' },
       ];
 
       result.passed = validations.every(v => v.check);
@@ -134,12 +150,15 @@ class ChatPerformanceTester {
       console.log(`  Total Time: ${result.responseTime}ms`);
       console.log(`  First Token: ${result.firstTokenTime}ms`);
       console.log(`  Token Count: ${result.tokenCount}`);
-      console.log(`  Avg Token Delay: ${result.averageTokenDelay.toFixed(2)}ms`);
+      console.log(
+        `  Avg Token Delay: ${result.averageTokenDelay.toFixed(2)}ms`,
+      );
       console.log(`  Response Length: ${result.response.length} characters`);
-      
-      console.log('\nResponse Preview:');
-      console.log(`  "${result.response.substring(0, 200)}${result.response.length > 200 ? '...' : ''}"`);
 
+      console.log('\nResponse Preview:');
+      console.log(
+        `  "${result.response.substring(0, 200)}${result.response.length > 200 ? '...' : ''}"`,
+      );
     } catch (error: any) {
       result.error = error.message;
       result.passed = false;
@@ -159,7 +178,7 @@ class ChatPerformanceTester {
     await this.runTest(
       'Basic Math',
       'What is 25 * 4 + 10? Just give me the number.',
-      5
+      5,
     );
 
     // Add delay between tests
@@ -169,7 +188,7 @@ class ChatPerformanceTester {
     await this.runTest(
       'Presidents Trivia',
       'Name the first 5 US presidents in order with one interesting fact about each.',
-      50
+      50,
     );
 
     // Add delay between tests
@@ -185,11 +204,7 @@ class ChatPerformanceTester {
 - Include dialogue about teleportation technology and its philosophical implications
 - Make it at least 500 words with rich descriptions`;
 
-    await this.runTest(
-      'Long-form Creative Writing',
-      creativePrompt,
-      500
-    );
+    await this.runTest('Long-form Creative Writing', creativePrompt, 500);
 
     // Print summary
     this.printSummary();
@@ -199,15 +214,15 @@ class ChatPerformanceTester {
     console.log(`\n${'='.repeat(60)}`);
     console.log('TEST SUMMARY');
     console.log(`${'='.repeat(60)}`);
-    
+
     const passed = this.results.filter(r => r.passed).length;
     const failed = this.results.filter(r => !r.passed).length;
-    
+
     console.log(`Total Tests: ${this.results.length}`);
     console.log(`Passed: ${passed}`);
     console.log(`Failed: ${failed}`);
     console.log('');
-    
+
     console.log('Performance Metrics:');
     this.results.forEach(result => {
       console.log(`\n${result.testName}:`);
@@ -215,7 +230,9 @@ class ChatPerformanceTester {
       console.log(`  Response Time: ${result.responseTime}ms`);
       console.log(`  First Token: ${result.firstTokenTime}ms`);
       console.log(`  Token Count: ${result.tokenCount}`);
-      console.log(`  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`);
+      console.log(
+        `  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`,
+      );
       if (result.error) {
         console.log(`  Error: ${result.error}`);
       }
@@ -225,7 +242,7 @@ class ChatPerformanceTester {
     console.log(`\n${'='.repeat(60)}`);
     console.log('PERFORMANCE ANALYSIS');
     console.log(`${'='.repeat(60)}`);
-    
+
     const longFirstToken = this.results.filter(r => r.firstTokenTime > 3000);
     if (longFirstToken.length > 0) {
       console.log('\n⚠️  Slow first token times detected:');
@@ -234,11 +251,15 @@ class ChatPerformanceTester {
       });
     }
 
-    const slowStreaming = this.results.filter(r => r.tokenCount > 0 && (r.tokenCount / (r.responseTime / 1000)) < 10);
+    const slowStreaming = this.results.filter(
+      r => r.tokenCount > 0 && r.tokenCount / (r.responseTime / 1000) < 10,
+    );
     if (slowStreaming.length > 0) {
       console.log('\n⚠️  Slow streaming speeds detected (<10 tokens/sec):');
       slowStreaming.forEach(r => {
-        console.log(`  - ${r.testName}: ${(r.tokenCount / (r.responseTime / 1000)).toFixed(2)} tokens/sec`);
+        console.log(
+          `  - ${r.testName}: ${(r.tokenCount / (r.responseTime / 1000)).toFixed(2)} tokens/sec`,
+        );
       });
     }
 

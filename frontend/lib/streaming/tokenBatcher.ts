@@ -27,10 +27,10 @@ export class TokenBatcher {
 
   addToken(token: string) {
     if (this.isCompleted) return;
-    
+
     this.buffer.push(token);
     this.tokenCount++;
-    
+
     if (this.buffer.length >= this.batchSize) {
       this.flush();
     } else if (!this.flushTimer) {
@@ -40,15 +40,15 @@ export class TokenBatcher {
 
   flush() {
     if (this.buffer.length === 0) return;
-    
+
     const batch = this.buffer.join('');
     this.buffer = [];
-    
+
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
-    
+
     try {
       this.onBatch(batch);
     } catch (error) {
@@ -58,7 +58,7 @@ export class TokenBatcher {
 
   complete() {
     if (this.isCompleted) return;
-    
+
     this.flush();
     this.isCompleted = true;
     this.onComplete?.();
