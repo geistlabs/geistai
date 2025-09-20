@@ -13,8 +13,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-BACKEND_DIR="/Users/alexmartinez/openq-ws/geistai/backend"
+# Configuration - Dynamically determine script location
+# This makes the script portable across different machines and users
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$SCRIPT_DIR"
 INFERENCE_DIR="$BACKEND_DIR/inference/llama.cpp"
 ROUTER_DIR="$BACKEND_DIR/router"
 MODEL_PATH="$BACKEND_DIR/inference/models/gpt-oss-20b-Q4_K_S.gguf"
