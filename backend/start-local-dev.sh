@@ -13,11 +13,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-BACKEND_DIR="/Users/rickkdev/Documents/workspace/geist-v2/backend"
+# Configuration - Dynamically determine script location
+# This makes the script portable across different machines and users
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$SCRIPT_DIR"
 INFERENCE_DIR="$BACKEND_DIR/inference/llama.cpp"
 ROUTER_DIR="$BACKEND_DIR/router"
-MODEL_PATH="$INFERENCE_DIR/models/gpt-oss-20b-Q4_K_S.gguf"
+MODEL_PATH="$BACKEND_DIR/inference/models/gpt-oss-20b-Q4_K_S.gguf"
 
 # Ports
 INFERENCE_PORT=8080
@@ -141,12 +143,12 @@ while [[ $attempt -lt $max_attempts ]]; do
         echo -e "${GREEN}✅ Inference server is ready!${NC}"
         break
     fi
-    
+
     if ! kill -0 $INFERENCE_PID 2>/dev/null; then
         echo -e "${RED}❌ Inference server failed to start. Check logs: tail -f /tmp/geist-inference.log${NC}"
         exit 1
     fi
-    
+
     echo -e "${YELLOW}   ... still loading model (attempt $((attempt+1))/$max_attempts)${NC}"
     sleep 2
     ((attempt++))
@@ -191,12 +193,12 @@ while [[ $attempt -lt $max_attempts ]]; do
         echo -e "${GREEN}✅ Router service is ready!${NC}"
         break
     fi
-    
+
     if ! kill -0 $ROUTER_PID 2>/dev/null; then
         echo -e "${RED}❌ Router service failed to start. Check logs: tail -f /tmp/geist-router.log${NC}"
         exit 1
     fi
-    
+
     echo -e "${YELLOW}   ... starting router (attempt $((attempt+1))/$max_attempts)${NC}"
     sleep 1
     ((attempt++))
@@ -245,11 +247,11 @@ while true; do
         echo -e "${RED}❌ Inference server died unexpectedly${NC}"
         exit 1
     fi
-    
+
     if ! kill -0 $ROUTER_PID 2>/dev/null; then
         echo -e "${RED}❌ Router service died unexpectedly${NC}"
         exit 1
     fi
-    
+
     sleep 10
 done

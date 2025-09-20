@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { 
+
+import {
   ChatWithMessages,
-  createChat, 
-  getChat, 
-  getChats, 
+  createChat,
+  getChat,
+  getChats,
   addMessage as addMessageToChat,
   deleteChat as deleteChatFromDB,
-  getChatTitle
+  getChatTitle,
 } from '../lib/chatStorage';
 
 // Legacy Message type for backward compatibility with existing useChat hook
@@ -35,7 +36,7 @@ export const useChatStorage = (chatId?: number) => {
         setIsLoading(false);
       }
     };
-    
+
     handleChatLoading();
   }, [chatId]);
 
@@ -43,16 +44,16 @@ export const useChatStorage = (chatId?: number) => {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const chat = await getChat(id);
       if (chat) {
         // Get computed title
         const computedTitle = await getChatTitle(id);
         const chatWithComputedTitle = {
           ...chat,
-          title: computedTitle
+          title: computedTitle,
         };
-        
+
         setCurrentChat(chatWithComputedTitle);
         // Convert SQLite messages to legacy format for compatibility
         const legacyMessages: LegacyMessage[] = chat.messages.map(msg => ({
@@ -83,7 +84,10 @@ export const useChatStorage = (chatId?: number) => {
     }
   };
 
-  const addMessage = async (message: LegacyMessage, targetChatId?: number): Promise<void> => {
+  const addMessage = async (
+    message: LegacyMessage,
+    targetChatId?: number,
+  ): Promise<void> => {
     const effectiveChatId = targetChatId || chatId;
     if (!effectiveChatId) {
       throw new Error('No active chat');
@@ -92,12 +96,12 @@ export const useChatStorage = (chatId?: number) => {
     try {
       // Add message to SQLite
       await addMessageToChat(effectiveChatId, message.role, message.text);
-      
+
       // Update local state only if this is for the current chat (don't reload during streaming to avoid conflicts)
       if (effectiveChatId === chatId) {
         setMessages(prev => [...prev, message]);
       }
-      
+
       // Note: We don't reload the chat here to avoid interfering with streaming
       // The chat title will be updated when the user switches chats or reloads
     } catch (err) {
@@ -112,24 +116,24 @@ export const useChatStorage = (chatId?: number) => {
 
   const logChatHistoryForLLM = () => {
     const timestamp = new Date().toISOString();
-    
+
     const formattedHistory = messages.map(msg => ({
       role: msg.role,
       content: msg.text,
-      timestamp: new Date(msg.timestamp).toISOString()
+      timestamp: new Date(msg.timestamp).toISOString(),
     }));
-    
+
     const openAIFormat = messages.map(msg => ({
       role: msg.role,
-      content: msg.text
+      content: msg.text,
     }));
-    
+
     // Store in global for developer tools access
     (global as any).__CHAT_HISTORY = {
       messages: formattedHistory,
       openAIFormat,
       timestamp,
-      messageCount: messages.length
+      messageCount: messages.length,
     };
   };
 

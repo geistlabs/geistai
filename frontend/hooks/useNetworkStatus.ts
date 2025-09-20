@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface NetworkStatus {
   isConnected: boolean;
@@ -24,7 +24,7 @@ export function useNetworkStatus(options: UseNetworkStatusOptions = {}) {
 
   const previousStatusRef = useRef<boolean>(true);
   const optionsRef = useRef(options);
-  
+
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
@@ -33,7 +33,7 @@ export function useNetworkStatus(options: UseNetworkStatusOptions = {}) {
     const handleNetworkChange = (state: NetInfoState) => {
       const isConnected = state.isConnected ?? false;
       const isInternetReachable = state.isInternetReachable;
-      
+
       setNetworkStatus({
         isConnected,
         isInternetReachable,
@@ -42,13 +42,13 @@ export function useNetworkStatus(options: UseNetworkStatusOptions = {}) {
       });
 
       if (isConnected && !previousStatusRef.current) {
-        console.log('[useNetworkStatus] Network connection restored');
+        // Network connection restored
         optionsRef.current.onOnline?.();
       } else if (!isConnected && previousStatusRef.current) {
-        console.log('[useNetworkStatus] Network connection lost');
+        // Network connection lost
         optionsRef.current.onOffline?.();
       }
-      
+
       previousStatusRef.current = isConnected;
     };
 

@@ -1,25 +1,69 @@
-import React, { useEffect, useState, useRef } from "react";
-import { View, Text, Animated } from "react-native";
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, Animated } from 'react-native';
 
 const loadingWords = [
-  "Mulling", "Kneading", "Brewing", "Steeping", "Simmering", "Fermenting", 
-  "Distilling", "Sifting", "Folding", "Whirring", "Circling", "Spinning", 
-  "Weaving", "Threading", "Stirring", "Mixing", "Shaping", "Layering", 
-  "Blending", "Flowing", "Pulsing", "Humming", "Buzzing", "Murmuring", 
-  "Whispering", "Echoing", "Reverberating", "Drifting", "Wandering", "Looping",
-  "Polishing", "Sharpening", "Etching", "Carving", "Casting", "Forging", 
-  "Pressing", "Seeding", "Sprouting", "Blooming", "Gathering", "Stacking", 
-  "Nesting", "Aligning", "Balancing", "Settling", "Grounding", "Rooting", 
-  "Warming", "Kindling"
+  'Mulling',
+  'Kneading',
+  'Brewing',
+  'Steeping',
+  'Simmering',
+  'Fermenting',
+  'Distilling',
+  'Sifting',
+  'Folding',
+  'Whirring',
+  'Circling',
+  'Spinning',
+  'Weaving',
+  'Threading',
+  'Stirring',
+  'Mixing',
+  'Shaping',
+  'Layering',
+  'Blending',
+  'Flowing',
+  'Pulsing',
+  'Humming',
+  'Buzzing',
+  'Murmuring',
+  'Whispering',
+  'Echoing',
+  'Reverberating',
+  'Drifting',
+  'Wandering',
+  'Looping',
+  'Polishing',
+  'Sharpening',
+  'Etching',
+  'Carving',
+  'Casting',
+  'Forging',
+  'Pressing',
+  'Seeding',
+  'Sprouting',
+  'Blooming',
+  'Gathering',
+  'Stacking',
+  'Nesting',
+  'Aligning',
+  'Balancing',
+  'Settling',
+  'Grounding',
+  'Rooting',
+  'Warming',
+  'Kindling',
 ];
 
 interface LoadingIndicatorProps {
-  size?: "small" | "medium" | "large";
+  size?: 'small' | 'medium' | 'large';
   showText?: boolean;
 }
 
-export function LoadingIndicator({ size = "medium", showText = true }: LoadingIndicatorProps) {
-  const [currentWord, setCurrentWord] = useState("");
+export function LoadingIndicator({
+  size = 'medium',
+  showText = true,
+}: LoadingIndicatorProps) {
+  const [currentWord, setCurrentWord] = useState('');
   const pulseAnimation = useRef(new Animated.Value(1)).current;
 
   // Get random word on mount (no switching after that)
@@ -47,7 +91,7 @@ export function LoadingIndicator({ size = "medium", showText = true }: LoadingIn
           duration: 800,
           useNativeDriver: true,
         }),
-      ])
+      ]),
     );
 
     pulse.start();
@@ -62,25 +106,23 @@ export function LoadingIndicator({ size = "medium", showText = true }: LoadingIn
   }[size];
 
   const textSize = {
-    small: "text-base",
-    medium: "text-lg",
-    large: "text-xl",
+    small: 'text-base',
+    medium: 'text-lg',
+    large: 'text-xl',
   }[size];
 
   return (
-    <View className="flex-row items-center space-x-2">
+    <View className='flex-row items-center space-x-2'>
       <Animated.View
         style={{
           opacity: pulseAnimation,
           width: circleSize,
           height: circleSize,
         }}
-        className="bg-gray-800 rounded-full"
+        className='bg-gray-800 rounded-full'
       />
       {showText && (
-        <Text className={`text-gray-700 ${textSize}`}>
-          {currentWord}...
-        </Text>
+        <Text className={`text-gray-700 ${textSize}`}>{currentWord}...</Text>
       )}
     </View>
   );

@@ -42,7 +42,6 @@ export const initializeDatabase = async (): Promise<void> => {
 
     // Run migrations
     await runMigrations();
-
   } catch (error) {
     console.error('Database initialization failed:', error);
     throw error;
@@ -90,7 +89,6 @@ const runMigrations = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_messages_chat_id 
       ON messages(chat_id, created_at);
     `);
-
   } catch (error) {
     console.error('Database migration failed:', error);
     throw error;
@@ -102,7 +100,9 @@ const runMigrations = async (): Promise<void> => {
  */
 const getDatabase = (): SQLite.SQLiteDatabase => {
   if (!db) {
-    throw new Error('Database not initialized. Call initializeDatabase() first.');
+    throw new Error(
+      'Database not initialized. Call initializeDatabase() first.',
+    );
   }
   return db;
 };
@@ -124,7 +124,7 @@ export const createChat = async (title: string = ''): Promise<number> => {
   try {
     const result = await database.runAsync(
       'INSERT INTO chats (title, created_at, updated_at) VALUES (?, ?, ?)',
-      [title, now, now]
+      [title, now, now],
     );
 
     const chatId = result.lastInsertRowId;
@@ -140,24 +140,24 @@ export const createChat = async (title: string = ''): Promise<number> => {
  */
 export const getChatTitle = async (chatId: number): Promise<string> => {
   const database = getDatabase();
-  
+
   try {
-    const result = await database.getFirstAsync<{content: string}>(
+    const result = await database.getFirstAsync<{ content: string }>(
       'SELECT content FROM messages WHERE chat_id = ? AND role = "user" ORDER BY created_at ASC LIMIT 1',
-      [chatId]
+      [chatId],
     );
-    
+
     if (result) {
       let title = result.content.trim();
-      
+
       // Truncate if longer than ~35 characters to fit sidebar width nicely
       if (title.length > 35) {
         title = title.substring(0, 32) + '...';
       }
-      
+
       return title;
     }
-    
+
     return 'New Chat';
   } catch (error) {
     console.error('Failed to get chat title:', error);
@@ -168,7 +168,9 @@ export const getChatTitle = async (chatId: number): Promise<string> => {
 /**
  * Get all chats with computed titles, sorted by updated_at DESC
  */
-export const getChats = async (options: { includeArchived?: boolean } = {}): Promise<Chat[]> => {
+export const getChats = async (
+  options: { includeArchived?: boolean } = {},
+): Promise<Chat[]> => {
   const database = getDatabase();
   const { includeArchived = false } = options;
 
@@ -188,10 +190,10 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
     for (const chat of result) {
       // Get computed title from first user message
       const computedTitle = await getChatTitle(chat.id);
-      
+
       chats.push({
         ...chat,
-        title: computedTitle
+        title: computedTitle,
       });
     }
 
@@ -207,7 +209,7 @@ export const getChats = async (options: { includeArchived?: boolean } = {}): Pro
  */
 export const getChat = async (
   chatId: number,
-  options: { limit?: number; offset?: number } = {}
+  options: { limit?: number; offset?: number } = {},
 ): Promise<ChatWithMessages | null> => {
   const database = getDatabase();
   const { limit = 100, offset = 0 } = options;
@@ -215,8 +217,8 @@ export const getChat = async (
   try {
     // Get chat details
     const chat = await database.getFirstAsync<Chat>(
-      'SELECT * FROM chats WHERE id = ?', 
-      [chatId]
+      'SELECT * FROM chats WHERE id = ?',
+      [chatId],
     );
 
     if (!chat) {
@@ -226,7 +228,7 @@ export const getChat = async (
     // Get messages for this chat
     const messages = await database.getAllAsync<Message>(
       'SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?',
-      [chatId, limit, offset]
+      [chatId, limit, offset],
     );
 
     return { ...chat, messages };
@@ -242,26 +244,26 @@ export const getChat = async (
 export const addMessage = async (
   chatId: number,
   role: 'user' | 'assistant',
-  content: string
+  content: string,
 ): Promise<number> => {
   const database = getDatabase();
   const now = Date.now();
 
   try {
     let messageId = 0;
-    
+
     await database.withTransactionAsync(async () => {
       // Insert message
       const messageResult = await database.runAsync(
         'INSERT INTO messages (chat_id, role, content, created_at) VALUES (?, ?, ?, ?)',
-        [chatId, role, content.trim(), now]
+        [chatId, role, content.trim(), now],
       );
 
       // Update chat's updated_at timestamp
-      await database.runAsync(
-        'UPDATE chats SET updated_at = ? WHERE id = ?', 
-        [now, chatId]
-      );
+      await database.runAsync('UPDATE chats SET updated_at = ? WHERE id = ?', [
+        now,
+        chatId,
+      ]);
 
       messageId = messageResult.lastInsertRowId;
     });
@@ -282,13 +284,15 @@ export const deleteChat = async (chatId: number): Promise<void> => {
   try {
     await database.withTransactionAsync(async () => {
       // Delete messages first (though CASCADE should handle this)
-      await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [chatId]);
+      await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [
+        chatId,
+      ]);
 
       // Delete chat
       await database.runAsync('DELETE FROM chats WHERE id = ?', [chatId]);
     });
 
-    console.log('Deleted chat:', chatId);
+    // Chat deleted
   } catch (error) {
     console.error('Failed to delete chat:', error);
     throw error;
@@ -302,9 +306,9 @@ export const getMessageCount = async (chatId: number): Promise<number> => {
   const database = getDatabase();
 
   try {
-    const result = await database.getFirstAsync<{count: number}>(
+    const result = await database.getFirstAsync<{ count: number }>(
       'SELECT COUNT(*) as count FROM messages WHERE chat_id = ?',
-      [chatId]
+      [chatId],
     );
 
     return result?.count || 0;
@@ -322,7 +326,7 @@ export const closeDatabase = async (): Promise<void> => {
     try {
       await db.closeAsync();
       db = null;
-      console.log('Database connection closed');
+      // Database connection closed
     } catch (error) {
       console.error('Failed to close database:', error);
       throw error;
