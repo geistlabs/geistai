@@ -1,72 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
-import { Animated, TextInput, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { TextInput, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-// Waveform visualization component
-function Waveform({ isAnimating }: { isAnimating: boolean }) {
-  const animatedValues = useRef(
-    Array.from({ length: 20 }, () => new Animated.Value(4)),
-  ).current;
-
-  useEffect(() => {
-    if (isAnimating) {
-      const animations = animatedValues.map((value, index) =>
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(value, {
-              toValue: Math.random() * 20 + 4,
-              duration: 300 + Math.random() * 200,
-              useNativeDriver: false,
-            }),
-            Animated.timing(value, {
-              toValue: 4,
-              duration: 300 + Math.random() * 200,
-              useNativeDriver: false,
-            }),
-          ]),
-          { iterations: -1 },
-        ),
-      );
-
-      // Start animations with random delays
-      animations.forEach((animation, index) => {
-        setTimeout(() => animation.start(), index * 50);
-      });
-
-      return () => {
-        animations.forEach(animation => animation.stop());
-      };
-    } else {
-      // Reset to base height
-      animatedValues.forEach(value => {
-        Animated.timing(value, {
-          toValue: 4,
-          duration: 200,
-          useNativeDriver: false,
-        }).start();
-      });
-    }
-  }, [isAnimating]);
-
-  return (
-    <View
-      className='flex-1 flex-row items-center justify-center px-4'
-      style={{ height: 44 }}
-    >
-      {animatedValues.map((animatedValue, index) => (
-        <Animated.View
-          key={index}
-          className='bg-gray-400 mx-0.5 rounded-full'
-          style={{
-            width: 2,
-            height: animatedValue,
-          }}
-        />
-      ))}
-    </View>
-  );
-}
+import { useAudioLevels } from '../../hooks/useAudioLevels';
+import { VoiceWaveform } from '../VoiceWaveform';
 
 interface InputBarProps {
   value: string;
@@ -94,6 +32,16 @@ export function InputBar({
   onCancelRecording,
 }: InputBarProps) {
   const isDisabled = disabled || (!value.trim() && !isStreaming);
+  const audioLevels = useAudioLevels();
+
+  // Start/stop audio analysis based on recording state
+  React.useEffect(() => {
+    if (isRecording && !audioLevels.isAnalyzing) {
+      audioLevels.startAnalyzing();
+    } else if (!isRecording && audioLevels.isAnalyzing) {
+      audioLevels.stopAnalyzing();
+    }
+  }, [isRecording, audioLevels]);
 
   // Show recording interface when recording
   if (isRecording) {
@@ -111,12 +59,23 @@ export function InputBar({
             </View>
           </TouchableOpacity>
 
-          {/* Waveform input field */}
+          {/* Voice-responsive waveform input field */}
           <View
             className='flex-1 rounded-full'
             style={{ backgroundColor: '#f8f8f8', height: 44 }}
           >
-            <Waveform isAnimating={isRecording} />
+            <VoiceWaveform
+              levels={audioLevels.levels}
+              isActive={audioLevels.isAnalyzing}
+              barCount={18}
+              height={44}
+              barWidth={2.5}
+              barSpacing={1.5}
+              minBarHeight={3}
+              maxBarHeight={28}
+              color='#6B7280'
+              animationDuration={120}
+            />
           </View>
 
           {/* Send/Up arrow button */}
