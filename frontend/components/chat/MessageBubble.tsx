@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, Share } from 'react-native';
+import { Alert, Share, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { LoadingIndicator } from './LoadingIndicator';
@@ -171,24 +171,24 @@ export function MessageBubble({
   };
 
   const handleShare = async () => {
-    try {
-      // Find the user question that corresponds to this assistant answer
-      let shareText = messageText;
+    // Find the user question that corresponds to this assistant answer
+    let shareText = messageText;
 
-      if (
-        message.role === 'assistant' &&
-        allMessages &&
-        messageIndex !== undefined &&
-        messageIndex > 0
-      ) {
-        // Look for the previous user message
-        const userMessage = allMessages[messageIndex - 1];
-        if (userMessage && userMessage.role === 'user') {
-          const userText = userMessage.content || userMessage.text || '';
-          shareText = `Q: ${userText}\n\nA: ${messageText}`;
-        }
+    if (
+      message.role === 'assistant' &&
+      allMessages &&
+      messageIndex !== undefined &&
+      messageIndex > 0
+    ) {
+      // Look for the previous user message
+      const userMessage = allMessages[messageIndex - 1];
+      if (userMessage && userMessage.role === 'user') {
+        const userText = userMessage.content || userMessage.text || '';
+        shareText = `Q: ${userText}\n\nA: ${messageText}`;
       }
+    }
 
+    try {
       await Share.share({
         message: shareText,
         title: 'Chat Message',
