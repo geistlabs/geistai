@@ -1,6 +1,72 @@
 import { Ionicons } from '@expo/vector-icons';
-import { TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, TextInput, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+
+// Waveform visualization component
+function Waveform({ isAnimating }: { isAnimating: boolean }) {
+  const animatedValues = useRef(
+    Array.from({ length: 20 }, () => new Animated.Value(4)),
+  ).current;
+
+  useEffect(() => {
+    if (isAnimating) {
+      const animations = animatedValues.map((value, index) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(value, {
+              toValue: Math.random() * 20 + 4,
+              duration: 300 + Math.random() * 200,
+              useNativeDriver: false,
+            }),
+            Animated.timing(value, {
+              toValue: 4,
+              duration: 300 + Math.random() * 200,
+              useNativeDriver: false,
+            }),
+          ]),
+          { iterations: -1 },
+        ),
+      );
+
+      // Start animations with random delays
+      animations.forEach((animation, index) => {
+        setTimeout(() => animation.start(), index * 50);
+      });
+
+      return () => {
+        animations.forEach(animation => animation.stop());
+      };
+    } else {
+      // Reset to base height
+      animatedValues.forEach(value => {
+        Animated.timing(value, {
+          toValue: 4,
+          duration: 200,
+          useNativeDriver: false,
+        }).start();
+      });
+    }
+  }, [isAnimating]);
+
+  return (
+    <View
+      className='flex-1 flex-row items-center justify-center px-4'
+      style={{ height: 44 }}
+    >
+      {animatedValues.map((animatedValue, index) => (
+        <Animated.View
+          key={index}
+          className='bg-gray-400 mx-0.5 rounded-full'
+          style={{
+            width: 2,
+            height: animatedValue,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
 
 interface InputBarProps {
   value: string;
@@ -10,6 +76,9 @@ interface InputBarProps {
   onVoiceInput?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
+  isRecording?: boolean;
+  onStopRecording?: () => void;
+  onCancelRecording?: () => void;
 }
 
 export function InputBar({
@@ -20,9 +89,51 @@ export function InputBar({
   onVoiceInput,
   disabled = false,
   isStreaming = false,
+  isRecording = false,
+  onStopRecording,
+  onCancelRecording,
 }: InputBarProps) {
   const isDisabled = disabled || (!value.trim() && !isStreaming);
 
+  // Show recording interface when recording
+  if (isRecording) {
+    return (
+      <View className='p-2'>
+        {/* Mobile ChatGPT-style recording interface */}
+        <View className='flex-row items-center'>
+          {/* Stop button (white square) */}
+          <TouchableOpacity
+            className='justify-center items-center mr-2'
+            onPress={onCancelRecording}
+          >
+            <View className='w-11 h-11 rounded-full bg-gray-100 items-center justify-center'>
+              <View className='w-4 h-4 bg-gray-600 rounded-sm' />
+            </View>
+          </TouchableOpacity>
+
+          {/* Waveform input field */}
+          <View
+            className='flex-1 rounded-full'
+            style={{ backgroundColor: '#f8f8f8', height: 44 }}
+          >
+            <Waveform isAnimating={isRecording} />
+          </View>
+
+          {/* Send/Up arrow button */}
+          <TouchableOpacity
+            className='justify-center items-center ml-2'
+            onPress={onStopRecording}
+          >
+            <View className='w-11 h-11 rounded-full bg-black items-center justify-center'>
+              <Ionicons name='arrow-up' size={22} color='white' />
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // Normal text input interface
   return (
     <View className='p-2'>
       <View className='flex-row items-end'>

@@ -18,8 +18,8 @@ import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import { MessageBubble } from '../components/chat/MessageBubble';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
-import { VoiceInputModal } from '../components/VoiceInputModal';
 import '../global.css';
+import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 
@@ -34,7 +34,11 @@ export default function ChatScreen() {
     undefined,
   );
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
-  const [isVoiceModalVisible, setIsVoiceModalVisible] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  // Audio recording hook
+  const recording = useAudioRecording();
 
   // Animation for sliding the app content
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -150,12 +154,56 @@ export default function ChatScreen() {
     setIsDrawerVisible(false);
   };
 
-  const handleVoiceInput = () => {
+  const handleVoiceInput = async () => {
     if (!isConnected) {
       Alert.alert('No Connection', 'Please check your internet connection');
       return;
     }
-    setIsVoiceModalVisible(true);
+
+    try {
+      setIsRecording(true);
+      await recording.startRecording();
+    } catch (error) {
+      setIsRecording(false);
+      Alert.alert('Recording Error', 'Failed to start recording');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      const uri = await recording.stopRecording();
+      setIsRecording(false);
+
+      if (uri) {
+        setIsTranscribing(true);
+        const result = await chatApi.transcribeAudio(uri); // Use automatic language detection
+
+        if (result.success && result.text.trim()) {
+          await handleVoiceTranscriptionComplete(result.text.trim());
+        } else {
+          Alert.alert(
+            'Transcription Error',
+            result.error || 'No speech detected',
+          );
+        }
+      }
+    } catch (error) {
+      Alert.alert('Recording Error', 'Failed to process recording');
+    } finally {
+      setIsRecording(false);
+      setIsTranscribing(false);
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    try {
+      await recording.stopRecording();
+    } catch (error) {
+      // Ignore error when canceling
+    } finally {
+      setIsRecording(false);
+      setIsTranscribing(false);
+    }
   };
 
   const handleVoiceTranscriptionComplete = async (text: string) => {
@@ -177,9 +225,6 @@ export default function ChatScreen() {
         return;
       }
     }
-
-    // Send the transcribed message
-    await sendMessage(text);
   };
 
   return (
@@ -319,8 +364,11 @@ export default function ChatScreen() {
               onSend={handleSend}
               onInterrupt={handleInterrupt}
               onVoiceInput={handleVoiceInput}
-              disabled={isLoading || !isConnected}
+              disabled={isLoading || !isConnected || isTranscribing}
               isStreaming={isStreaming}
+              isRecording={isRecording}
+              onStopRecording={handleStopRecording}
+              onCancelRecording={handleCancelRecording}
             />
           </KeyboardAvoidingView>
         </SafeAreaView>
@@ -348,15 +396,6 @@ export default function ChatScreen() {
         onChatSelect={handleChatSelect}
         activeChatId={currentChatId}
         onNewChat={handleNewChat}
-      />
-
-      {/* Voice Input Modal */}
-      <VoiceInputModal
-        visible={isVoiceModalVisible}
-        onClose={() => setIsVoiceModalVisible(false)}
-        onTranscriptionComplete={handleVoiceTranscriptionComplete}
-        chatAPI={chatApi}
-        language='en'
       />
     </>
   );

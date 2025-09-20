@@ -22,7 +22,7 @@ export function VoiceInput({
   chatAPI,
   onTranscriptionComplete,
   onError,
-  language = 'en',
+  language, // Use automatic language detection when undefined
 }: VoiceInputProps) {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const recording = useAudioRecording();
@@ -77,12 +77,12 @@ export function VoiceInput({
   };
 
   const transcribeAudio = async (audioUri: string) => {
-    setIsTranscribing(true);
-
     try {
-      // Check if recording is too short
+      setIsTranscribing(true);
+
+      // Check minimum recording duration
       if (recording.duration < 1) {
-        onError?.('Recording too short. Please record for at least 1 second.');
+        onError?.('Recording too short. Please speak for at least 1 second.');
         return;
       }
 
@@ -106,36 +106,18 @@ export function VoiceInput({
     }
   };
 
-  const getButtonIcon = () => {
-    if (isTranscribing) {
-      return 'hourglass-outline';
-    }
-
-    if (recording.isRecording) {
-      return 'stop-circle';
-    }
-
-    if (recording.isPaused) {
-      return 'play-circle';
-    }
-
-    return 'mic';
+  const getButtonColor = () => {
+    if (isTranscribing) return '#666';
+    if (recording.isRecording) return '#FF3B30';
+    if (recording.isPaused) return '#FF9500';
+    return '#007AFF';
   };
 
-  const getButtonColor = () => {
-    if (isTranscribing) {
-      return '#FFA500'; // Orange for processing
-    }
-
-    if (recording.isRecording) {
-      return '#FF4444'; // Red for recording
-    }
-
-    if (recording.isPaused) {
-      return '#4CAF50'; // Green for paused (resume)
-    }
-
-    return '#007AFF'; // Blue for ready to record
+  const getButtonIcon = () => {
+    if (isTranscribing) return 'hourglass-outline';
+    if (recording.isRecording) return 'stop';
+    if (recording.isPaused) return 'play';
+    return 'mic';
   };
 
   const handleButtonPress = async () => {
@@ -156,6 +138,7 @@ export function VoiceInput({
 
   return (
     <View style={styles.container}>
+      {/* Simple recording button */}
       <TouchableOpacity
         style={[styles.recordButton, { backgroundColor: getButtonColor() }]}
         onPress={handleButtonPress}
@@ -169,38 +152,50 @@ export function VoiceInput({
         )}
       </TouchableOpacity>
 
-      {recording.error && (
-        <Text style={styles.errorText}>{recording.error}</Text>
-      )}
-
+      {/* Simple status and duration */}
       {showRecordingControls && (
         <View style={styles.recordingInfo}>
+          <Text style={styles.recordingText}>Recording...</Text>
           <Text style={styles.durationText}>
             {formatDuration(recording.duration)}
           </Text>
+        </View>
+      )}
 
+      {/* Simple controls */}
+      {showRecordingControls && (
+        <View style={styles.controls}>
           {recording.isRecording && (
             <TouchableOpacity
-              style={styles.pauseButton}
+              style={styles.controlButton}
               onPress={handlePauseRecording}
-              activeOpacity={0.7}
             >
               <Ionicons name='pause' size={20} color='#666' />
             </TouchableOpacity>
           )}
-
           {recording.isPaused && (
             <TouchableOpacity
-              style={styles.pauseButton}
+              style={styles.controlButton}
               onPress={handleResumeRecording}
-              activeOpacity={0.7}
             >
               <Ionicons name='play' size={20} color='#666' />
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={handleStopRecording}
+          >
+            <Ionicons name='stop' size={20} color='#666' />
+          </TouchableOpacity>
         </View>
       )}
 
+      {/* Error message */}
+      {recording.error && (
+        <Text style={styles.errorText}>{recording.error}</Text>
+      )}
+
+      {/* Transcribing message */}
       {isTranscribing && (
         <Text style={styles.transcribingText}>
           Converting speech to text...
@@ -213,7 +208,7 @@ export function VoiceInput({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 24,
   },
   recordButton: {
     width: 80,
@@ -226,36 +221,49 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
+    marginBottom: 20,
   },
   recordingInfo: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
-    gap: 12,
+    marginBottom: 16,
   },
-  durationText: {
+  recordingText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#FF3B30',
+    marginBottom: 4,
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#666',
     fontFamily: 'monospace',
   },
-  pauseButton: {
-    padding: 8,
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  controlButton: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#F2F2F7',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   errorText: {
     color: '#FF4444',
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 16,
     paddingHorizontal: 16,
   },
   transcribingText: {
     color: '#666',
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 16,
     fontStyle: 'italic',
   },
 });

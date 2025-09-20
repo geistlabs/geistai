@@ -26,7 +26,7 @@ export function VoiceInputModal({
   onClose,
   onTranscriptionComplete,
   chatAPI,
-  language = 'en',
+  language, // Use automatic language detection when undefined
 }: VoiceInputModalProps) {
   const handleTranscriptionComplete = (text: string) => {
     onTranscriptionComplete(text);
