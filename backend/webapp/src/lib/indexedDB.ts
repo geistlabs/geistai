@@ -205,6 +205,87 @@ class EmbeddingDB {
       request.onerror = () => reject(new Error('Failed to get embeddings for deletion'));
     });
   }
+
+  /**
+   * Perform semantic search using cosine similarity
+   * @param queryEmbedding - The embedding vector to search for
+   * @param threshold - Minimum similarity threshold (0-1)
+   * @param limit - Maximum number of results to return
+   * @returns Array of embeddings sorted by similarity (highest first)
+   */
+  async semanticSearch(
+    queryEmbedding: number[], 
+    threshold: number = 0.7, 
+    limit: number = 10
+  ): Promise<Array<StoredEmbedding & { similarity: number }>> {
+    if (!this.db) {
+      await this.init();
+    }
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+      const store = transaction.objectStore(STORE_NAME);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const embeddings = request.result;
+        console.log('Semantic search: Found', embeddings.length, 'total embeddings in database');
+        
+        const results: Array<StoredEmbedding & { similarity: number }> = [];
+
+        for (const embedding of embeddings) {
+          try {
+            const similarity = this.calculateCosineSimilarity(queryEmbedding, embedding.embedding);
+            console.log('Similarity for embedding', embedding.id, ':', similarity.toFixed(4), 'threshold:', threshold);
+            if (similarity >= threshold) {
+              results.push({ ...embedding, similarity });
+            }
+          } catch (error) {
+            console.warn('Failed to calculate similarity for embedding:', embedding.id, error);
+          }
+        }
+
+        console.log('Semantic search: Found', results.length, 'results above threshold', threshold);
+
+        // Sort by similarity (highest first) and limit results
+        const sortedResults = results
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, limit);
+
+        console.log('Semantic search: Returning', sortedResults.length, 'final results');
+        resolve(sortedResults);
+      };
+      request.onerror = () => reject(new Error('Failed to perform semantic search'));
+    });
+  }
+
+  /**
+   * Calculate cosine similarity between two embedding vectors
+   */
+  private calculateCosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) {
+      throw new Error('Embedding vectors must have the same length');
+    }
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    normA = Math.sqrt(normA);
+    normB = Math.sqrt(normB);
+
+    if (normA === 0 || normB === 0) {
+      return 0;
+    }
+
+    return dotProduct / (normA * normB);
+  }
 }
 
 export const embeddingDB = new EmbeddingDB();
