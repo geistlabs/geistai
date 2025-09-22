@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR"
 INFERENCE_DIR="$BACKEND_DIR/inference/llama.cpp"
 ROUTER_DIR="$BACKEND_DIR/router"
-MODEL_PATH="$BACKEND_DIR/inference/models/gpt-oss-20b-Q4_K_S.gguf"
+MODEL_PATH="$BACKEND_DIR/inference/model/openai_gpt-oss-20b-Q4_K_M.gguf"
 
 # Ports
 INFERENCE_PORT=8080
@@ -76,13 +76,23 @@ if [[ ! -d "$BACKEND_DIR" ]]; then
 fi
 
 if [[ ! -d "$INFERENCE_DIR" ]]; then
-    echo -e "${RED}❌ llama.cpp directory not found: $INFERENCE_DIR${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  llama.cpp not found. Setting up now...${NC}"
+    cd "$BACKEND_DIR/inference"
+    git clone https://github.com/ggerganov/llama.cpp.git
+    cd llama.cpp
+    echo -e "${BLUE}🔨 Building llama.cpp with Metal support using CMake...${NC}"
+    cmake -B build -DLLAMA_METAL=ON
+    cmake --build build --config Release -- -j8
+    echo -e "${GREEN}✅ llama.cpp setup complete${NC}"
 fi
 
 if [[ ! -f "$INFERENCE_DIR/build/bin/llama-server" ]]; then
-    echo -e "${RED}❌ llama-server not found. Run 'make' in llama.cpp directory first${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  llama-server not found. Building now...${NC}"
+    cd "$INFERENCE_DIR"
+    rm -rf build
+    cmake -B build -DLLAMA_METAL=ON
+    cmake --build build --config Release -- -j8
+    echo -e "${GREEN}✅ llama-server built successfully${NC}"
 fi
 
 if [[ ! -f "$MODEL_PATH" ]]; then

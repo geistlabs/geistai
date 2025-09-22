@@ -3,6 +3,7 @@ rick-notes.md
 
 # Ignore llama.cpp directory
 backend/inference/llama.cpp/
+backend/inference/model/
 
 # Frontend/Expo specific
 frontend/.expo/
