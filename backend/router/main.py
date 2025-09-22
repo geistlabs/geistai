@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
@@ -8,8 +8,10 @@ import httpx
 import asyncio
 import json
 import logging
+import os
 import config
 from harmony_service import HarmonyService
+from stt_service import STTService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +39,7 @@ app = FastAPI(title="Geist Router")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://geist.im",
         "https://*.geist.im",
@@ -51,6 +53,18 @@ app.add_middleware(
 
 # Initialize Harmony service if enabled
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
+
+# Initialize STT service
+# Use relative paths from the backend directory to make it more portable
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+whisper_path = os.path.join(backend_dir, "whisper.cpp/build/bin/whisper-cli")
+model_path = os.path.join(backend_dir, "whisper.cpp/models/ggml-base.bin")
+stt_service = STTService(whisper_path, model_path) if os.path.exists(whisper_path) and os.path.exists(model_path) else None
+
+if stt_service:
+    logger.info("STT service initialized successfully")
+else:
+    logger.warning("STT service could not be initialized - whisper binary or model not found")
 
 # Validate SSL configuration on startup
 ssl_valid, ssl_message = config.validate_ssl_config()
@@ -159,7 +173,7 @@ async def chat(request: ChatRequest):
 async def chat_stream(chat_request: ChatRequest, request: Request):
     """Streaming chat endpoint using Server-Sent Events"""
     print(f"[Backend] Received from frontend: {chat_request.model_dump_json(indent=2)}")
-    
+
     # Build messages array with conversation history
     if chat_request.messages:
         # Use provided conversation history and add the new message
@@ -168,7 +182,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
     else:
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": chat_request.message}]
-    
+
     print(f"[Backend] Created messages array with {len(messages)} messages")
 
     async def event_stream():
@@ -201,6 +215,53 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
             }
 
     return EventSourceResponse(event_stream())
+
+
+@app.post("/api/speech-to-text")
+async def transcribe_audio(
+    audio_file: UploadFile = File(...),
+    language: Optional[str] = Form(None)
+):
+    """
+    Transcribe audio using Whisper.cpp
+
+    Args:
+        audio_file: Audio file to transcribe (WAV format preferred)
+        language: Optional language code (e.g., 'en', 'es', 'fr') for forced language detection
+
+    Returns:
+        JSON response with transcription results
+    """
+    if not stt_service:
+        raise HTTPException(
+            status_code=503,
+            detail="STT service not available - whisper binary or model not found"
+        )
+
+    try:
+        # Read audio file content
+        audio_data = await audio_file.read()
+
+        # Validate file size (max 25MB)
+        if len(audio_data) > 25 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail="Audio file too large. Maximum size is 25MB."
+            )
+
+        # Transcribe using STT service
+        result = stt_service.transcribe_audio(audio_data, language)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in speech-to-text endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error during transcription"
+        )
 
 
 # Proxy route for embeddings service

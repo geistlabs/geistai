@@ -22,7 +22,7 @@ class ChatTester {
       firstTokenTime: 0,
       response: '',
       passed: false,
-      error: null
+      error: null,
     };
 
     const startTime = Date.now();
@@ -33,7 +33,7 @@ class ChatTester {
     try {
       await new Promise((resolve, reject) => {
         const data = JSON.stringify({ message: prompt });
-        
+
         const options = {
           hostname: 'localhost',
           port: 8000,
@@ -41,18 +41,18 @@ class ChatTester {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': 'text/event-stream',
-            'Connection': 'keep-alive'
+            Accept: 'text/event-stream',
+            Connection: 'keep-alive',
           },
-          timeout: TEST_TIMEOUT
+          timeout: TEST_TIMEOUT,
         };
 
-        const req = http.request(options, (res) => {
+        const req = http.request(options, res => {
           console.log(`Response status: ${res.statusCode}`);
-          
-          res.on('data', (chunk) => {
+
+          res.on('data', chunk => {
             const lines = chunk.toString().split('\n');
-            
+
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 try {
@@ -60,12 +60,14 @@ class ChatTester {
                   if (data.token && data.token !== '') {
                     tokenCount++;
                     accumulatedResponse += data.token;
-                    
+
                     if (firstTokenTime === 0) {
                       firstTokenTime = Date.now() - startTime;
-                      console.log(`✓ First token received at: ${firstTokenTime}ms`);
+                      console.log(
+                        `✓ First token received at: ${firstTokenTime}ms`,
+                      );
                     }
-                    
+
                     if (tokenCount % 50 === 0) {
                       console.log(`  Progress: ${tokenCount} tokens received`);
                     }
@@ -74,7 +76,7 @@ class ChatTester {
                   // Skip invalid JSON
                 }
               }
-              
+
               if (line.includes('event: end')) {
                 console.log(`✓ Stream completed: ${tokenCount} tokens`);
                 resolve();
@@ -88,7 +90,7 @@ class ChatTester {
           });
         });
 
-        req.on('error', (error) => {
+        req.on('error', error => {
           console.error('Request error:', error);
           result.error = error.message;
           reject(error);
@@ -113,10 +115,19 @@ class ChatTester {
 
       // Validation
       const validations = [
-        { check: result.tokenCount >= expectedMinTokens, message: `Token count (${result.tokenCount}) >= ${expectedMinTokens}` },
-        { check: result.firstTokenTime < 10000, message: `First token time (${result.firstTokenTime}ms) < 10000ms` },
-        { check: result.response.length > 0, message: `Response not empty (${result.response.length} chars)` },
-        { check: !result.error, message: 'No errors occurred' }
+        {
+          check: result.tokenCount >= expectedMinTokens,
+          message: `Token count (${result.tokenCount}) >= ${expectedMinTokens}`,
+        },
+        {
+          check: result.firstTokenTime < 10000,
+          message: `First token time (${result.firstTokenTime}ms) < 10000ms`,
+        },
+        {
+          check: result.response.length > 0,
+          message: `Response not empty (${result.response.length} chars)`,
+        },
+        { check: !result.error, message: 'No errors occurred' },
       ];
 
       result.passed = validations.every(v => v.check);
@@ -130,12 +141,15 @@ class ChatTester {
       console.log(`  Total Time: ${result.responseTime}ms`);
       console.log(`  First Token: ${result.firstTokenTime}ms`);
       console.log(`  Token Count: ${result.tokenCount}`);
-      console.log(`  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`);
+      console.log(
+        `  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`,
+      );
       console.log(`  Response Length: ${result.response.length} characters`);
-      
-      console.log('\nResponse Preview:');
-      console.log(`  "${result.response.substring(0, 200)}${result.response.length > 200 ? '...' : ''}"`);
 
+      console.log('\nResponse Preview:');
+      console.log(
+        `  "${result.response.substring(0, 200)}${result.response.length > 200 ? '...' : ''}"`,
+      );
     } catch (error) {
       result.error = error.message;
       result.passed = false;
@@ -156,7 +170,7 @@ class ChatTester {
       await this.runTest(
         'Basic Math',
         'What is 25 * 4 + 10? Just give me the number.',
-        5
+        5,
       );
 
       // Wait between tests
@@ -164,9 +178,9 @@ class ChatTester {
 
       // Test 2: Presidents Trivia
       await this.runTest(
-        'Presidents Trivia', 
+        'Presidents Trivia',
         'Name the first 5 US presidents in order with one interesting fact about each.',
-        50
+        50,
       );
 
       // Wait between tests
@@ -182,12 +196,7 @@ class ChatTester {
 - Include dialogue about teleportation technology and its philosophical implications
 - Make it at least 500 words with rich descriptions`;
 
-      await this.runTest(
-        'Long-form Creative Writing',
-        creativePrompt,
-        500
-      );
-
+      await this.runTest('Long-form Creative Writing', creativePrompt, 500);
     } catch (error) {
       console.error('Test suite error:', error);
     }
@@ -199,15 +208,15 @@ class ChatTester {
     console.log(`\n${'='.repeat(60)}`);
     console.log('TEST SUMMARY');
     console.log(`${'='.repeat(60)}`);
-    
+
     const passed = this.results.filter(r => r.passed).length;
     const failed = this.results.filter(r => !r.passed).length;
-    
+
     console.log(`Total Tests: ${this.results.length}`);
     console.log(`Passed: ${passed}`);
     console.log(`Failed: ${failed}`);
     console.log('');
-    
+
     console.log('Performance Metrics:');
     this.results.forEach(result => {
       console.log(`\n${result.testName}:`);
@@ -216,7 +225,9 @@ class ChatTester {
       console.log(`  First Token: ${result.firstTokenTime}ms`);
       console.log(`  Token Count: ${result.tokenCount}`);
       if (result.responseTime > 0) {
-        console.log(`  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`);
+        console.log(
+          `  Tokens/Second: ${(result.tokenCount / (result.responseTime / 1000)).toFixed(2)}`,
+        );
       }
       if (result.error) {
         console.log(`  Error: ${result.error}`);
@@ -227,7 +238,7 @@ class ChatTester {
     console.log(`\n${'='.repeat(60)}`);
     console.log('PERFORMANCE ANALYSIS');
     console.log(`${'='.repeat(60)}`);
-    
+
     const longFirstToken = this.results.filter(r => r.firstTokenTime > 5000);
     if (longFirstToken.length > 0) {
       console.log('\n⚠️  Slow first token times detected (>5s):');
@@ -236,11 +247,18 @@ class ChatTester {
       });
     }
 
-    const slowStreaming = this.results.filter(r => r.tokenCount > 0 && r.responseTime > 0 && (r.tokenCount / (r.responseTime / 1000)) < 10);
+    const slowStreaming = this.results.filter(
+      r =>
+        r.tokenCount > 0 &&
+        r.responseTime > 0 &&
+        r.tokenCount / (r.responseTime / 1000) < 10,
+    );
     if (slowStreaming.length > 0) {
       console.log('\n⚠️  Slow streaming speeds detected (<10 tokens/sec):');
       slowStreaming.forEach(r => {
-        console.log(`  - ${r.testName}: ${(r.tokenCount / (r.responseTime / 1000)).toFixed(2)} tokens/sec`);
+        console.log(
+          `  - ${r.testName}: ${(r.tokenCount / (r.responseTime / 1000)).toFixed(2)} tokens/sec`,
+        );
       });
     }
 

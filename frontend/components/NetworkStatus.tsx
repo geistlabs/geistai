@@ -1,6 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Text, Animated } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 
 interface NetworkStatusProps {
   isOnline?: boolean;
@@ -8,15 +8,17 @@ interface NetworkStatusProps {
   position?: 'top' | 'bottom';
 }
 
-export const NetworkStatus: React.FC<NetworkStatusProps> = ({ 
+export const NetworkStatus: React.FC<NetworkStatusProps> = ({
   isOnline: externalIsOnline,
   showAlways = false,
-  position = 'top'
+  position = 'top',
 }) => {
   const [isOnline, setIsOnline] = useState(externalIsOnline ?? true);
   const [isVisible, setIsVisible] = useState(false);
   const fadeAnim = useState(new Animated.Value(0))[0];
-  const slideAnim = useState(new Animated.Value(position === 'top' ? -50 : 50))[0];
+  const slideAnim = useState(
+    new Animated.Value(position === 'top' ? -50 : 50),
+  )[0];
 
   useEffect(() => {
     if (externalIsOnline !== undefined) {
@@ -71,10 +73,10 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({
       <Ionicons
         name={isOnline ? 'checkmark-circle' : 'alert-circle'}
         size={20}
-        color="white"
-        className="mr-2"
+        color='white'
+        className='mr-2'
       />
-      <Text className="text-white text-sm font-medium">
+      <Text className='text-white text-sm font-medium'>
         {isOnline ? 'Connected' : 'No connection'}
       </Text>
     </Animated.View>
