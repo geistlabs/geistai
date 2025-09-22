@@ -10,4 +10,5 @@ dependencies = [
     "openai-harmony>=0.0.4",
     "uvicorn>=0.35.0",
     "sse-starlette>=1.6.5",
+    "python-multipart>=0.0.20",
 ]
