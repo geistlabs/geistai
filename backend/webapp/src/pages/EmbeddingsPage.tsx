@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import EmbeddingCreator from '../components/embeddings/EmbeddingCreator';
 import EmbeddingExplorer from '../components/embeddings/EmbeddingExplorer';
+import EmbeddingSearch from '../components/embeddings/EmbeddingSearch';
+import SearchResults from '../components/embeddings/SearchResults';
 import { StoredEmbedding } from '../lib/indexedDB';
 import { embeddingsAPI } from '../api/embeddings';
 
+interface SearchResult extends StoredEmbedding {
+  similarity: number;
+}
+
 const EmbeddingsPage: React.FC = () => {
   const [embeddings, setEmbeddings] = useState<StoredEmbedding[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
 
@@ -41,6 +48,20 @@ const EmbeddingsPage: React.FC = () => {
 
   const handleEmbeddingDeleted = (id: string) => {
     setEmbeddings(prev => prev.filter(e => e.id !== id));
+    // Also remove from search results if present
+    setSearchResults(prev => prev.filter(e => e.id !== id));
+  };
+
+  const handleSearchResults = (results: SearchResult[]) => {
+    console.log('EmbeddingsPage: Received search results:', {
+      resultsCount: results.length,
+      results: results.map(r => ({ id: r.id, similarity: r.similarity, text: r.text.substring(0, 50) + '...' }))
+    });
+    setSearchResults(results);
+  };
+
+  const handleClearSearchResults = () => {
+    setSearchResults([]);
   };
 
   const pageStyle: React.CSSProperties = {
@@ -121,6 +142,15 @@ const EmbeddingsPage: React.FC = () => {
       </div>
 
       <EmbeddingCreator onEmbeddingCreated={handleEmbeddingCreated} />
+      
+      <EmbeddingSearch onSearchResults={handleSearchResults} />
+      
+      {searchResults.length > 0 && (
+        <SearchResults 
+          results={searchResults}
+          onClearResults={handleClearSearchResults}
+        />
+      )}
       
       <EmbeddingExplorer 
         embeddings={embeddings}
