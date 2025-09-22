@@ -22,8 +22,10 @@ export function useAudioLevels(): AudioLevelsData & AudioLevelsControls {
   const [levels, setLevels] = useState<number[]>(Array(20).fill(0));
   const [averageLevel, setAverageLevel] = useState(0);
 
-  const animationFrameRef = useRef<number>();
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(
+    undefined,
+  );
   const voicePatternRef = useRef({
     isSpeaking: false,
     speakingDuration: 0,
