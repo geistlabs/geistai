@@ -58,3 +58,4 @@ backend/*/ssl/
 
 backend/*/models/
 models/
+backend/whisper.cpp/

@@ -97,11 +97,11 @@ export function InputBar({
     <View className='p-2'>
       <View className='flex-row items-end'>
         <View
-          className='flex-1 min-h-11 max-h-20 rounded-full px-4 py-2'
+          className='flex-1 min-h-11 max-h-20 rounded-full px-4 py-2 flex-row items-center'
           style={{ backgroundColor: '#f8f8f8' }}
         >
           <TextInput
-            className='bg-transparent pl-2'
+            className='bg-transparent pl-2 flex-1'
             value={value}
             onChangeText={onChangeText}
             placeholder='Ask anything'
@@ -114,23 +114,21 @@ export function InputBar({
               textAlignVertical: 'center',
             }}
           />
+          {/* Voice Input Button */}
+          {!isStreaming && onVoiceInput && (
+            <TouchableOpacity
+              className='justify-center items-center ml-2'
+              onPress={onVoiceInput}
+              disabled={disabled}
+            >
+              <Ionicons name='mic' size={20} color='#666' />
+            </TouchableOpacity>
+          )}
         </View>
-        {/* Voice Input Button */}
-        {!isStreaming && onVoiceInput && (
-          <TouchableOpacity
-            className='justify-center items-center mr-2'
-            onPress={onVoiceInput}
-            disabled={disabled}
-          >
-            <View className='w-11 h-11 rounded-full bg-gray-100 items-center justify-center'>
-              <Ionicons name='mic' size={22} color='#666' />
-            </View>
-          </TouchableOpacity>
-        )}
 
         {/* Send/Stop Button */}
         <TouchableOpacity
-          className='justify-center items-center'
+          className='justify-center items-center ml-2'
           onPress={isStreaming ? onInterrupt : onSend}
           disabled={isDisabled && !isStreaming}
         >
