@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$SCRIPT_DIR"
 INFERENCE_DIR="$BACKEND_DIR/inference/llama.cpp"
 ROUTER_DIR="$BACKEND_DIR/router"
-MODEL_PATH="$BACKEND_DIR/inference/model/openai_gpt-oss-20b-Q4_K_M.gguf"
+MODEL_PATH="$BACKEND_DIR/inference/models/openai_gpt-oss-20b-Q4_K_S.gguf"
 
 # Ports
 INFERENCE_PORT=8080
@@ -96,8 +96,37 @@ if [[ ! -f "$INFERENCE_DIR/build/bin/llama-server" ]]; then
 fi
 
 if [[ ! -f "$MODEL_PATH" ]]; then
-    echo -e "${RED}❌ Model file not found: $MODEL_PATH${NC}"
-    exit 1
+    echo -e "${YELLOW}⚠️  Model file not found: $MODEL_PATH${NC}"
+    echo -e "${BLUE}📥 Downloading GPT-OSS 20B model (Q4_K_S)...${NC}"
+    echo -e "${YELLOW}   This is a ~12GB download and may take several minutes${NC}"
+    
+    # Create model directory if it doesn't exist
+    mkdir -p "$(dirname "$MODEL_PATH")"
+    
+    # Download the model using curl with progress bar
+    echo -e "${BLUE}   Downloading from Hugging Face...${NC}"
+    curl -L --progress-bar \
+        "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_S.gguf" \
+        -o "$MODEL_PATH" 2>/dev/null || {
+        echo -e "${RED}❌ Failed to download model from Hugging Face${NC}"
+        echo -e "${YELLOW}   Please manually download a GGUF model and place it at:${NC}"
+        echo -e "${YELLOW}   $MODEL_PATH${NC}"
+        echo -e "${YELLOW}   Or update MODEL_PATH in this script to point to your model${NC}"
+        echo -e "${YELLOW}   Recommended models:${NC}"
+        echo -e "${YELLOW}   • GPT-OSS 20B: https://huggingface.co/unsloth/gpt-oss-20b-GGUF${NC}"
+        echo -e "${YELLOW}   • Llama-2-7B-Chat: https://huggingface.co/TheBloke/Llama-2-7B-Chat-GGUF${NC}"
+        exit 1
+    }
+    
+    # Verify the download
+    if [[ -f "$MODEL_PATH" && -s "$MODEL_PATH" ]]; then
+        echo -e "${GREEN}✅ Model downloaded successfully${NC}"
+    else
+        echo -e "${RED}❌ Model download failed or file is empty${NC}"
+        echo -e "${YELLOW}   Please manually download a GGUF model and place it at:${NC}"
+        echo -e "${YELLOW}   $MODEL_PATH${NC}"
+        exit 1
+    fi
 fi
 
 if [[ ! -d "$ROUTER_DIR" ]]; then
