@@ -95,6 +95,64 @@ if [[ ! -f "$INFERENCE_DIR/build/bin/llama-server" ]]; then
     echo -e "${GREEN}✅ llama-server built successfully${NC}"
 fi
 
+# Setup whisper.cpp for speech-to-text
+WHISPER_DIR="$BACKEND_DIR/whisper.cpp"
+WHISPER_BINARY_PATH="$WHISPER_DIR/build/bin/whisper-cli"
+WHISPER_MODEL_PATH="$WHISPER_DIR/models/ggml-base.bin"
+
+if [[ ! -d "$WHISPER_DIR" ]] || [[ ! -f "$WHISPER_DIR/CMakeLists.txt" ]]; then
+    echo -e "${YELLOW}⚠️  whisper.cpp not found or incomplete. Setting up now...${NC}"
+    cd "$BACKEND_DIR"
+    # Remove incomplete directory if it exists
+    rm -rf whisper.cpp
+    git clone https://github.com/ggerganov/whisper.cpp.git
+    cd whisper.cpp
+    echo -e "${BLUE}🔨 Building whisper.cpp with Metal support using CMake...${NC}"
+    rm -rf build
+    cmake -B build -DGGML_METAL=ON
+    cmake --build build --config Release -- -j4
+    echo -e "${GREEN}✅ whisper.cpp setup complete${NC}"
+fi
+
+if [[ ! -f "$WHISPER_BINARY_PATH" ]]; then
+    echo -e "${YELLOW}⚠️  whisper-cli not found. Building now...${NC}"
+    cd "$WHISPER_DIR"
+    rm -rf build
+    cmake -B build -DGGML_METAL=ON
+    cmake --build build --config Release -- -j4
+    echo -e "${GREEN}✅ whisper-cli built successfully${NC}"
+fi
+
+if [[ ! -f "$WHISPER_MODEL_PATH" ]]; then
+    echo -e "${YELLOW}⚠️  Whisper model not found: $WHISPER_MODEL_PATH${NC}"
+    echo -e "${BLUE}📥 Downloading Whisper base model...${NC}"
+    echo -e "${YELLOW}   This is a ~140MB download${NC}"
+    
+    # Create models directory if it doesn't exist
+    mkdir -p "$(dirname "$WHISPER_MODEL_PATH")"
+    
+    # Download the whisper model using the official script
+    echo -e "${BLUE}   Downloading using whisper.cpp download script...${NC}"
+    cd "$WHISPER_DIR"
+    ./models/download-ggml-model.sh base || {
+        echo -e "${RED}❌ Failed to download Whisper model${NC}"
+        echo -e "${YELLOW}   Please manually download the model and place it at:${NC}"
+        echo -e "${YELLOW}   $WHISPER_MODEL_PATH${NC}"
+        echo -e "${YELLOW}   Or run: cd $WHISPER_DIR && ./models/download-ggml-model.sh base${NC}"
+        exit 1
+    }
+    
+    # Verify the download
+    if [[ -f "$WHISPER_MODEL_PATH" && -s "$WHISPER_MODEL_PATH" ]]; then
+        echo -e "${GREEN}✅ Whisper model downloaded successfully${NC}"
+    else
+        echo -e "${RED}❌ Whisper model download failed or file is empty${NC}"
+        echo -e "${YELLOW}   Please manually download the model and place it at:${NC}"
+        echo -e "${YELLOW}   $WHISPER_MODEL_PATH${NC}"
+        exit 1
+    fi
+fi
+
 if [[ ! -f "$MODEL_PATH" ]]; then
     echo -e "${YELLOW}⚠️  Model file not found: $MODEL_PATH${NC}"
     echo -e "${BLUE}📥 Downloading GPT-OSS 20B model (Q4_K_S)...${NC}"
@@ -255,12 +313,13 @@ echo -e "${GREEN}🎉 Geist Backend Local Development Environment Ready!${NC}"
 echo ""
 echo -e "${BLUE}📊 Service Status:${NC}"
 echo -e "   🧠 Inference Server: ${GREEN}http://localhost:$INFERENCE_PORT${NC} (GPT-OSS 20B + Metal GPU)"
-echo -e "   ⚡ Router Service:    ${GREEN}http://localhost:$ROUTER_PORT${NC} (FastAPI + Harmony)"
+echo -e "   ⚡ Router Service:    ${GREEN}http://localhost:$ROUTER_PORT${NC} (FastAPI + Harmony + STT)"
 echo ""
 echo -e "${BLUE}🔗 API Endpoints:${NC}"
 echo -e "   Health Check:     ${YELLOW}GET  http://localhost:$ROUTER_PORT/health${NC}"
 echo -e "   Chat (blocking):  ${YELLOW}POST http://localhost:$ROUTER_PORT/api/chat${NC}"
 echo -e "   Chat (streaming): ${YELLOW}POST http://localhost:$ROUTER_PORT/api/chat/stream${NC} ${GREEN}(recommended)${NC}"
+echo -e "   Speech-to-Text:   ${YELLOW}POST http://localhost:$ROUTER_PORT/api/speech-to-text${NC}"
 echo ""
 echo -e "${BLUE}🧪 Quick Test Commands:${NC}"
 echo -e "   Health: ${YELLOW}curl http://localhost:$ROUTER_PORT/health${NC}"
@@ -269,6 +328,10 @@ echo ""
 echo -e "${BLUE}📝 Log Files:${NC}"
 echo -e "   Inference: ${YELLOW}tail -f /tmp/geist-inference.log${NC}"
 echo -e "   Router:    ${YELLOW}tail -f /tmp/geist-router.log${NC}"
+echo ""
+echo -e "${BLUE}🎤 STT Service:${NC}"
+echo -e "   Binary:    ${YELLOW}$WHISPER_BINARY_PATH${NC}"
+echo -e "   Model:     ${YELLOW}$WHISPER_MODEL_PATH${NC}"
 echo ""
 echo -e "${BLUE}💡 Performance Notes:${NC}"
 echo -e "   • ${GREEN}~15x faster${NC} than Docker (1-2 seconds vs 20+ seconds)"
