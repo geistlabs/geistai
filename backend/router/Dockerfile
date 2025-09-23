@@ -10,15 +10,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy project files
-COPY pyproject.toml .
-COPY main.py .
-COPY config.py .
-COPY harmony_service.py .
+COPY . .
 
 # Note: Certificates should be mounted as a volume at runtime
 
 # Install dependencies 
-RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette
+RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette python-multipart
 
 # Create non-root user
 RUN useradd -m -u 1000 router && chown -R router:router /app

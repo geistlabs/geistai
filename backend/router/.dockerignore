@@ -1,0 +1,87 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation
+README.md
+*.md
+
+# Test files
+test_*.py
+*_test.py
+tests/
+
+# Lock files (we'll install from pyproject.toml)
+uv.lock
+poetry.lock
+Pipfile.lock
+
+# Certificates (should be mounted as volumes)
+certificates/
+*.pem
+*.key
+*.crt
+
+# Whisper.cpp build artifacts (keep binaries and models)
+whisper.cpp/build/CMakeFiles/
+whisper.cpp/build/Testing/
+whisper.cpp/build/ggml/
+whisper.cpp/build/src/
+whisper.cpp/build/examples/
+whisper.cpp/build/tests/
+whisper.cpp/build/*.cmake
+whisper.cpp/build/compile_commands.json
+whisper.cpp/build/CTestTestfile.cmake
+whisper.cpp/build/DartConfiguration.tcl
+whisper.cpp/build/Makefile
+whisper.cpp/build/cmake_install.cmake
+whisper.cpp/build/CMakeCache.txt
