@@ -52,7 +52,7 @@ app.add_middleware(
 )
 
 # Initialize Harmony service if enabled
-harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
+harmony_service = HarmonyService() 
 
 # Initialize STT service
 # Use relative paths from the backend directory to make it more portable
@@ -143,28 +143,9 @@ async def chat(request: ChatRequest):
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": request.message}]
 
-    # Process chat request through harmony service
-    if harmony_service and config.HARMONY_ENABLED:
         ai_response = await harmony_service.process_chat_request(
             messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT
         )
-    else:
-        # Fallback - direct HTTP call without harmony service
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{config.INFERENCE_URL}/v1/chat/completions",
-                json={"messages": messages, "temperature": 0.7, "max_tokens": config.MAX_TOKENS},
-                timeout=config.INFERENCE_TIMEOUT,
-            )
-
-        result = response.json()
-        raw_response = result["choices"][0]["message"]["content"]
-
-        # Parse Harmony channels even in fallback path
-        if harmony_service:
-            ai_response = harmony_service.parse_harmony_channels(raw_response)
-        else:
-            ai_response = raw_response
 
     return {"response": ai_response}
 

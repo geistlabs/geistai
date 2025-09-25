@@ -44,8 +44,8 @@ jobs:
       working-directory: ./backend/router
       run: |
         python -m pip install --upgrade pip
-        pip install -e .
-        pip install python-dotenv pytest pytest-asyncio
+        pip install fastapi httpx uvicorn sse-starlette python-multipart python-dotenv
+        pip install pytest pytest-asyncio
 
     - name: Create test environment file
       working-directory: ./backend
@@ -67,7 +67,6 @@ jobs:
         OPENAI_API_KEY: test-key-for-ci
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
-        HARMONY_ENABLED: false
         LOG_LEVEL: INFO
 
     - name: Wait for router to be ready
@@ -82,7 +81,6 @@ jobs:
         OPENAI_API_KEY: test-key-for-ci
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
-        HARMONY_ENABLED: false
 
     - name: Run conversation tests
       working-directory: ./backend/router
@@ -92,7 +90,6 @@ jobs:
         OPENAI_API_KEY: test-key-for-ci
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
-        HARMONY_ENABLED: false
 
     - name: Run health check tests
       working-directory: ./backend/router
@@ -102,7 +99,6 @@ jobs:
         OPENAI_API_KEY: test-key-for-ci
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
-        HARMONY_ENABLED: false
 
     - name: Cleanup
       if: always()
