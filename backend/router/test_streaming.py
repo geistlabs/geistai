@@ -7,11 +7,14 @@ Includes reasonableness rating of responses.
 import httpx
 import asyncio
 import json
+from config import INFERENCE_URL
 from reasonableness_service import reasonableness_service
 
 async def test_streaming(prompt):
-    """Test the streaming endpoint"""
-    url = "http://localhost:8000/api/chat/stream"
+    """Test the streaming endpoint"""\
+
+    url = f"http://localhost:8000/api/chat/stream"
+    print(f"URL: {url}")
     payload = {"message": prompt}
   
     
@@ -44,6 +47,7 @@ async def test_streaming(prompt):
                             data = json.loads(data_str)
                             
                             if "token" in data:
+                                print(f"Token: {data['token']}")
                                 token = data["token"]
                                 full_response += token
                                 chunk_count += 1
@@ -93,6 +97,6 @@ async def test_streaming(prompt):
 if __name__ == "__main__":
     print("🧪 Starting streaming tests with reasonableness rating...")
     
-    asyncio.run(test_streaming("Hello, tell me a short story"))
+   # asyncio.run(test_streaming("Hello, tell me a short story"))
     asyncio.run(test_streaming("What is the capital of France?"))
-    asyncio.run(test_streaming("Name the last 5 English kings and queens"))
+    #asyncio.run(test_streaming("Name the last 5 English kings and queens"))

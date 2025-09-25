@@ -187,7 +187,9 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
     async def event_stream():
         chunk_sequence = 0
+        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
         try:
+            print(f"Harmony service: {harmony_service}")
             # Stream tokens from harmony service
             async for token in harmony_service.stream_chat_request(
                 messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT

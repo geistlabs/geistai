@@ -4,6 +4,31 @@ import os
 import ssl
 from pathlib import Path
 
+# Load .env file from parent directory only for OpenAI key when running locally
+def _load_openai_key_from_env():
+    """Load OpenAI API key from .env file in parent directory if not already set."""
+    if os.getenv("OPENAI_API_KEY"):
+        return  # Already set, don't override
+    
+    try:
+        from dotenv import load_dotenv
+        # Get the directory where this config.py file is located
+        current_dir = Path(__file__).parent
+        # Go up one directory to find the .env file
+        parent_dir = current_dir.parent
+        env_file = parent_dir / ".env"
+        
+        if env_file.exists():
+            load_dotenv(env_file)
+            print(f"Loaded OpenAI key from: {env_file}")
+    except ImportError:
+        pass  # python-dotenv not installed, silently continue
+    except Exception as e:
+        print(f"Error loading .env file: {e}")
+
+# Load OpenAI key from .env if needed
+_load_openai_key_from_env()
+
 # Harmony configuration
 HARMONY_ENABLED = os.getenv("HARMONY_ENABLED", "true").lower() == "true"
 HARMONY_REASONING_EFFORT = os.getenv(
@@ -11,9 +36,12 @@ HARMONY_REASONING_EFFORT = os.getenv(
 )  # "low", "medium", "high"
 
 # External service settings
-INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
+INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
+OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
 
+# ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))

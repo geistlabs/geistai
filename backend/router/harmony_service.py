@@ -1,17 +1,8 @@
-from openai_harmony import (
-      load_harmony_encoding,
-      HarmonyEncodingName,
-      Role,
-      Message,
-      Conversation,
-      ReasoningEffort,
-      RenderConversationConfig,
-  )
+
 
 class HarmonyService:
     def __init__(self):
         try:
-            self.encoding = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
             self.enabled = True
         except Exception as e:
             print(f"Warning: Failed to load Harmony encoding: {e}")
@@ -19,11 +10,22 @@ class HarmonyService:
             self.encoding = None
             self.enabled = False
 
-    def prepare_conversation(self, messages, reasoning_effort="low"):
-        if not self.enabled or not self.encoding:
-            return None
+    
+    def prepare_conversation_messages(self, messages, reasoning_effort="low"):
+        """
+        Prepare messages for chat completions endpoint with Harmony formatting.
+        Instead of encoding to tokens, we create a system prompt that includes Harmony instructions.
+        """
+        print(f"Preparing conversation messages: {messages}")
+
         
-        # Step 1: Create mobile-optimized system prompt
+        # Create enhanced system prompt with Harmony reasoning instructions
+        reasoning_instructions = {
+            "low": "Think briefly before responding.",
+            "medium": "Think step by step before responding. Consider potential issues or alternatives.",
+            "high": "Think deeply through this problem. Consider multiple approaches, potential issues, edge cases, and alternatives before providing your final response."
+        }
+        
         mobile_prompt = (
             "You are Geist — a privacy-focused AI companion."
             "\n\n"
@@ -37,62 +39,37 @@ class HarmonyService:
             "For simple questions, limit responses to 1–2 sentences.\n\n"
             "FORMATTING RULES (MOBILE CRITICAL):\n"
             "NEVER use markdown tables (|---|---|).\n"
-            "NEVER use ASCII tables, columns, or pipes (|).\n"
-            "ALWAYS use round bullet points (•) for ALL lists.\n"
-            "Indent nested bullets with one space before the •.\n"
-            "For numbered sections, use numbers only for the main items, but use • for all sub-items.\n"
-            "Do not use dashes (-) for lists under any circumstances."
         )
-
+        # Build messages array with enhanced system prompt
+        result_messages = []
         
-        # Step 2: Convert messages to Harmony format
-        harmony_messages = []
-        
-        # Add system message if not present
+        # Check if there's already a system message
         has_system = any(msg.get("role") == "system" for msg in messages)
         if not has_system:
-            system_message = Message.from_role_and_content(Role.SYSTEM, mobile_prompt)
-            harmony_messages.append(system_message)
+            result_messages.append({
+                "role": "system", 
+                "content": mobile_prompt
+            })
+        else:
+            # Enhance existing system message
+            for msg in messages:
+                if msg.get("role") == "system":
+                    enhanced_content = msg.get("content", "") + "\n\n" + mobile_prompt
+                    result_messages.append({
+                        "role": "system",
+                        "content": enhanced_content
+                    })
+                else:
+                    result_messages.append(msg)
+            return result_messages
         
-        # Convert each message
+        # Add all other messages
         for msg in messages:
-            role_str = msg.get("role", "user")
-            content = msg.get("content", "")
-            
-            # Map roles (system, user, assistant)
-            if role_str == "system":
-                role = Role.SYSTEM
-            elif role_str == "user":
-                role = Role.USER
-            elif role_str == "assistant":
-                role = Role.ASSISTANT
-            else:
-                role = Role.USER
-            
-            # Create Harmony message and append
-            harmony_message = Message.from_role_and_content(role, content)
-            harmony_messages.append(harmony_message)
-        
-        # Step 3: Create conversation and render
-        conversation = Conversation.from_messages(harmony_messages)
-        
-        # Map reasoning_effort string to ReasoningEffort enum
-        effort_mapping = {
-            "low": ReasoningEffort.LOW,
-            "medium": ReasoningEffort.MEDIUM,
-            "high": ReasoningEffort.HIGH
-        }
-        effort = effort_mapping.get(reasoning_effort, ReasoningEffort.LOW)
-        
-        # Configure and render
-        config = RenderConversationConfig(reasoning_effort=effort)
-        tokens = self.encoding.render_conversation_for_completion(
-            conversation, 
-            Role.ASSISTANT,
-            config=config
-        )
-        
-        return tokens
+            if msg.get("role") != "system":  # Skip system messages as we already handled them
+                result_messages.append(msg)
+        print(f"Result messages: {result_messages}")
+        return result_messages
+    
     def parse_completion_response(self, response_text):
         """Parse GPT-OSS response using fallback text parsing (proper encoding needs debugging)."""
         if not self.enabled:
@@ -151,103 +128,53 @@ class HarmonyService:
             "raw": response_text
         }
 
-    def parse_harmony_channels(self, response_text):
-        """
-        Parse Harmony channels and return final response content only.
-        Uses proper Harmony encoding when available, fallback to text parsing.
-        """
-        if self.enabled and self.encoding:
-            # Use proper Harmony parsing
-            parsed = self.parse_completion_response(response_text)
-            final_content = parsed.get("final", "").strip()
-            
-            if final_content:
-                return final_content
-            
-            # Fallback to analysis if no final content
-            analysis_content = parsed.get("analysis", "").strip()
-            return analysis_content if analysis_content else response_text
-        else:
-            # Fallback to text-based parsing
-            parsed = self._fallback_text_parsing(response_text)
-            final_content = parsed.get("final", "").strip()
-            
-            if final_content:
-                return final_content
-            
-            # Fallback to analysis if no final content
-            analysis_content = parsed.get("analysis", "").strip()
-            return analysis_content if analysis_content else response_text
-    
     async def process_chat_request(self, messages, config, reasoning_effort="low"):
         """
         Process a chat request with Harmony encoding like reference implementation.
-        Returns the final response content after parsing channels.
+        Returns the final response content.
         """
         import httpx
+            # Harmony path - use chat completions endpoint with messages
+        harmony_messages = self.prepare_conversation_messages(messages, reasoning_effort)
         
-        if self.enabled:
-            # Harmony path - prepare conversation and use completion endpoint
-            harmony_tokens = self.prepare_conversation(messages, reasoning_effort)
-            harmony_prompt = self.encoding.decode(harmony_tokens)
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{config.INFERENCE_URL}/v1/completions",
-                    json={
-                        "prompt": harmony_prompt,
-                        "temperature": 0.7,
-                        "max_tokens": config.MAX_TOKENS,
-                        "stream": False
-                    },
-                    timeout=config.INFERENCE_TIMEOUT
-                )
-            
-            # Parse the response 
-            result = response.json()
-            raw_response = result.get("choices", [{}])[0].get("text", "")
-            
-            # Parse using proper Harmony channel parsing to get final content
-            return self.parse_harmony_channels(raw_response)
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{config.INFERENCE_URL}/v1/chat/completions",
+                json={
+                    "messages": harmony_messages,
+                    "temperature": 0.7,
+                    "max_tokens": config.MAX_TOKENS,
+                    "stream": False
+                },
+                timeout=config.INFERENCE_TIMEOUT
+            )
         
-        else:
-            # Standard chat completions (non-Harmony) 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{config.INFERENCE_URL}/v1/chat/completions",
-                    json={
-                        "messages": messages,
-                        "temperature": 0.7,
-                        "max_tokens": config.MAX_TOKENS
-                    },
-                    timeout=config.INFERENCE_TIMEOUT
-                )
+        # Parse the response 
+        result = response.json()
+        
+        # Better error handling
+        if "choices" not in result:
+            print(f"Error: No 'choices' in response. Full response: {result}")
+            raise ValueError(f"Invalid response format from inference service: {result}")
+        
+        if not result["choices"] or not result["choices"][0]:
+            print(f"Error: Empty choices array. Full response: {result}")
+            raise ValueError(f"Empty choices in response from inference service")
             
-            result = response.json()
+        choice = result["choices"][0]
+        if "message" not in choice:
+            print(f"Error: No 'message' in choice. Choice: {choice}")
+            raise ValueError(f"No message in choice from inference service")
             
-            # Better error handling
-            if "choices" not in result:
-                print(f"Error: No 'choices' in response. Full response: {result}")
-                raise ValueError(f"Invalid response format from inference service: {result}")
+        message = choice["message"]
+        
+        # Return the content directly - no need to parse channels
+        content = message.get("content", "")
+        if not content:
+            print(f"Error: No content in message. Message: {message}")
+            raise ValueError(f"No content in message from inference service")
             
-            if not result["choices"] or not result["choices"][0]:
-                print(f"Error: Empty choices array. Full response: {result}")
-                raise ValueError(f"Empty choices in response from inference service")
-                
-            choice = result["choices"][0]
-            if "message" not in choice:
-                print(f"Error: No 'message' in choice. Choice: {choice}")
-                raise ValueError(f"No message in choice from inference service")
-                
-            if "content" not in choice["message"]:
-                print(f"Error: No 'content' in message. Message: {choice['message']}")
-                raise ValueError(f"No content in message from inference service")
-                
-            ai_response = choice["message"]["content"]
-            
-            # Parse channels even for non-Harmony
-            return self.parse_harmony_channels(ai_response)
-    
+        return content
     async def stream_chat_request(self, messages, config, reasoning_effort="low"):
         """
         Stream a chat request with proper backend Harmony channel parsing.
@@ -257,133 +184,79 @@ class HarmonyService:
         import json
         
         # Initialize channel parsing state
-        current_channel = None
-        buffer = ""
-        awaiting_channel_name = False
-        awaiting_message = False
-        
-        if self.enabled:
-            # Harmony path - use completion endpoint with streaming
-            harmony_tokens = self.prepare_conversation(messages, reasoning_effort)
-            harmony_prompt = self.encoding.decode(harmony_tokens)
-            
-            async with httpx.AsyncClient() as client:
-                async with client.stream(
-                    "POST",
-                    f"{config.INFERENCE_URL}/v1/completions",
-                    json={
-                        "prompt": harmony_prompt,
-                        "temperature": 0.7,
-                        "max_tokens": config.MAX_TOKENS,
-                        "stream": True
-                    },
-                    timeout=config.INFERENCE_TIMEOUT
-                ) as response:
-                    response.raise_for_status()
-                    
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            data = line[6:]
-                            
-                            if data.strip() == "[DONE]":
-                                break
-                            
-                            try:
-                                chunk_data = json.loads(data)
-                                
-                                if "choices" in chunk_data and chunk_data["choices"]:
-                                    choice = chunk_data["choices"][0]
-                                    token = choice.get("text", "")
-                                    finish_reason = choice.get("finish_reason")
-                                    
-                                    if token:
-                                        # Parse each token for Harmony channel markers
-                                        should_yield, current_channel, awaiting_channel_name, awaiting_message = \
-                                            self._process_harmony_token(token, current_channel, awaiting_channel_name, awaiting_message)
-                                        
-                                        # Only yield tokens from final channel
-                                        if should_yield:
-                                            yield token
-                                    
-                                    if finish_reason:
-                                        break
-                            
-                            except json.JSONDecodeError:
-                                continue
-                            except Exception:
-                                continue
-        else:
-            # Standard chat completions streaming (non-Harmony)
-            async with httpx.AsyncClient() as client:
-                async with client.stream(
-                    "POST",
-                    f"{config.INFERENCE_URL}/v1/chat/completions",
-                    json={
-                        "messages": messages,
-                        "temperature": 0.7,
-                        "max_tokens": config.MAX_TOKENS,
-                        "stream": True
-                    },
-                    timeout=config.INFERENCE_TIMEOUT
-                ) as response:
-                    response.raise_for_status()
-                    
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            data = line[6:]
-                            
-                            if data.strip() == "[DONE]":
-                                break
-                            
-                            try:
-                                chunk_data = json.loads(data)
-                                
-                                if "choices" in chunk_data and chunk_data["choices"]:
-                                    choice = chunk_data["choices"][0]
-                                    delta = choice.get("delta", {})
-                                    token = delta.get("content", "")
-                                    finish_reason = choice.get("finish_reason")
-                                    
-                                    if token:
-                                        # For non-Harmony, still try to parse channels
-                                        should_yield, current_channel, awaiting_channel_name, awaiting_message = \
-                                            self._process_harmony_token(token, current_channel, awaiting_channel_name, awaiting_message)
-                                        
-                                        # Only yield tokens from final channel or all if no channels detected
-                                        if should_yield or current_channel is None:
-                                            yield token
-                                    
-                                    if finish_reason:
-                                        break
-                            
-                            except json.JSONDecodeError:
-                                continue
-                            except Exception:
-                                continue
-    
-    def _process_harmony_token(self, token, current_channel, awaiting_channel_name, awaiting_message):
-        """
-        Process a single token for Harmony channel markers.
-        Returns (should_yield, current_channel, awaiting_channel_name, awaiting_message)
-        """
-        # Handle Harmony control tokens
-        if token == '<|channel|>':
-            return False, current_channel, True, awaiting_message
-        
-        if awaiting_channel_name:
-            if token in ['final', 'analysis', 'commentary']:
-                return False, token, False, awaiting_message
-        
-        if token == '<|message|>':
-            return False, current_channel, awaiting_channel_name, True
-        
-        # Filter out other control tokens
-        if token in ['<|start|>', '<|end|>', '<|return|>', '<|system|>', '<|user|>', '<|assistant|>']:
-            return False, current_channel, awaiting_channel_name, awaiting_message
-        
-        # For content tokens, only yield if we're in final channel and have seen message marker
-        if current_channel == 'final' and awaiting_message:
-            return True, current_channel, awaiting_channel_name, awaiting_message
-        
-        # Don't yield tokens from analysis or commentary channels
-        return False, current_channel, awaiting_channel_name, awaiting_message
+            # Harmony path - use chat completions endpoint with streaming
+        conversation = self.prepare_conversation_messages(messages, reasoning_effort)
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST",
+                f"{config.INFERENCE_URL}/v1/chat/completions",
+                json={
+                    "messages": conversation,
+                    "temperature": 0.7,
+                    "max_tokens": config.MAX_TOKENS,
+                    "stream": True
+                },
+                timeout=config.INFERENCE_TIMEOUT
+            ) as response:
+                response.raise_for_status()
+                answer_buf = []
+                reason_buf = []
+                tool_buf = []
+                
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        break
+
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        print(f"JSON decode error: {data}")
+                        continue
+
+                    if "choices" not in chunk or not chunk["choices"]:
+                        continue
+
+                    choice = chunk["choices"][0]
+                    delta = choice.get("delta", {})
+                    finish_reason = choice.get("finish_reason")
+
+                    # 1) role frames
+                    role = delta.get("role")
+
+                    # 2) reasoning stream (optional)
+                    rc = delta.get("reasoning_content")
+                     
+                    if rc:
+                        print(f"Δ(reasoning): {rc!r}")
+                        reason_buf.append(rc)
+                        # comment out in prod
+
+                    # 3) tool calls (if any)
+                    tcs = delta.get("tool_calls")
+                    if tcs:
+                        tool_buf.extend(tcs)
+                        print(f"Δ(tool_calls): {tcs.json()}")
+
+                    # 4) actual answer text
+                    token = delta.get("content")
+                    if token is not None:  # may be "" sometimes; still append
+                        answer_buf.append(token)
+                        # stream to client
+                        if token:
+                            yield token
+
+                    if finish_reason is not None:
+                        print(f"Finish reason: {finish_reason}")
+                        break
+
+                    final_text = "".join(answer_buf)
+                    if final_text:
+                        print(f"Final text: {final_text}")
+                        # If nothing was emitted and we saw tool_calls, you likely need to
+                        # execute tools and then continue the loop with a tool message.
+                    if not final_text and tool_buf:
+                        print(f"Tool calls: {tool_buf.json()}")
+                        print("No content; tool_calls were emitted. Execute tools or set tool_choice='none' to force text.")

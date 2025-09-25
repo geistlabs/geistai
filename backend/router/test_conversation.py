@@ -11,7 +11,7 @@ from reasonableness_service import reasonableness_service
 
 async def test_conversation():
     """Test a back-and-forth conversation with the AI"""
-    url = "http://localhost:8000/api/chat/stream"
+    url = f"http://localhost:8000/api/chat/stream"
     
     # Define a conversation flow
     conversation = [

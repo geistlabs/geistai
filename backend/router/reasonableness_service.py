@@ -10,13 +10,34 @@ import httpx
 import json
 from typing import Dict, Any, Optional
 import config
+from pathlib import Path
+
+# Load .env file from parent directory when running locally
+try:
+    from dotenv import load_dotenv
+    # Get the directory where this config.py file is located
+    current_dir = Path(__file__).parent
+    # Go up one directory to find the .env file
+    parent_dir = current_dir.parent
+    env_file = parent_dir / ".env"
+    
+    if env_file.exists():
+        load_dotenv(env_file)
+        print(f"Loaded environment variables from: {env_file}")
+    else:
+        print(f"No .env file found at: {env_file}")
+except ImportError:
+    print("python-dotenv not installed, skipping .env file loading")
+except Exception as e:
+    print(f"Error loading .env file: {e}")
 
 
 class ReasonablenessService:
     """Service for rating the reasonableness of AI responses."""
     
     def __init__(self):
-        self.base_url = config.INFERENCE_URL
+        self.base_url = config.OPENAI_URL
+        self.api_key = config.OPENAI_KEY
         
     async def rate_response(
         self, 
@@ -39,35 +60,39 @@ class ReasonablenessService:
             - confidence: float (0-1, how confident the rating is)
             - issues: list of specific issues found
         """
-      
-        
-    
-        # Construct the rating prompt
-        rating_prompt = self._build_rating_prompt(user_prompt, ai_response, context)
-        
+        # Construct the evaluation context
+        evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
+          
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",
-                   
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
                     json={
                         "messages": [
                             {
                                 "role": "system",
-                                "content": "You are an expert evaluator of AI responses. Rate responses on reasonableness, not accuracy."
+                                "content": "You are an expert evaluator of AI responses. You must use the provided tool to return your rating as structured JSON. Rate responses on reasonableness, not factual accuracy."
                             },
                             {
                                 "role": "user",
-                                "content": rating_prompt
+                                "content": evaluation_context
                             }
                         ],
-                        "temperature": 0.1,  # Low temperature for consistent ratings
-                        "max_tokens": 500
-                    },
-                    timeout=30.0
+                        "model": "gpt-4o-mini",
+                        "tools": [self._get_rating_tool_definition()],
+                        "tool_choice": "auto",
+                    }
+                    ,
+                    timeout=300.0
                 )
                 if response.status_code != 200:
+                    print(f"Response: {response.json()}")
                     return {
+                
                         "rating": 0.5,
                         "reasoning": f"Rating API error: {response.status_code}",
                         "confidence": 0.0,
@@ -75,10 +100,46 @@ class ReasonablenessService:
                     }
                 
                 result = response.json()
-                rating_text = result["choices"][0]["message"]["content"]
-                # Parse the rating response
-                return self._parse_rating_response(rating_text)
+                # Extract the tool call response
+                tool_calls = result["choices"][0]["message"].get("tool_calls", [])
+                if not tool_calls:
+                    return {
+                        "rating": 0.5,
+                        "reasoning": "No tool call found in response",
+                        "confidence": 0.0,
+                        "issues": ["Missing tool call"]
+                    }
                 
+                # Parse the structured response from the tool call
+                tool_call = tool_calls[0]
+                arguments = json.loads(tool_call["function"]["arguments"])
+                
+                # Validate and normalize the response
+                return self._validate_rating_response(arguments)
+        except httpx.TimeoutException as e:
+            print(f"Rating service timeout: {str(e)}")
+            return {
+                "rating": 0.5,
+                "reasoning": f"Rating service timeout: {str(e)}",
+                "confidence": 0.0,
+                "issues": ["Service timeout"]
+            }
+        except httpx.HTTPStatusError as e:
+            print(f"Rating service HTTP status error: {str(e)}")
+            return {
+                "rating": 0.5,
+                "reasoning": f"Rating service HTTP status error: {str(e)}",
+                "confidence": 0.0,
+                "issues": ["Service HTTP status error"]
+            }
+        except httpx.RequestError as e:
+            print(f"Rating service request error: {str(e)}")
+            return {
+                "rating": 0.5,
+                "reasoning": f"Rating service request error: {str(e)}",
+                "confidence": 0.0,
+                "issues": ["Service request error"]
+            }
         except Exception as e:
             return {
                 "rating": 0.5,
@@ -87,16 +148,10 @@ class ReasonablenessService:
                 "issues": ["Service unavailable"]
             }
     
-    def _build_rating_prompt(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
-        """Build the prompt for rating the response."""
+    def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
+        """Build the evaluation context for the rating tool call."""
         
-        prompt = f"""Rate the reasonableness of this AI response on a scale of 0-1, where:
-- 1.0 = Perfectly reasonable, directly addresses the prompt, appropriate tone and length
-- 0.8-0.9 = Very reasonable, minor issues
-- 0.6-0.7 = Reasonably good, some issues but mostly appropriate
-- 0.4-0.5 = Somewhat reasonable, notable issues
-- 0.2-0.3 = Not very reasonable, significant problems
-- 0.0-0.1 = Completely unreasonable, inappropriate, or irrelevant
+        evaluation_text = f"""Please evaluate the reasonableness of this AI response using the provided tool.
 
 USER PROMPT: "{user_prompt}"
 
@@ -104,87 +159,99 @@ AI RESPONSE: "{ai_response}"
 """
 
         if context:
-            prompt += f"\nADDITIONAL CONTEXT: {context}"
+            evaluation_text += f"\nADDITIONAL CONTEXT: {context}"
 
-        prompt += """
+        evaluation_text += """
 
-Please respond with a JSON object containing:
-{
-    "rating": <float between 0.0 and 1.0>,
-    "reasoning": "<brief explanation of the rating>",
-    "confidence": <float between 0.0 and 1.0 indicating your confidence in this rating>,
-    "issues": ["<list of specific issues found, if any>"]
-}
-
-Focus on:
+Evaluation criteria:
 - Does the response address what the user asked?
 - Is the tone appropriate?
 - Is the length reasonable for the question?
 - Are there any obvious errors or inconsistencies?
 - Is the response helpful and relevant?
 
-Rate based on reasonableness, not factual accuracy."""
+Rate based on reasonableness, not factual accuracy. Use the rating scale:
+- 1.0 = Perfectly reasonable, directly addresses the prompt, appropriate tone and length
+- 0.8-0.9 = Very reasonable, minor issues
+- 0.6-0.7 = Reasonably good, some issues but mostly appropriate
+- 0.4-0.5 = Somewhat reasonable, notable issues
+- 0.2-0.3 = Not very reasonable, significant problems
+- 0.0-0.1 = Completely unreasonable, inappropriate, or irrelevant"""
 
-        return prompt
+        return evaluation_text
     
-    def _parse_rating_response(self, rating_text: str) -> Dict[str, Any]:
-        """Parse the rating response from the AI."""
-        
-        try:
-            # Try to extract JSON from the response
-            import re
-            
-            # Look for JSON in the response
-            json_match = re.search(r'\{.*\}', rating_text, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                rating_data = json.loads(json_str)
-                
-                # Validate and normalize the response
-                rating = float(rating_data.get("rating", 0.5))
-                rating = max(0.0, min(1.0, rating))  # Clamp to 0-1
-                
-                confidence = float(rating_data.get("confidence", 0.5))
-                confidence = max(0.0, min(1.0, confidence))  # Clamp to 0-1
-                
-                return {
-                    "rating": rating,
-                    "reasoning": str(rating_data.get("reasoning", "No reasoning provided")),
-                    "confidence": confidence,
-                    "issues": rating_data.get("issues", [])
-                }
-            else:
-                # Fallback parsing if no JSON found
-                return self._fallback_parse(rating_text)
-                
-        except (json.JSONDecodeError, ValueError, KeyError) as e:
-            # Fallback parsing
-            return self._fallback_parse(rating_text)
-    
-    def _fallback_parse(self, rating_text: str) -> Dict[str, Any]:
-        """Fallback parsing when JSON parsing fails."""
-        
-        # Try to extract a number from the text
-        import re
-        
-        # Look for numbers that could be ratings
-        numbers = re.findall(r'\b(0\.\d+|\d+\.\d+)\b', rating_text)
-        
-        if numbers:
-            try:
-                rating = float(numbers[0])
-                rating = max(0.0, min(1.0, rating))
-            except ValueError:
-                rating = 0.5
-        else:
-            rating = 0.5
-        
+    def _get_rating_tool_definition(self) -> Dict[str, Any]:
+        """Get the tool definition for rating responses."""
         return {
-            "rating": rating,
-            "reasoning": f"Fallback parsing: {rating_text[:200]}...",
-            "confidence": 0.3,  # Lower confidence for fallback
-            "issues": ["Could not parse structured rating"]
+            "type": "function",
+            "function": {
+                "name": "rate_response_reasonableness",
+                "description": "Rate the reasonableness of an AI response on a 0-1 scale",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "rating": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "description": "Reasonableness rating from 0.0 to 1.0"
+                        },
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Brief explanation of the rating"
+                        },
+                        "confidence": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "description": "Confidence in this rating from 0.0 to 1.0"
+                        },
+                        "issues": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of specific issues found, if any"
+                        }
+                    },
+                    "required": ["rating", "reasoning", "confidence", "issues"]
+                }
+            }
         }
+    
+    def _validate_rating_response(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and normalize the rating response from the tool call."""
+        try:
+            # Extract and validate rating
+            rating = float(arguments.get("rating", 0.5))
+            print(f"Rating: {rating}")
+            rating = max(0.0, min(1.0, rating))  # Clamp to 0-1
+            
+            # Extract and validate confidence
+            confidence = float(arguments.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))  # Clamp to 0-1
+            
+            # Extract other fields
+            reasoning = str(arguments.get("reasoning", "No reasoning provided"))
+            issues = arguments.get("issues", [])
+            
+            # Ensure issues is a list
+            if not isinstance(issues, list):
+                issues = [str(issues)] if issues else []
+            
+            return {
+                "rating": rating,
+                "reasoning": reasoning,
+                "confidence": confidence,
+                "issues": [str(issue) for issue in issues]
+            }
+            
+        except (ValueError, TypeError) as e:
+            return {
+                "rating": 0.5,
+                "reasoning": f"Error validating response: {str(e)}",
+                "confidence": 0.0,
+                "issues": ["Response validation failed"]
+            }
+    
     
     async def batch_rate_responses(
         self, 
