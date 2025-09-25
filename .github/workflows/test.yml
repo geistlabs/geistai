@@ -51,7 +51,7 @@ jobs:
       working-directory: ./backend
       run: |
         cat > .env << EOF
-        OPENAI_API_KEY=test-key-for-ci
+        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
         INFERENCE_URL=http://localhost:8080
         EMBEDDINGS_URL=http://localhost:8001
         HARMONY_ENABLED=false
@@ -64,7 +64,7 @@ jobs:
         python main.py &
         sleep 10  # Wait for service to start
       env:
-        OPENAI_API_KEY: test-key-for-ci
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
         LOG_LEVEL: INFO
@@ -78,7 +78,7 @@ jobs:
       run: |
         python test_streaming.py
       env:
-        OPENAI_API_KEY: test-key-for-ci
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
 
@@ -87,7 +87,7 @@ jobs:
       run: |
         python test_conversation.py
       env:
-        OPENAI_API_KEY: test-key-for-ci
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
 
@@ -96,7 +96,7 @@ jobs:
       run: |
         python test_health_endpoint.py
       env:
-        OPENAI_API_KEY: test-key-for-ci
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
 
