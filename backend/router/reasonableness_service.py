@@ -62,6 +62,7 @@ class ReasonablenessService:
         """
         # Construct the evaluation context
         evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
+        print(f"{evaluation_context}", "evaluation_context")
           
         try:
             async with httpx.AsyncClient() as client:
