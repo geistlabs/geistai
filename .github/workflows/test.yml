@@ -1,0 +1,110 @@
+name: Test Router Services
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test-router:
+    runs-on: ubuntu-latest
+    
+    services:
+      # Mock inference service for testing
+      mock-inference:
+        image: nginx:alpine
+        ports:
+          - 8080:80
+        options: >-
+          --health-cmd "curl -f http://localhost:80 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'  # Match your pyproject.toml requirement
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('backend/router/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      working-directory: ./backend/router
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install python-dotenv pytest pytest-asyncio
+
+    - name: Create test environment file
+      working-directory: ./backend
+      run: |
+        cat > .env << EOF
+        OPENAI_API_KEY=test-key-for-ci
+        INFERENCE_URL=http://localhost:8080
+        EMBEDDINGS_URL=http://localhost:8001
+        HARMONY_ENABLED=false
+        LOG_LEVEL=INFO
+        EOF
+
+    - name: Start router service
+      working-directory: ./backend/router
+      run: |
+        python main.py &
+        sleep 10  # Wait for service to start
+      env:
+        OPENAI_API_KEY: test-key-for-ci
+        INFERENCE_URL: http://localhost:8080
+        EMBEDDINGS_URL: http://localhost:8001
+        HARMONY_ENABLED: false
+        LOG_LEVEL: INFO
+
+    - name: Wait for router to be ready
+      run: |
+        timeout 30 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+
+    - name: Run streaming tests
+      working-directory: ./backend/router
+      run: |
+        python test_streaming.py
+      env:
+        OPENAI_API_KEY: test-key-for-ci
+        INFERENCE_URL: http://localhost:8080
+        EMBEDDINGS_URL: http://localhost:8001
+        HARMONY_ENABLED: false
+
+    - name: Run conversation tests
+      working-directory: ./backend/router
+      run: |
+        python test_conversation.py
+      env:
+        OPENAI_API_KEY: test-key-for-ci
+        INFERENCE_URL: http://localhost:8080
+        EMBEDDINGS_URL: http://localhost:8001
+        HARMONY_ENABLED: false
+
+    - name: Run health check tests
+      working-directory: ./backend/router
+      run: |
+        python test_health_endpoint.py
+      env:
+        OPENAI_API_KEY: test-key-for-ci
+        INFERENCE_URL: http://localhost:8080
+        EMBEDDINGS_URL: http://localhost:8001
+        HARMONY_ENABLED: false
+
+    - name: Cleanup
+      if: always()
+      run: |
+        pkill -f "python main.py" || true

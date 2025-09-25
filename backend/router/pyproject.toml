@@ -3,7 +3,7 @@ name = "router"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.116.1",
     "httpx>=0.28.1",
@@ -11,4 +11,12 @@ dependencies = [
     "uvicorn>=0.35.0",
     "sse-starlette>=1.6.5",
     "python-multipart>=0.0.20",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-httpx>=0.21.0",
 ]
