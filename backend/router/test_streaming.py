@@ -14,7 +14,6 @@ async def test_streaming(prompt):
     """Test the streaming endpoint"""\
 
     url = f"http://localhost:8000/api/chat/stream"
-    print(f"URL: {url}")
     payload = {"message": prompt}
   
     
@@ -27,10 +26,8 @@ async def test_streaming(prompt):
                 headers={"Accept": "text/event-stream"},
                 timeout=30.0
             ) as response:
-                print(f"Response status: {response.status_code}")
                 
                 if response.status_code != 200:
-                    print(f"Error: {await response.atext()}")
                     return
                 
                 print("📡 Streaming response:")
@@ -47,7 +44,6 @@ async def test_streaming(prompt):
                             data = json.loads(data_str)
                             
                             if "token" in data:
-                                print(f"Token: {data['token']}")
                                 token = data["token"]
                                 full_response += token
                                 chunk_count += 1

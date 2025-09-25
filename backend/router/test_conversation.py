@@ -68,7 +68,6 @@ async def test_conversation():
                                 
                                 if "token" in data:
                                     token = data["token"]
-                                    print(token, end="", flush=True)
                                     full_response += token
                                     chunk_count += 1
                                 elif "finished" in data:
@@ -86,7 +85,6 @@ async def test_conversation():
                     conversation_history.append({"role": "assistant", "content": full_response})
                     
                     # Rate the response
-                    print(f"\n🔍 Rating response...")
                     try:
                         rating_result = await reasonableness_service.rate_response(
                             user_prompt=user_message,
