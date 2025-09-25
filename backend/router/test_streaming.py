@@ -97,6 +97,6 @@ async def test_streaming(prompt):
 if __name__ == "__main__":
     print("🧪 Starting streaming tests with reasonableness rating...")
     
-   # asyncio.run(test_streaming("Hello, tell me a short story"))
+    asyncio.run(test_streaming("Hello, tell me a short story"))
     asyncio.run(test_streaming("What is the capital of France?"))
-    #asyncio.run(test_streaming("Name the last 5 English kings and queens"))
+    asyncio.run(test_streaming("Name the last 5 English kings and queens"))
