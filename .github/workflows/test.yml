@@ -61,7 +61,8 @@ jobs:
     - name: Start router service
       working-directory: ./backend/router
       run: |
-        python main.py &
+        python main.py > router.log 2>&1 &
+        echo $! > router.pid
         sleep 10  # Wait for service to start
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -100,7 +101,20 @@ jobs:
         INFERENCE_URL: http://localhost:8080
         EMBEDDINGS_URL: http://localhost:8001
 
+    - name: Save router logs
+      if: always()
+      working-directory: ./backend/router
+      run: |
+        echo "=== Router Logs ==="
+        cat router.log || echo "No router.log found"
+        echo "=== End Router Logs ==="
+
     - name: Cleanup
       if: always()
+      working-directory: ./backend/router
       run: |
+        if [ -f router.pid ]; then
+          kill $(cat router.pid) 2>/dev/null || true
+          rm -f router.pid
+        fi
         pkill -f "python main.py" || true
