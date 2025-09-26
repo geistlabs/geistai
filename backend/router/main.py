@@ -10,7 +10,8 @@ import json
 import logging
 import os
 import config
-from harmony_service import HarmonyService
+from gpt_service import GptService
+
 from stt_service import STTService
 
 # Configure logging
@@ -51,8 +52,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Harmony service if enabled
-harmony_service = HarmonyService() 
+# Initialize Gpt service if enabled
+gpt_service = GptService() 
 
 # Initialize STT service
 # Use relative paths from the backend directory to make it more portable
@@ -143,8 +144,8 @@ async def chat(request: ChatRequest):
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": request.message}]
 
-        ai_response = await harmony_service.process_chat_request(
-            messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT
+        ai_response = await gpt_service.process_chat_request(
+            messages, config, reasoning_effort=config.REASONING_EFFORT
         )
 
     return {"response": ai_response}
@@ -170,10 +171,9 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         chunk_sequence = 0
         print(f"INFERENCE_URL: {config.INFERENCE_URL}")
         try:
-            print(f"Harmony service: {harmony_service}")
-            # Stream tokens from harmony service
-            async for token in harmony_service.stream_chat_request(
-                messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT
+            # Stream tokens from gpt service
+            async for token in gpt_service.stream_chat_request(
+                messages, config, reasoning_effort=config.REASONING_EFFORT
             ):
                 # Check if client is still connected
                 if await request.is_disconnected():
@@ -192,6 +192,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         except asyncio.TimeoutError as e:
             yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
         except Exception as e:
+            print(f"Error in chat_stream: {e}")
             yield {
                 "data": json.dumps({"error": "Internal server error"}),
                 "event": "error",

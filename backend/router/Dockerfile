@@ -15,7 +15,7 @@ COPY . .
 # Note: Certificates should be mounted as a volume at runtime
 
 # Install dependencies 
-RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette python-multipart
+RUN pip install "mcp[docker]" mcp fastapi uvicorn httpx openai-harmony sse-starlette python-multipart websockets
 
 # Create non-root user
 RUN useradd -m -u 1000 router && chown -R router:router /app

@@ -29,10 +29,9 @@ def _load_openai_key_from_env():
 # Load OpenAI key from .env if needed
 _load_openai_key_from_env()
 
-# Harmony configuration
-HARMONY_ENABLED = os.getenv("HARMONY_ENABLED", "true").lower() == "true"
-HARMONY_REASONING_EFFORT = os.getenv(
-    "HARMONY_REASONING_EFFORT", "low"
+# Gpt configuration
+REASONING_EFFORT = os.getenv(
+    "REASONING_EFFORT", "low"
 )  # "low", "medium", "high"
 
 # External service settings
@@ -40,7 +39,8 @@ INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
 OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
 OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
-
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 # ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")

@@ -12,6 +12,7 @@ dependencies = [
     "sse-starlette>=1.6.5",
     "python-multipart>=0.0.20",
     "python-dotenv>=1.0.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,7 @@ build-backend = "setuptools.build_meta"
 py-modules = [
     "main",
     "config", 
-    "harmony_service",
+    "gpt_service",
     "reasonableness_service",
     "stt_service"
 ]
