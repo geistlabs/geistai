@@ -9,7 +9,6 @@ services:
       - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
-      - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
       - SSL_ENABLED=false
@@ -60,7 +59,6 @@ services:
       - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
-      - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference-gpu:8080
       - SSL_ENABLED=false
