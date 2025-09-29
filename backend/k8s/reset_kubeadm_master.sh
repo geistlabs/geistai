@@ -137,9 +137,22 @@ sysctl -w net.bridge.bridge-nf-call-iptables=1   >/dev/null 2>&1 || true
 sysctl -w net.bridge.bridge-nf-call-ip6tables=1  >/dev/null 2>&1 || true
 sysctl -w net.ipv4.ip_forward=1                  >/dev/null 2>&1 || true
 
-log "Reloading systemd units and enabling kubelet (not starting yet)..."
-systemctl daemon-reload || true
-systemctl enable kubelet 2>/dev/null || true
+log "Ensuring kubelet unit is sane (no global daemon-reload, no start)..."
+
+# If kubelet was previously failed, clear that state (does not restart it)
+systemctl reset-failed kubelet.service 2>/dev/null || true
+
+# Make sure the kubelet unit file exists before enabling
+if systemctl status kubelet.service >/dev/null 2>&1; then
+  # Enable kubelet to start on boot, but do not start it now
+  systemctl is-enabled kubelet >/dev/null 2>&1 || systemctl enable kubelet >/dev/null 2>&1 || true
+
+  # In case unit symlinks changed and systemd wants a refresh for THIS unit only:
+  # 'reenable' re-writes symlinks without a global daemon-reload.
+  systemctl reenable kubelet >/dev/null 2>&1 || true
+else
+  warn "kubelet.service not found; skipping unit enable."
+fi
 
 log "Cleanup complete."
 echo
