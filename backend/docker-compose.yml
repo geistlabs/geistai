@@ -34,6 +34,7 @@ services:
       ]
     depends_on:
       - inference
+      - gateway
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -84,6 +85,7 @@ services:
       ]
     depends_on:
       - inference-gpu
+      - gateway
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -101,6 +103,78 @@ services:
     profiles:
       - gpu
 
+  gateway:
+    image: docker/mcp-gateway
+    ports:
+      - "9011:9011"
+    command:
+      - --transport=http
+      - --servers=brave,fetch
+      - --verbose=true
+      - --port=9011
+      - --static=true
+      - --log-calls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "4G"
+        reservations:
+          cpus: "1.0"
+          memory: "2G"
+    networks:
+      - geist-network
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    depends_on:
+      - mcp-brave
+      - mcp-fetch
+
+  
+  mcp-brave:
+    image: mcp/brave-search:latest
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "node", "dist/index.js"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=brave
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    networks:
+      - geist-network
+
+  mcp-fetch:
+    image: mcp/fetch@sha256:ef9535a3f07249142f9ca5a6033d7024950afdb6dc05e98292794a23e9f5dfbe
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "mcp-server-fetch"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    networks: 
+      - geist-network
+  
   # CPU-only inference service (default)
   inference:
     build:
