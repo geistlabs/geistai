@@ -157,16 +157,24 @@ fi
 
 ### --- CNI: Calico ---
 echo "[STEP] Installing Calico CNI..."
-# Download the Calico manifest
-wget https://docs.projectcalico.org/manifests/calico.yaml
+# Apply the official Calico manifest (using original CNI version for compatibility)
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
 
-# Modify the cniVersion in the ConfigMap to 1.0.0
-sed -i 's/"cniVersion": "0.3.1"/"cniVersion": "1.0.0"/' calico.yaml
+### --- Remove control plane taints for pod scheduling ---
+echo "[STEP] Removing control plane taints to allow pod scheduling..."
+NODE_NAME=$(kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name | head -1)
+kubectl taint nodes "${NODE_NAME}" node-role.kubernetes.io/control-plane- 2>/dev/null || true
+kubectl taint nodes "${NODE_NAME}" node-role.kubernetes.io/master- 2>/dev/null || true
 
-# Apply the modified Calico manifest
-kubectl apply -f calico.yaml
+### --- Wait for Calico to be ready ---
+echo "[STEP] Waiting for Calico CNI to be ready..."
+echo "  Waiting for calico-node pods..."
+kubectl wait --for=condition=Ready pod -l k8s-app=calico-node -n kube-system --timeout=300s || true
 
-### --- Wait for node to become Ready (best-effort) ---
+echo "  Waiting for calico-kube-controllers..."
+kubectl wait --for=condition=Ready pod -l k8s-app=calico-kube-controllers -n kube-system --timeout=300s || true
+
+### --- Wait for node to become Ready ---
 echo "[STEP] Waiting for control-plane node to become Ready..."
 for i in {1..60}; do
   NOTREADY=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2!="Ready"{print}')
