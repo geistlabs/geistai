@@ -134,7 +134,6 @@ class SimpleMCPClient:
         if response.status_code != 200:
             raise Exception(f"List tools failed: {response.status_code} - {response.text}")
         
-        print(f"Tools list response: {response.text}")
         
         # Parse the response
         response_text = response.text
@@ -146,7 +145,6 @@ class SimpleMCPClient:
                     json_str = line[6:]  # Remove 'data: ' prefix
                     try:
                         result = json.loads(json_str)
-                        print(f"Parsed tools result: {result}")
                         break
                     except json.JSONDecodeError:
                         continue
@@ -161,8 +159,10 @@ class SimpleMCPClient:
         else:
             return []
     
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any], secrets: Dict[str, str] = None) -> Dict[str, Any]:
         """Call a tool"""
+        print(f"Calling tool: {tool_name} with arguments: {arguments}")
+        
         call_request = {
             "jsonrpc": "2.0",
             "id": 3,
@@ -181,6 +181,11 @@ class SimpleMCPClient:
         # Add session ID if available
         if self.session_id:
             headers["mcp-session-id"] = self.session_id
+        
+        # Add secrets if provided
+        if secrets:
+            # MCP Gateway expects secrets in a specific format
+            headers["mcp-secrets"] = json.dumps(secrets)
         
         response = await self.client.post(
             self.url,
@@ -229,8 +234,7 @@ async def test_simple_client():
             # List tools
             tools = await client.list_tools()
             print(f"✅ Available tools: {len(tools)}")
-            for tool in tools:
-                print(f"  - {tool.get('name', 'unknown')}: {tool.get('description', 'no description')}")
+
             
             # Test a tool call if available
             if tools:
@@ -239,7 +243,6 @@ async def test_simple_client():
                     print(f"Testing tool: {tool_name}")
                     try:
                         result = await client.call_tool(tool_name, {})
-                        print(f"✅ Tool call result: {result}")
                     except Exception as e:
                         print(f"❌ Tool call failed: {e}")
                         

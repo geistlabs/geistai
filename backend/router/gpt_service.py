@@ -11,8 +11,12 @@ import httpx
 from simple_mcp_client import SimpleMCPClient
 
 
+PERMITTED_TOOLS = ["brave_web_search"]
+
+
 class GptService:
     def __init__(self):
+
         self._tool_registry: Dict[str, dict] = {}
         self._mcp_client: SimpleMCPClient = None
 
@@ -78,7 +82,7 @@ class GptService:
             self._mcp_client = None
         self._tool_registry.clear()
 
-    async def _call_mcp_tool(self, tool_name: str, arguments: dict):
+    async def _call_mcp_tool(self, tool_name: str, arguments: dict, config):
         """Call an MCP tool"""
         print(f"Calling MCP tool: {tool_name} with arguments: {arguments}")
         if tool_name not in self._tool_registry:
@@ -86,7 +90,20 @@ class GptService:
         
         try:
             client = self._tool_registry[tool_name]["client"]
-            result = await client.call_tool(tool_name, arguments)
+            
+            # Prepare secrets based on the tool being called
+            secrets = {}
+            if tool_name == "brave_web_search":
+                print(f"  ✓ Adding Brave API key to secrets", config.BRAVE_API_KEY)
+                brave_api_key = config.BRAVE_API_KEY
+                if brave_api_key:
+                    secrets["brave.api_key"] = brave_api_key
+                    print(f"  ✓ Adding Brave API key to secrets")
+                else:
+                    print(f"  ⚠️ BRAVE_API_KEY not found in environment")
+            
+            # Call the tool with secrets
+            result = await client.call_tool(tool_name, arguments, secrets=secrets)
             
             # Extract content from MCP result
             if "result" in result and "content" in result["result"]:
@@ -141,7 +158,7 @@ class GptService:
             "For simple questions, limit responses to 1–2 sentences.\n\n"
             "FORMATTING RULES (MOBILE CRITICAL):\n"
             "NEVER use markdown tables (|---|---|).\n"
-            "Use search tools when you need current information or to verify facts.\n"
+            "Only use search tools when specifically asked for current information or to verify facts.\n"
         )
         result_messages = []
         has_system = any(msg.get("role") == "system" for msg in messages)
@@ -164,6 +181,8 @@ class GptService:
         # This function seems correct, no changes needed here.
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
         async with httpx.AsyncClient() as client:
+            print(config.INFERENCE_URL, "my inference url")
+
             response = await client.post(
                 f"{config.INFERENCE_URL}/v1/chat/completions",
                 json={
@@ -195,7 +214,7 @@ class GptService:
     async def stream_chat_request(self, messages, config, reasoning_effort="low"):
         """Stream chat request with MCP tool calling support"""
         try:
-            print(f"Starting stream_chat_request: {messages}")
+            
             if not self._tool_registry:
                 print(f"Initializing MCP")
                 await self.init_mcp(config)
@@ -207,99 +226,82 @@ class GptService:
             async def llm_stream_once(msgs):
                 # Add tools to the request if available
                 request_data = {
-                    "messages": msgs, 
+                    
+                    "messages": msgs,  # ✅ Use the parameter
                     "temperature": 0.7, 
                     "max_tokens": config.MAX_TOKENS, 
                     "stream": True
                 }
+
                 
                 # Add tool definitions if we have any
                 if self._tool_registry:
                     tools = []
                     for tool_name, tool_info in self._tool_registry.items():
-                        # Create dynamic tool definitions based on available tools
-                        if tool_name == "search":
-                            tools.append({
-                                "type": "function",
-                                "function": {
-                                    "name": "search",
-                                    "description": "Search the web using DuckDuckGo",
-                                    "parameters": {
-                                        "type": "object",
-                                        "properties": {
-                                            "query": {
-                                                "type": "string",
-                                                "description": "The search query"
-                                            }
-                                        },
-                                        "required": ["query"]
-                                    }
-                                }
-                            })
-                        elif tool_name == "fetch_content":
-                            tools.append({
-                                "type": "function", 
-                                "function": {
-                                    "name": "fetch_content",
-                                    "description": "Fetch and parse content from a webpage URL",
-                                    "parameters": {
-                                        "type": "object",
-                                        "properties": {
-                                            "url": {
-                                                "type": "string",
-                                                "description": "The webpage URL to fetch content from"
-                                            }
-                                        },
-                                        "required": ["url"]
-                                    }
-                                }
-                            })
-                        else:
-                            # Generic tool definition for other tools
-                            tools.append({
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "description": tool_info.get("description", f"Tool: {tool_name}"),
-                                    "parameters": {
-                                        "type": "object",
-                                        "properties": {},
-                                        "required": []
-                                    }
-                                }
-                            })
-                    
+                        try:
+                            
+                            # Only register tools that have proper input schemas
+                            input_schema = tool_info.get("input_schema", {})
+                            if input_schema and "properties" in input_schema:
+                                if tool_name in PERMITTED_TOOLS:
+                                    tools.append({
+                                        "type": "function",
+                                        "function": {
+                                            "name": tool_name,
+                                            "description": tool_info.get("description", f"Tool: {tool_name}"),
+                                            "parameters": input_schema
+                                        }
+                                    })
+                        except Exception as e:
+                            print(f"Error processing tool {tool_name}: {e}")
+                            continue
+                
                     if tools:
                         request_data["tools"] = tools
                         request_data["tool_choice"] = "auto"
 
+
                 async with httpx.AsyncClient(timeout=config.INFERENCE_TIMEOUT) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{config.INFERENCE_URL}/v1/chat/completions",
-                        json=request_data,
-                    ) as resp:
-                        async for line in resp.aiter_lines():
-                            if not line or not line.startswith("data: "): 
-                                continue
-                            try:
-                                payload = json.loads(line[6:])
-                                yield payload
-                            except json.JSONDecodeError:
-                                if "[DONE]" in line:
-                                    break
-                                else:
-                                    print(f"Could not decode line: {line}")
+                    try:
+                        async with client.stream(
+                            "POST",
+                            f"{config.INFERENCE_URL}/v1/chat/completions",
+                            json=request_data,
+                            timeout=config.INFERENCE_TIMEOUT
+                        ) as resp:
+
+
+                            async for line in resp.aiter_lines():
+                                if not line or not line.startswith("data: "): 
                                     continue
+                                try:
+                                    payload = json.loads(line[6:])
+                                    yield payload
+                                except json.JSONDecodeError:
+                                    if "[DONE]" in line:
+                                        break
+                                    else:
+                                        print(f"Could not decode line: {line}")
+                                        continue
+                    except httpx.HTTPStatusError as e:
+                        print(f"HTTP status error in stream_chat_request: {e}")
+                        raise httpx.HTTPStatusError
+                    except httpx.TimeoutException as e:
+                        print(f"Timeout exception in stream_chat_request: {e}")
+                        raise httpx.TimeoutException
+                    except httpx.RequestError as e:
+                        print(f"Request error in stream_chat_request: {e}")
+                        raise httpx.RequestError
+                    except Exception as e:
+                        print(f"Error in stream_chat_request: {e}")
+                        raise e
 
             tool_calls = 0
             while tool_calls < MAX_TOOL_CALLS:
                 partial_text = []
-                tool_json_chunks = []
                 saw_tool = False
                 current_tool_calls = []
                 
-                print(f"Conversation: {conversation}")
                 async for delta in llm_stream_once(conversation):
                     if "choices" not in delta or not delta["choices"]:
                         continue
@@ -307,10 +309,11 @@ class GptService:
                     choice = delta["choices"][0]
                     delta_obj = choice.get("delta", {})
                     
-                    # Handle tool calls
+                    # Handle tool calls - accumulate them incrementally
                     if "tool_calls" in delta_obj:
                         saw_tool = True
                         tool_calls_delta = delta_obj["tool_calls"]
+                        print(f"📞 Tool calls delta received: {tool_calls_delta}")
                         
                         for tc_delta in tool_calls_delta:
                             tc_index = tc_delta.get("index", 0)
@@ -323,70 +326,103 @@ class GptService:
                                     "function": {"name": "", "arguments": ""}
                                 })
                             
-                            # Update tool call data
+                            # Accumulate tool call data incrementally
                             if "id" in tc_delta:
                                 current_tool_calls[tc_index]["id"] = tc_delta["id"]
+                                print(f"  ✓ Tool call ID: {tc_delta['id']}")
+                            
                             if "type" in tc_delta:
                                 current_tool_calls[tc_index]["type"] = tc_delta["type"]
+                            
                             if "function" in tc_delta:
                                 func_delta = tc_delta["function"]
                                 if "name" in func_delta:
                                     current_tool_calls[tc_index]["function"]["name"] += func_delta["name"]
+                                    print(f"  ✓ Tool name: {current_tool_calls[tc_index]['function']['name']}")
                                 if "arguments" in func_delta:
                                     current_tool_calls[tc_index]["function"]["arguments"] += func_delta["arguments"]
+                                    print(f"  ✓ Arguments so far: {current_tool_calls[tc_index]['function']['arguments']}")
                     
                     # Handle regular content
                     elif "content" in delta_obj and delta_obj["content"]:
                         content_chunk = delta_obj["content"]
                         partial_text.append(content_chunk)
-                        # Stream only the content directly
                         yield content_chunk
                     
-                    # Check for finish reason
-                    if choice.get("finish_reason") == "tool_calls" and current_tool_calls:
-                        # Execute tool calls
-                        for tool_call in current_tool_calls:
-                            if tool_call["function"]["name"] and tool_call["function"]["arguments"]:
-                                try:
-                                    args = json.loads(tool_call["function"]["arguments"])
-                                    tool_name = tool_call["function"]["name"]
-                                    
-                                    print(f"Calling tool: {tool_name} with args: {args}")
-                                    result = await self._call_mcp_tool(tool_name, args)
-                                    
-                                    # Add tool result to conversation
-                                    conversation.append({
-                                        "role": "assistant",
-                                        "content": None,
-                                        "tool_calls": [tool_call]
-                                    })
-                                    conversation.append(self._tool_result_message(tool_name, result))
-                                    
-                                    # Don't stream tool calling details to user - just continue processing
-                                    
-                                except Exception as e:
-                                    print(f"Error executing tool {tool_call['function']['name']}: {e}")
-                                    error_result = {"error": str(e)}
-                                    conversation.append(self._tool_result_message(tool_call["function"]["name"], error_result))
-                                    # If tool call fails, break to prevent infinite loops
-                                    break
+                    # Check for finish reason - ONLY execute tools when finish_reason is "tool_calls"
+                    finish_reason = choice.get("finish_reason")
+                    if finish_reason:
+                        print(f"🏁 Finish reason: {finish_reason}")
                         
-                        tool_calls += 1
-                        # Small delay to make response feel more natural
-                        await asyncio.sleep(0.1)
-                        break  # Break inner loop to start new LLM call
-                    
-                    elif choice.get("finish_reason") == "stop":
-                        # Regular completion, no more tool calls
-                        print("Regular completion, no more tool calls")
-                        #yield "data: [DONE]\n\n"
-                        return
+                        if finish_reason == "tool_calls" and current_tool_calls:
+                            print(f"🔧 Executing {len(current_tool_calls)} tool call(s)")
+                            
+                            # Execute tool calls
+                            for tool_call in current_tool_calls:
+                                tool_name = tool_call["function"]["name"]
+                                tool_args = tool_call["function"]["arguments"]
+                                
+                                print(f"  📞 Tool: {tool_name}")
+                                print(f"  📝 Raw arguments: {tool_args}")
+                                
+                                if tool_name and tool_args:
+                                    try:
+                                        args = json.loads(tool_args)
+                                        print(f"  ✅ Parsed args: {args}")
+                                        
+                                        result = await self._call_mcp_tool(tool_name, args, config)
+                                        print(f"  ✅ Tool result: {result}")
+                                        
+                                        # Add tool result to conversation
+                                        conversation.append({
+                                            "role": "assistant",
+                                            "content": None,
+                                            "tool_calls": [tool_call]
+                                        })
+                                        conversation.append(self._tool_result_message(tool_name, result))
+                                        
+                                    except json.JSONDecodeError as e:
+                                        print(f"  ❌ Failed to parse JSON arguments: {e}")
+                                        print(f"  ❌ Raw arguments were: {tool_args}")
+                                        error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
+                                        conversation.append(self._tool_result_message(tool_name, error_result))
+                                        break
+                                        
+                                    except Exception as e:
+                                        print(f"  ❌ Error executing tool {tool_name}: {e}")
+                                        import traceback
+                                        traceback.print_exc()
+                                        error_result = {"error": str(e)}
+                                        conversation.append(self._tool_result_message(tool_name, error_result))
+                                        break
+                                else:
+                                    print(f"  ⚠️ Skipping incomplete tool call: name={tool_name}, args={tool_args}")
+                            
+                            tool_calls += 1
+                            await asyncio.sleep(0.1)
+                            break  # Break inner loop to start new LLM call with tool results
+                        
+                        elif finish_reason == "stop":
+                            print("✅ Regular completion, no more tool calls")
+                            # All content has already been yielded chunk by chunk
+                            # Just return to exit gracefully
+                            return
                 
                 if not saw_tool:
-                    print("No tool calls, we're done")
-                    # No tool calls, we're done
-                    #yield "data: [DONE]\n\n" 
+                    print("✅ No tool calls detected, we're done")
+                    # All content has already been yielded chunk by chunk
+                    # Just return to exit gracefully
                     return
+        except httpx.TimeoutException as e:
+            print("Timeout exception in stream_chat_request",e)
+            raise httpx.TimeoutException
+        
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP status error in stream_chat_request: {e}")
+            raise httpx.HTTPStatusError
+        except httpx.RequestError as e:
+            print(f"Request error in stream_chat_request {e}")
+            raise httpx.RequestError
 
         except Exception as e:
             print(f"Error in stream_chat_request: {e}")
@@ -416,6 +452,7 @@ class GptService:
         # Remove markdown table separators
         if "---" in content:
             content = content.replace("---", "")
+
         
         # Clean up multiple spaces
         content = " ".join(content.split())

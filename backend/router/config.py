@@ -36,11 +36,12 @@ REASONING_EFFORT = os.getenv(
 
 # External service settings
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
-INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
-OPENAI_URL = os.getenv("OPENAI_URL", "https://api.openai.com/v1")
+
+INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
+OPENAI_URL = "https://api.openai.com"
 OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
-BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 # ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
