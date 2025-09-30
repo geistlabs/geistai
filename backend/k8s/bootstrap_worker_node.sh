@@ -156,6 +156,59 @@ for i in {1..60}; do
   sleep 5
 done
 
+### --- Fix Calico CNI Configuration (NEW SECTION) ---
+echo "[STEP] Fixing Calico CNI configuration..."
+# Wait for Calico CNI configuration to be created
+for i in {1..30}; do
+  if [[ -f /etc/cni/net.d/calico-kubeconfig ]]; then
+    echo "[INFO] Calico kubeconfig found, fixing API server address..."
+    break
+  fi
+  echo "  Waiting for Calico CNI configuration to be created..."
+  sleep 2
+done
+
+# Extract the control plane IP from the join command
+CONTROL_PLANE_IP=$(echo "${JOIN_COMMAND}" | grep -o '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}' | head -1)
+if [[ -n "${CONTROL_PLANE_IP}" ]]; then
+  echo "[INFO] Detected control plane IP: ${CONTROL_PLANE_IP}"
+  
+  # Fix the Calico kubeconfig if it exists
+  if [[ -f /etc/cni/net.d/calico-kubeconfig ]]; then
+    # Backup the original
+    cp /etc/cni/net.d/calico-kubeconfig /etc/cni/net.d/calico-kubeconfig.backup
+    
+    # Update the API server address
+    sed -i "s|https://10\.96\.0\.1:443|https://${CONTROL_PLANE_IP}:6443|g" /etc/cni/net.d/calico-kubeconfig
+    
+    echo "[INFO] Updated Calico kubeconfig with correct API server address"
+    
+    # Restart containerd and kubelet to apply changes
+    echo "[INFO] Restarting containerd and kubelet to apply CNI configuration changes..."
+    systemctl restart containerd
+    systemctl restart kubelet
+    
+    # Wait a bit for services to stabilize
+    sleep 10
+  else
+    echo "[WARN] Calico kubeconfig not found, skipping CNI configuration fix"
+  fi
+else
+  echo "[WARN] Could not detect control plane IP from join command, skipping CNI configuration fix"
+fi
+
+### --- Final verification ---
+echo "[STEP] Final verification - waiting for node to become Ready after CNI fix..."
+for i in {1..30}; do
+  NODE_STATUS=$(kubectl --kubeconfig=/etc/kubernetes/kubelet.conf get nodes "$(hostname)" --no-headers 2>/dev/null | awk '{print $2}' || echo "NotFound")
+  if [[ "${NODE_STATUS}" == "Ready" ]]; then
+    echo "[INFO] Node is Ready after CNI fix!"
+    break
+  fi
+  echo "  Node status: ${NODE_PLANE_IP}: ${NODE_STATUS}, waiting..."
+  sleep 5
+done
+
 # Show final status
 echo "[STEP] Final node status:"
 kubectl --kubeconfig=/etc/kubernetes/kubelet.conf get nodes "$(hostname)" -o wide 2>/dev/null || echo "[WARN] Could not retrieve node status"
