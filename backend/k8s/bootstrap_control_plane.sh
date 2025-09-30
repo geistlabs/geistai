@@ -158,7 +158,7 @@ fi
 ### --- CNI: Calico ---
 echo "[STEP] Installing Calico CNI..."
 # Download the Calico manifest
-curl -O https://docs.projectcalico.org/manifests/calico.yaml
+wget https://docs.projectcalico.org/manifests/calico.yaml
 
 # Modify the cniVersion in the ConfigMap to 1.0.0
 sed -i 's/"cniVersion": "0.3.1"/"cniVersion": "1.0.0"/' calico.yaml
