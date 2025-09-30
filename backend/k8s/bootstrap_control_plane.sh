@@ -3,7 +3,7 @@
 # Usage:
 #   sudo bash bootstrap_control_plane.sh
 # Optional env overrides:
-#   POD_CIDR=192.168.0.0/16 CP_IP=1.2.3.4 DISABLE_FIREWALL=true K8S_VERSION=1.30.4-1.1
+#   POD_CIDR=192.168.0.0/16 CP_IP=1.2.3.4 DISABLE_FIREWALL=true K8S_VERSION=1.33.0-1.1
 
 set -euo pipefail
 
@@ -115,10 +115,10 @@ echo "[STEP] Installing Kubernetes components..."
 # Ensure the Kubernetes apt repo exists (handles fresh hosts)
 if [[ ! -f /etc/apt/keyrings/kubernetes-apt-keyring.gpg ]]; then
   install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.33/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
   cat >/etc/apt/sources.list.d/kubernetes.list <<'EOF'
-deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
+deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.33/deb/ /
 EOF
 fi
 apt-get update -y
