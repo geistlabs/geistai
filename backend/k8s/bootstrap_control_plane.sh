@@ -157,8 +157,14 @@ fi
 
 ### --- CNI: Calico ---
 echo "[STEP] Installing Calico CNI..."
-# If you need to customize the IPPool CIDR, you can download and edit before apply.
-kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+# Download the Calico manifest
+curl -O https://docs.projectcalico.org/manifests/calico.yaml
+
+# Modify the cniVersion in the ConfigMap to 1.0.0
+sed -i 's/"cniVersion": "0.3.1"/"cniVersion": "1.0.0"/' calico.yaml
+
+# Apply the modified Calico manifest
+kubectl apply -f calico.yaml
 
 ### --- Wait for node to become Ready (best-effort) ---
 echo "[STEP] Waiting for control-plane node to become Ready..."

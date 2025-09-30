@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # kubeadm-nuke-control-plane-calico.sh
 # Reset a kubeadm-initialized CONTROL-PLANE node for a clean re-init with Calico.
-# Does NOT uninstall kubeadm/kubectl/kubelet.
+# Completely removes kubeadm/kubectl/kubelet packages.
 
 set -euo pipefail
 
