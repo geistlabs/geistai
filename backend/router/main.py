@@ -86,6 +86,8 @@ def health_check():
         "status": "healthy",
         "ssl_enabled": config.SSL_ENABLED,
         "ssl_status": ssl_message,
+        "tools_available": len(gpt_service._tool_registry),
+        "tool_names": list(gpt_service._tool_registry.keys())
     }
 
 
@@ -130,6 +132,40 @@ def ssl_info():
             info["certificate"] = {"error": f"Could not read certificate: {str(e)}"}
 
     return info
+
+
+# ============================================================================
+# Tool Management Endpoints
+# ============================================================================
+
+@app.get("/api/tools")
+async def list_tools():
+    """List available tools"""
+    return {
+        "tools": [
+            {
+                "name": name,
+                "description": info.get("description", ""),
+                "type": info.get("type", "unknown"),
+                "input_schema": info.get("input_schema", {})
+            }
+            for name, info in gpt_service._tool_registry.items()
+        ]
+    }
+
+@app.post("/api/tools/{tool_name}/test")
+async def test_tool(tool_name: str, arguments: dict = {}):
+    """Test a specific tool"""
+    if tool_name not in gpt_service._tool_registry:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+    
+    try:
+        result = await gpt_service._execute_tool(tool_name, arguments)
+        return {"result": result}
+        
+    except Exception as e:
+        logger.error(f"Tool test failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
 
 
 @app.post("/api/chat")
