@@ -60,7 +60,7 @@ jobs:
     needs: build_and_push
     uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
     with:
-      APP: embedder
+      APP: embeddings
       VERSION: ${{ inputs.environment }}-${{ inputs.version }}
       ENVIRONMENT: ${{ inputs.environment }}
     secrets:
