@@ -9,6 +9,7 @@ from typing import Dict, List, Any
 
 class SimpleMCPClient:
     """Simple MCP client that works with the gateway"""
+    _tool_registry = {} 
     
     def __init__(self, url: str):
         self.url = url
@@ -107,7 +108,7 @@ class SimpleMCPClient:
         
         print("✅ Initialized notification sent")
     
-    async def list_tools(self) -> List[Dict[str, Any]]:
+    async def list_and_register_tools(self) -> List[Dict[str, Any]]:
         """List available tools"""
         tools_request = {
             "jsonrpc": "2.0",
@@ -125,11 +126,13 @@ class SimpleMCPClient:
         if self.session_id:
             headers["mcp-session-id"] = self.session_id
         
+        print("Listing and registering tools response")
         response = await self.client.post(
             self.url,
             headers=headers,
             json=tools_request
         )
+        print("Listing and registering tools has repsone")
         
         if response.status_code != 200:
             raise Exception(f"List tools failed: {response.status_code} - {response.text}")
@@ -155,62 +158,103 @@ class SimpleMCPClient:
             print(f"Parsed tools result: {result}")
         
         if "result" in result and "tools" in result["result"]:
+        
+            for tool in result["result"]["tools"]:
+                self._tool_registry[tool["name"]] = tool
             return result["result"]["tools"]
         else:
             return []
-    
+
+
+
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool"""
         print(f"Calling tool: {tool_name} with arguments: {arguments}")
-        
-        call_request = {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments
+        try:
+            print(f"Calling tool: {tool_name} with arguments: {arguments}")
+            print(f"Calling MCP tool: {tool_name} with arguments: {arguments}")
+            if tool_name not in self._tool_registry:
+                return {"error": f"Tool {tool_name} not found"}
+            call_request = {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
             }
-        }
-        
-        headers = {
-            "Accept": "application/json, text/event-stream",
-            "Content-Type": "application/json"
-        }
-        
-        # Add session ID if available
-        if self.session_id:
-            headers["mcp-session-id"] = self.session_id
-        
-        
-        response = await self.client.post(
-            self.url,
-            headers=headers,
-            json=call_request
-        )
-        
-        if response.status_code != 200:
-            raise Exception(f"Tool call failed: {response.status_code} - {response.text}")
-        
-        # Parse the response
-        response_text = response.text
-        if "data: " in response_text:
-            # Extract JSON from SSE format
-            lines = response_text.split('\n')
-            for line in lines:
-                if line.startswith('data: '):
-                    json_str = line[6:]  # Remove 'data: ' prefix
-                    try:
-                        result = json.loads(json_str)
-                        break
-                    except json.JSONDecodeError:
-                        continue
+
+            headers = {
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json"
+            }
+
+            # Add session ID if available
+            if self.session_id:
+                headers["mcp-session-id"] = self.session_id
+
+
+            response = await self.client.post(
+                self.url,
+                headers=headers,
+                json=call_request
+            )
+
+            if response.status_code != 200:
+                print(f"Tool call failed: {response.status_code} - {response.text}")
+                raise Exception(f"Tool call failed: {response.status_code} - {response.text}")
+                
+
+            # Parse the response
+            response_text = response.text
+            if "data: " in response_text:
+                # Extract JSON from SSE format
+                lines = response_text.split('\n')
+                for line in lines:
+                    if line.startswith('data: '):
+                        json_str = line[6:]  # Remove 'data: ' prefix
+                        try:
+                            result = json.loads(json_str)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                else:
+                    raise Exception("No valid JSON found in SSE response")
             else:
-                raise Exception("No valid JSON found in SSE response")
-        else:
-            result = response.json()
-        
-        return result
+                result = response.json()
+
+            if "result" in result and "content" in result["result"]:
+                   print(f"Tool call result: {result}")
+                   content_data = []
+                   for content in result["result"]["content"]:
+                      
+                       if isinstance(content, dict):
+                           if "text" in content:
+                               content_data.append(content["text"])
+                           elif "data" in content:
+                               content_data.append(str(content["data"]))
+                           else:
+                               content_data.append(str(content))
+                       else:
+                           content_data.append(str(content))
+
+                   print(f"Tool call content: {content_data}")
+                   return {
+                       "tool": tool_name,
+                       "content": "\n".join(content_data),
+                       "status": "success"
+                   }
+            else:
+                print(f"Tool call content on else: {result}")
+                return {
+                    "tool": tool_name,
+                    "content": str(result),
+                    "status": "success"
+                   }
+        except Exception as e:
+            print(f"Error calling MCP tool {tool_name}: {e}")
+            return {"error": f"Tool call failed: {str(e)}"}
 
 async def test_simple_client():
     """Test the simple MCP client"""

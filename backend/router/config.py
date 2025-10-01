@@ -39,7 +39,7 @@ INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"
-USE_REMOTE_INFERENCE =  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+USE_REMOTE_INFERENCE =  True #os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 if USE_REMOTE_INFERENCE:
     {
         print("Using remote inference")

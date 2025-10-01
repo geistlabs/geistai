@@ -22,18 +22,8 @@ class GptService:
 
     async def init_mcp(self, config):
         """Initialize MCP client using simple HTTP client"""
-        try:
-            print("Initializing MCP with simple HTTP client")
-            await self._init_simple_mcp(config)
-            print(f"MCP initialization complete. Available tools: {list(self._tool_registry.keys())}")
-            
-        except Exception as e:
-            print(f"Failed to initialize MCP: {e}")
-            # Don't raise - allow service to continue without MCP tools
-            self._tool_registry = {}
+        
 
-    async def _init_simple_mcp(self, config):
-        """Initialize MCP using simple HTTP client"""
         print(f"Initializing MCP using simple HTTP client to connect to MCP gateway")
         print(f"MCP_HOST: {config.MCP_HOST}")
         
@@ -56,7 +46,7 @@ class GptService:
             print("✅ MCP handshake completed")
             
             # List and register tools
-            tools = await self._mcp_client.list_tools()
+            tools = await self._mcp_client.list_and_register_tools()
             print(f"✅ Found {len(tools)} tools from MCP gateway")
             
             for tool in tools:
@@ -75,56 +65,20 @@ class GptService:
                 await self._mcp_client.__aexit__(None, None, None)
                 self._mcp_client = None
 
+            print(f"MCP initialization complete. Available tools: {list(self._tool_registry.keys())}")
+            
+        except Exception as e:
+            print(f"Failed to initialize MCP: {e}")
+            # Don't raise - allow service to continue without MCP tools
+            self._tool_registry = {}
+
+       
     async def shutdown_mcp(self):
         """Cleanup MCP client"""
         if self._mcp_client:
             await self._mcp_client.__aexit__(None, None, None)
             self._mcp_client = None
         self._tool_registry.clear()
-
-    async def _call_mcp_tool(self, tool_name: str, arguments: dict, config):
-        """Call an MCP tool"""
-        print(f"Calling MCP tool: {tool_name} with arguments: {arguments}")
-        if tool_name not in self._tool_registry:
-            return {"error": f"Tool {tool_name} not found"}
-        
-        try:
-            client = self._tool_registry[tool_name]["client"]
-            
-            
-            # Call the tool with secrets
-            result = await client.call_tool(tool_name, arguments)
-            
-            # Extract content from MCP result
-            if "result" in result and "content" in result["result"]:
-                content_data = []
-                for content in result["result"]["content"]:
-                    if isinstance(content, dict):
-                        if "text" in content:
-                            content_data.append(content["text"])
-                        elif "data" in content:
-                            content_data.append(str(content["data"]))
-                        else:
-                            content_data.append(str(content))
-                    else:
-                        content_data.append(str(content))
-                
-                return {
-                    "tool": tool_name,
-                    "content": "\n".join(content_data),
-                    "status": "success"
-                }
-            else:
-                return {
-                    "tool": tool_name,
-                    "content": str(result),
-                    "status": "success"
-                }
-                
-        except Exception as e:
-            print(f"Error calling MCP tool {tool_name}: {e}")
-            return {"error": f"Tool call failed: {str(e)}"}
-    
     def prepare_conversation_messages(self, messages, reasoning_effort="low"):
         # This function seems correct, no changes needed here.
         reasoning_instructions = {
@@ -183,7 +137,10 @@ class GptService:
         async with httpx.AsyncClient() as client:
 
             headers, model, url = self.get_chat_completion_params(config)
-
+            print(f"Getting chat completion params")
+            print(f"URL: {url}")
+            print(f"Model: {model}")
+            print(f"Headers: {headers}")
             response = await client.post(
                 f"{url}/v1/chat/completions",
                 json={
@@ -198,19 +155,15 @@ class GptService:
             )
         result = response.json()
         if "choices" not in result:
-            print(f"Error: No 'choices' in response. Full response: {result}")
             raise ValueError(f"Invalid response format from inference service: {result}")
         if not result["choices"] or not result["choices"][0]:
-            print(f"Error: Empty choices array. Full response: {result}")
             raise ValueError(f"Empty choices in response from inference service")
         choice = result["choices"][0]
         if "message" not in choice:
-            print(f"Error: No 'message' in choice. Choice: {choice}")
             raise ValueError(f"No message in choice from inference service")
         message = choice["message"]
         content = message.get("content", "")
         if not content:
-            print(f"Error: No content in message. Message: {message}")
             raise ValueError(f"No content in message from inference service")
         return content
         
@@ -269,6 +222,8 @@ class GptService:
 
                 async with httpx.AsyncClient(timeout=config.INFERENCE_TIMEOUT) as client:
                     try:
+
+  
                         async with client.stream(
                             "POST",
                             f"{url}/v1/chat/completions",
@@ -276,8 +231,6 @@ class GptService:
                             json=request_data,
                             timeout=config.INFERENCE_TIMEOUT
                         ) as resp:
-
-
                             async for line in resp.aiter_lines():
                                 if not line or not line.startswith("data: "): 
                                     continue
@@ -292,6 +245,7 @@ class GptService:
                                         continue
                     except httpx.HTTPStatusError as e:
                         print(f"HTTP status error in stream_chat_request: {e}")
+
                         raise httpx.HTTPStatusError
                     except httpx.TimeoutException as e:
                         print(f"Timeout exception in stream_chat_request: {e}")
@@ -320,7 +274,6 @@ class GptService:
                     if "tool_calls" in delta_obj:
                         saw_tool = True
                         tool_calls_delta = delta_obj["tool_calls"]
-                        print(f"📞 Tool calls delta received: {tool_calls_delta}")
                         
                         for tc_delta in tool_calls_delta:
                             tc_index = tc_delta.get("index", 0)
@@ -336,7 +289,6 @@ class GptService:
                             # Accumulate tool call data incrementally
                             if "id" in tc_delta:
                                 current_tool_calls[tc_index]["id"] = tc_delta["id"]
-                                print(f"  ✓ Tool call ID: {tc_delta['id']}")
                             
                             if "type" in tc_delta:
                                 current_tool_calls[tc_index]["type"] = tc_delta["type"]
@@ -345,10 +297,9 @@ class GptService:
                                 func_delta = tc_delta["function"]
                                 if "name" in func_delta:
                                     current_tool_calls[tc_index]["function"]["name"] += func_delta["name"]
-                                    print(f"  ✓ Tool name: {current_tool_calls[tc_index]['function']['name']}")
+                    
                                 if "arguments" in func_delta:
                                     current_tool_calls[tc_index]["function"]["arguments"] += func_delta["arguments"]
-                                    print(f"  ✓ Arguments so far: {current_tool_calls[tc_index]['function']['arguments']}")
                     
                     # Handle regular content
                     elif "content" in delta_obj and delta_obj["content"]:
@@ -356,54 +307,45 @@ class GptService:
                         partial_text.append(content_chunk)
                         yield content_chunk
                     
+
                     # Check for finish reason - ONLY execute tools when finish_reason is "tool_calls"
                     finish_reason = choice.get("finish_reason")
                     if finish_reason:
-                        print(f"🏁 Finish reason: {finish_reason}")
                         
                         if finish_reason == "tool_calls" and current_tool_calls:
-                            print(f"🔧 Executing {len(current_tool_calls)} tool call(s)")
                             
                             # Execute tool calls
                             for tool_call in current_tool_calls:
                                 tool_name = tool_call["function"]["name"]
                                 tool_args = tool_call["function"]["arguments"]
                                 
-                                print(f"  📞 Tool: {tool_name}")
-                                print(f"  📝 Raw arguments: {tool_args}")
                                 
                                 if tool_name and tool_args:
                                     try:
                                         args = json.loads(tool_args)
-                                        print(f"  ✅ Parsed args: {args}")
                                         
-                                        result = await self._call_mcp_tool(tool_name, args, config)
-                                        print(f"  ✅ Tool result: {result}")
-                                        
+                                        result = await self._mcp_client.call_tool(tool_name, args)
                                         # Add tool result to conversation
                                         conversation.append({
                                             "role": "assistant",
                                             "content": None,
                                             "tool_calls": [tool_call]
                                         })
-                                        conversation.append(self._tool_result_message(tool_name, result))
+
+                                        conversation.append(self._tool_result_message(tool_call["id"], tool_name, result))
                                         
                                     except json.JSONDecodeError as e:
-                                        print(f"  ❌ Failed to parse JSON arguments: {e}")
-                                        print(f"  ❌ Raw arguments were: {tool_args}")
                                         error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
-                                        conversation.append(self._tool_result_message(tool_name, error_result))
+                                        conversation.append(self._tool_result_message(tool_call["id"], tool_name, error_result))
                                         break
                                         
                                     except Exception as e:
-                                        print(f"  ❌ Error executing tool {tool_name}: {e}")
                                         import traceback
                                         traceback.print_exc()
                                         error_result = {"error": str(e)}
-                                        conversation.append(self._tool_result_message(tool_name, error_result))
+                                        conversation.append(self._tool_result_message(tool_call["id"], tool_name, error_result))
                                         break
-                                else:
-                                    print(f"  ⚠️ Skipping incomplete tool call: name={tool_name}, args={tool_args}")
+
                             
                             tool_calls += 1
                             await asyncio.sleep(0.1)
@@ -466,9 +408,25 @@ class GptService:
         
         return content
 
-    def _tool_result_message(self, tool_name, result):
-        # This function seems correct, no changes needed here.
+    def _tool_result_message(self, tool_call_id, tool_name, result):
+        """Format tool result for the model - must use 'tool' role with tool_call_id"""
+        # Extract content from MCP result format
+        if isinstance(result, dict):
+            if "result" in result and "content" in result["result"]:
+                content_parts = []
+                for content_item in result["result"]["content"]:
+                    if isinstance(content_item, dict) and "text" in content_item:
+                        content_parts.append(content_item["text"])
+                    else:
+                        content_parts.append(str(content_item))
+                content = "\n".join(content_parts)
+            else:
+                content = json.dumps(result, ensure_ascii=False)
+        else:
+            content = str(result)
+        
         return {
-            "role": "user",
-            "content": f"Tool '{tool_name}' result: {json.dumps(result, ensure_ascii=False)}"
+            "role": "tool",
+            "tool_call_id": tool_call_id,  # REQUIRED!
+            "content": content
         }
