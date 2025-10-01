@@ -1,7 +1,17 @@
 // API client configuration and utilities
 
+// Get API URL from runtime config (set by Docker entrypoint) or fallback to build-time env var
+function getApiUrl(): string {
+  // Check if runtime config is available (set by Docker entrypoint)
+  if (typeof window !== 'undefined' && (window as any).RUNTIME_CONFIG?.API_URL) {
+    return (window as any).RUNTIME_CONFIG.API_URL;
+  }
+  // Fallback to build-time environment variable
+  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+}
+
 export const API_CONFIG = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  get baseUrl() { return getApiUrl(); },
   timeout: 30000, // 30 seconds
 }
 
