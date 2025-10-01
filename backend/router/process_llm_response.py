@@ -3,11 +3,78 @@ from typing import List, Callable
 import json
 
 
+
     
 # ------------------------------------------------------------------------
 # Tool Calling Logic
 # ------------------------------------------------------------------------
+
+
+
+async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conversation: List[dict]) -> bool:
+    """
+    Execute a single tool call and add result to conversation
     
+    Args:
+        tool_call: Tool call object
+        execute_tool: Function to execute the tool
+        conversation: Current conversation messages
+        
+    Returns:
+        bool: True if successful, False if error occurred
+    """
+    tool_name = tool_call["function"]["name"]
+    tool_args_str = tool_call["function"]["arguments"]
+
+    if not tool_name or not tool_args_str:
+        return True  # Skip invalid tool calls
+
+    try:
+        # Parse arguments
+        tool_args = json.loads(tool_args_str)
+
+        # Execute tool
+        result = await execute_tool(tool_name, tool_args)
+
+        # Add to conversation
+        conversation.append({
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [tool_call]
+        })
+        conversation.append(
+            format_tool_result_for_llm(
+                tool_call["id"],
+                tool_name,
+                result
+            )
+        )
+        return True
+
+    except json.JSONDecodeError as e:
+        error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
+        conversation.append(
+            format_tool_result_for_llm(
+                tool_call["id"],
+                tool_name,
+                error_result
+            )
+        )
+        return False
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        error_result = {"error": str(e)}
+        conversation.append(
+            format_tool_result_for_llm(
+                tool_call["id"],
+                tool_name,
+                error_result
+            )
+        )
+        return False
+
 
 
 def format_tool_result_for_llm( tool_call_id: str, tool_name: str, result: dict) -> dict:
@@ -115,61 +182,30 @@ async def process_llm_response_with_tools(
             finish_reason = choice.get("finish_reason")
             if finish_reason:
                 if finish_reason == "tool_calls" and current_tool_calls:
-                    # Execute tool calls
+                    # Execute tool calls concurrently
+                    print(f"🚀 Starting {len(current_tool_calls)} tool calls concurrently...")
+                    
+                    # Create tasks for concurrent execution
+                    tasks = []
                     for tool_call in current_tool_calls:
-                        tool_name = tool_call["function"]["name"]
-                        tool_args_str = tool_call["function"]["arguments"]
-
-                        if not tool_name or not tool_args_str:
-                            continue
-
-                        try:
-                            # Parse arguments
-                            tool_args = json.loads(tool_args_str)
-
-                            # Execute tool
-                            result = await execute_tool(tool_name, tool_args)
-
-                            # Add to conversation
-                            conversation.append({
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [tool_call]
-                            })
-                            conversation.append(
-                                format_tool_result_for_llm(
-                                    tool_call["id"],
-                                    tool_name,
-                                    result
-                                )
-                            )
-
-                        except json.JSONDecodeError as e:
-                            error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
-                            conversation.append(
-                                format_tool_result_for_llm(
-                                    tool_call["id"],
-                                    tool_name,
-                                    error_result
-                                )
-                            )
+                        task = execute_single_tool_call(tool_call, execute_tool, conversation)
+                        tasks.append(task)
+                    
+                    # Execute all tool calls concurrently
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    # Check if any tool call failed
+                    for i, result in enumerate(results):
+                        if isinstance(result, Exception):
+                            print(f"❌ Tool call {i} failed with exception: {result}")
                             yield (None, "stop")  # Stop on error
                             return
-
-                        except Exception as e:
-                            import traceback
-                            traceback.print_exc()
-                            error_result = {"error": str(e)}
-                            conversation.append(
-                                format_tool_result_for_llm(
-                                    tool_call["id"],
-                                    tool_name,
-                                    error_result
-                                )
-                            )
+                        elif result is False:
+                            print(f"❌ Tool call {i} failed")
                             yield (None, "stop")  # Stop on error
                             return
-
+                    
+                    print(f"✅ All {len(current_tool_calls)} tool calls completed successfully")
                     await asyncio.sleep(0.1)
                     yield (None, "continue")  # Tool calls executed, continue loop
                     return
