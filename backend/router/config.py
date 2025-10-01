@@ -4,16 +4,55 @@ import os
 import ssl
 from pathlib import Path
 
-# Harmony configuration
-HARMONY_ENABLED = os.getenv("HARMONY_ENABLED", "true").lower() == "true"
-HARMONY_REASONING_EFFORT = os.getenv(
-    "HARMONY_REASONING_EFFORT", "low"
+# Load .env file from parent directory only for OpenAI key when running locally
+def _load_openai_key_from_env():
+    """Load OpenAI API key from .env file in parent directory if not already set."""
+    if os.getenv("OPENAI_API_KEY"):
+        return  # Already set, don't override
+    
+    try:
+        from dotenv import load_dotenv
+        # Get the directory where this config.py file is located
+        current_dir = Path(__file__).parent
+        # Go up one directory to find the .env file
+        parent_dir = current_dir.parent
+        env_file = parent_dir / ".env"
+        
+        if env_file.exists():
+            load_dotenv(env_file)
+            print(f"Loaded OpenAI key from: {env_file}")
+    except ImportError:
+        pass  # python-dotenv not installed, silently continue
+    except Exception as e:
+        print(f"Error loading .env file: {e}")
+
+# Load OpenAI key from .env if needed
+_load_openai_key_from_env()
+
+# Gpt configuration
+REASONING_EFFORT = os.getenv(
+    "REASONING_EFFORT", "low"
 )  # "low", "medium", "high"
 
 # External service settings
-INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
-INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
+INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
+INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
+REMOTE_INFERENCE_URL = "https://api.openai.com"
+USE_REMOTE_INFERENCE =  True #os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+if USE_REMOTE_INFERENCE:
+    {
+        print("Using remote inference")
+    }
+else:
+    {
+        print("Using local inference")
+    }
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+# ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))

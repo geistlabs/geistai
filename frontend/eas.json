@@ -18,6 +18,9 @@
       }
     },
     "production": {
+      "android": {
+        "buildType": "apk"
+      },
       "ios": {
         "resourceClass": "m-medium",
         "autoIncrement": true

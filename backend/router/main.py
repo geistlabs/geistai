@@ -10,7 +10,8 @@ import json
 import logging
 import os
 import config
-from harmony_service import HarmonyService
+from gpt_service import GptService
+
 from stt_service import STTService
 
 # Configure logging
@@ -51,8 +52,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Harmony service if enabled
-harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
+# Initialize Gpt service if enabled
+gpt_service = GptService(config) 
+
 
 # Initialize STT service
 # Use relative paths from the backend directory to make it more portable
@@ -85,6 +87,8 @@ def health_check():
         "status": "healthy",
         "ssl_enabled": config.SSL_ENABLED,
         "ssl_status": ssl_message,
+        "tools_available": len(gpt_service._tool_registry),
+        "tool_names": list(gpt_service._tool_registry.keys())
     }
 
 
@@ -131,6 +135,40 @@ def ssl_info():
     return info
 
 
+# ============================================================================
+# Tool Management Endpoints
+# ============================================================================
+
+@app.get("/api/tools")
+async def list_tools():
+    """List available tools"""
+    return {
+        "tools": [
+            {
+                "name": name,
+                "description": info.get("description", ""),
+                "type": info.get("type", "unknown"),
+                "input_schema": info.get("input_schema", {})
+            }
+            for name, info in gpt_service._tool_registry.items()
+        ]
+    }
+
+@app.post("/api/tools/{tool_name}/test")
+async def test_tool(tool_name: str, arguments: dict = {}):
+    """Test a specific tool"""
+    if tool_name not in gpt_service._tool_registry:
+        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
+    
+    try:
+        result = await gpt_service._execute_tool(tool_name, arguments)
+        return {"result": result}
+        
+    except Exception as e:
+        logger.error(f"Tool test failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
+
+
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     """Non-streaming chat endpoint for backwards compatibility"""
@@ -139,32 +177,18 @@ async def chat(request: ChatRequest):
         # Use provided conversation history and add the new message
         messages = [msg.dict() for msg in request.messages]
         messages.append({"role": "user", "content": request.message})
+        
+        print(f"[Backend] Received from frontend: {messages}")
+        ai_response = await gpt_service.process_chat_request(
+            messages, config, reasoning_effort=config.REASONING_EFFORT
+        )
     else:
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": request.message}]
 
-    # Process chat request through harmony service
-    if harmony_service and config.HARMONY_ENABLED:
-        ai_response = await harmony_service.process_chat_request(
-            messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT
+        ai_response = await gpt_service.process_chat_request(
+            messages, config, reasoning_effort=config.REASONING_EFFORT
         )
-    else:
-        # Fallback - direct HTTP call without harmony service
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{config.INFERENCE_URL}/v1/chat/completions",
-                json={"messages": messages, "temperature": 0.7, "max_tokens": config.MAX_TOKENS},
-                timeout=config.INFERENCE_TIMEOUT,
-            )
-
-        result = response.json()
-        raw_response = result["choices"][0]["message"]["content"]
-
-        # Parse Harmony channels even in fallback path
-        if harmony_service:
-            ai_response = harmony_service.parse_harmony_channels(raw_response)
-        else:
-            ai_response = raw_response
 
     return {"response": ai_response}
 
@@ -187,10 +211,11 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
     async def event_stream():
         chunk_sequence = 0
+        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
         try:
-            # Stream tokens from harmony service
-            async for token in harmony_service.stream_chat_request(
-                messages, config, reasoning_effort=config.HARMONY_REASONING_EFFORT
+            # Stream tokens from gpt service
+            async for token in gpt_service.stream_chat_request(
+                messages,  reasoning_effort=config.REASONING_EFFORT,
             ):
                 # Check if client is still connected
                 if await request.is_disconnected():
@@ -209,6 +234,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         except asyncio.TimeoutError as e:
             yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
         except Exception as e:
+            print(f"Error in chat_stream: {e}")
             yield {
                 "data": json.dumps({"error": "Internal server error"}),
                 "event": "error",

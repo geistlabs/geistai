@@ -9,7 +9,6 @@ services:
       - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
-      - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
       - SSL_ENABLED=false
@@ -17,6 +16,13 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
+      
+      - OPENAI_URL=https://api.openai.com
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - OPENAI_KEY=${OPENAI_KEY}
+      - USE_REMOTE_INFERENCE=true
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - MCP_HOST=http://gateway:9011/mcp
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem
@@ -35,6 +41,7 @@ services:
       ]
     depends_on:
       - inference
+      - gateway
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -60,7 +67,6 @@ services:
       - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
-      - HARMONY_ENABLED=true
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference-gpu:8080
       - SSL_ENABLED=false
@@ -86,6 +92,7 @@ services:
       ]
     depends_on:
       - inference-gpu
+      - gateway
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -103,6 +110,78 @@ services:
     profiles:
       - gpu
 
+  gateway:
+    image: docker/mcp-gateway
+    ports:
+      - "9011:9011"
+    command:
+      - --transport=http
+      - --servers=brave,fetch
+      - --verbose=true
+      - --port=9011
+      - --static=true
+      - --log-calls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "4G"
+        reservations:
+          cpus: "1.0"
+          memory: "2G"
+    networks:
+      - geist-network
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    depends_on:
+      - mcp-brave
+      - mcp-fetch
+
+  
+  mcp-brave:
+    image: mcp/brave-search:latest
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "node", "dist/index.js"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=brave
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    networks:
+      - geist-network
+
+  mcp-fetch:
+    image: mcp/fetch@sha256:ef9535a3f07249142f9ca5a6033d7024950afdb6dc05e98292794a23e9f5dfbe
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "mcp-server-fetch"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    networks: 
+      - geist-network
+  
   # CPU-only inference service (default)
   inference:
     build:
