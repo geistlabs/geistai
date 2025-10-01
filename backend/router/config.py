@@ -50,7 +50,6 @@ else:
     }
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
-print(OPENAI_KEY, "my openai key")
 MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 # ... rest of your existing config

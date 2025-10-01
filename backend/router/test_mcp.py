@@ -12,7 +12,7 @@ async def test_mcp_initialization():
     print("Testing MCP initialization...")
     print(f"Current working directory: {os.getcwd()}")
     
-    gpt_service = GptService()
+    gpt_service = GptService(config)
     
     try:
         await gpt_service.init_mcp(config)

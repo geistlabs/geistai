@@ -14,9 +14,10 @@ ARCHITECTURE:
 """
 
 import json
-import asyncio
-from typing import Dict, List, Any, Callable, Optional
+from typing import Dict, List,  Callable, Optional
 import httpx
+from process_llm_response import process_llm_response_with_tools
+
 
 # MCP imports
 from simple_mcp_client import SimpleMCPClient
@@ -29,7 +30,11 @@ from simple_mcp_client import SimpleMCPClient
 # Tools that are permitted to be used by the LLM
 # Add/remove tool names here to control what the LLM can access
 PERMITTED_TOOLS = [
-    "brave_web_search",  # MCP tool: Brave search
+    "research_agent",
+    "creative_agent",
+    "technical_agent",
+    "summary_agent",
+      # MCP tool: Brave search
     # "fetch",           # MCP tool: Web page fetching (commented out - add if needed)
     # "calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
 ]
@@ -84,9 +89,10 @@ That's it! The tool will now be available to the LLM.
 class GptService:
     """Main service for handling GPT requests with tool support"""
     
-    def __init__(self):
+    def __init__(self, config):
         # Tool registry: name -> {description, input_schema, executor, type}
         self._tool_registry: Dict[str, dict] = {}
+        self.config = config
         
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
@@ -119,7 +125,6 @@ class GptService:
             "executor": executor,
             "type": tool_type
         }
-        print(f"✅ Registered {tool_type} tool: {name}")
     
     async def _register_custom_tools(self):
         """
@@ -156,19 +161,51 @@ class GptService:
         #     tool_type="custom"
         #     )
         
+        # ========================================================================
+        # AGENT TOOLS - Uncomment to add specialized agents
+        # ========================================================================
+        
+        # Example: Register all predefined agents
+        from agent_registry import register_predefined_agents
+        await register_predefined_agents(self, self.config)
+        
+        # Example: Register only specific agents
+        #from agent_registry import register_specific_agents
+        #await register_specific_agents(self, config=None, agent_names=["research_agent", "creative_agent"])
+        
+        # Example: Register a custom agent
+        # from agent_registry import register_custom_agent
+        # await register_custom_agent(
+        #     gpt_service=self,
+        #     config=None,
+        #     name="math_tutor",
+        #     description="A specialized agent for math tutoring and problem-solving",
+        #     system_prompt=(
+        #         "You are a math tutor. Your role is to:\n"
+        #         "- Help students understand mathematical concepts\n"
+        #         "- Solve math problems step by step\n"
+        #         "- Explain the reasoning behind solutions\n"
+        #         "- Provide practice problems and examples\n"
+        #         "- Be patient and encouraging\n\n"
+        #         "Always show your work and explain each step clearly."
+        #     ),
+        #     available_tools=[],  # Could add calculator tool here
+        #     reasoning_effort="high"
+        # )
+        
         pass  # Add your custom tools above this line
     
-    async def _register_mcp_tools(self, config):
+    async def _register_mcp_tools(self):
         """Register tools from MCP gateway"""
-        if not config.MCP_HOST:
+        if not self.config.MCP_HOST:
             print("⚠️  MCP_HOST not configured, skipping MCP tools")
             return
         
         try:
-            print(f"Connecting to MCP gateway at {config.MCP_HOST}")
+            print(f"Connecting to MCP gateway at {self.config.MCP_HOST}")
             
             # Initialize MCP client
-            self._mcp_client = SimpleMCPClient(config.MCP_HOST)
+            self._mcp_client = SimpleMCPClient(self.config.MCP_HOST)
             await self._mcp_client.__aenter__()
             
             # MCP handshake
@@ -200,7 +237,7 @@ class GptService:
             print(f"❌ Failed to initialize MCP: {e}")
             # Don't raise - allow service to continue without MCP
     
-    async def init_tools(self, config):
+    async def init_tools(self):
         """
         Initialize all tools (MCP and custom)
         Call this once at startup
@@ -211,7 +248,7 @@ class GptService:
         await self._register_custom_tools()
         
         # Then register MCP tools
-        await self._register_mcp_tools(config)
+        await self._register_mcp_tools()
         
         print(f"✅ Tool initialization complete. Available: {list(self._tool_registry.keys())}")
     
@@ -243,21 +280,24 @@ class GptService:
             
             print(f"🔧 Executing {tool_info['type']} tool: {tool_name}")
             result = await executor(arguments)
-            
+            print(f"Tool {tool_name} executed with result: {result}")
             return result
             
         except Exception as e:
             print(f"❌ Tool execution failed: {tool_name} - {e}")
             return {"error": f"Tool execution failed: {str(e)}"}
     
-    def _get_permitted_tools_for_llm(self) -> List[dict]:
+    def _get_permitted_tools_for_llm(self, permitted_tools: List[str]) -> List[dict]:
         """
         Get tool definitions in OpenAI function calling format
         Only includes permitted tools
         """
         tools = []
         
-        for tool_name in PERMITTED_TOOLS:
+        for tool in self._tool_registry:
+            print(f"Tool: {tool}")
+        
+        for tool_name in permitted_tools:
             if tool_name not in self._tool_registry:
                 continue
                 
@@ -277,45 +317,7 @@ class GptService:
         
         return tools
     
-    def _format_tool_result_for_llm(self, tool_call_id: str, tool_name: str, result: dict) -> dict:
-        """
-        Format tool execution result for the LLM
-        
-        Handles both MCP format and simple format
-        """
-        # Extract content from result
-        if isinstance(result, dict):
-            # MCP format: {"result": {"content": [...]}}
-            if "result" in result and "content" in result["result"]:
-                content_parts = []
-                for item in result["result"]["content"]:
-                    if isinstance(item, dict) and "text" in item:
-                        content_parts.append(item["text"])
-                    else:
-                        content_parts.append(str(item))
-                content = "\n".join(content_parts)
-            
-            # Simple format: {"content": "...", "status": "success"}
-            elif "content" in result:
-                content = result["content"]
-            
-            # Error format
-            elif "error" in result:
-                content = f"Error: {result['error']}"
-            
-            # Unknown format
-            else:
-                content = json.dumps(result, ensure_ascii=False)
-        else:
-            content = str(result)
-        
-        # Return in OpenAI tool result format
-        return {
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": content
-        }
-    
+
     # ------------------------------------------------------------------------
     # Message Preparation
     # ------------------------------------------------------------------------
@@ -347,7 +349,7 @@ class GptService:
             "- Be concise and direct\n"
             "- For simple questions, use 1-2 sentences\n"
             "- NEVER use markdown tables (|---|---| format)\n"
-            "- Only use search tools when explicitly asked for current information\n"
+            "- You have access to agents in the form of tools, use them sometimes"
         )
         
         result_messages = []
@@ -370,22 +372,16 @@ class GptService:
     # LLM Configuration
     # ------------------------------------------------------------------------
     
-    def get_chat_completion_params(self, config) -> tuple:
-        """
-        Get headers, model, and URL for chat completion
-        
-        Returns:
-            (headers, model, url)
-        """
+    def get_chat_completion_params(self) -> tuple:
         headers = {}
-        if config.OPENAI_KEY:
-            headers["Authorization"] = f"Bearer {config.OPENAI_KEY}"
+        if self.config.OPENAI_KEY:
+            headers["Authorization"] = f"Bearer {self.config.OPENAI_KEY}"
         
-        if config.USE_REMOTE_INFERENCE:
-            url = config.REMOTE_INFERENCE_URL
-            model = config.OPENAI_MODEL
+        if self.config.USE_REMOTE_INFERENCE:
+            url = self.config.REMOTE_INFERENCE_URL
+            model = self.config.OPENAI_MODEL
         else:
-            url = config.INFERENCE_URL
+            url = self.config.INFERENCE_URL
             model = "gpt-3.5-turbo"
         
         return headers, model, url
@@ -397,7 +393,6 @@ class GptService:
     async def process_chat_request(
         self,
         messages: List[dict],
-        config,
         reasoning_effort: str = "low"
     ) -> str:
         """
@@ -408,7 +403,7 @@ class GptService:
         """
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
         
-        headers, model, url = self.get_chat_completion_params(config)
+        headers, model, url = self.get_chat_completion_params()
         
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -416,12 +411,12 @@ class GptService:
                 json={
                     "messages": conversation,
                     "temperature": 0.7,
-                    "max_tokens": config.MAX_TOKENS,
+                    "max_tokens": self.config.MAX_TOKENS,
                     "stream": False,
                     "model": model
                 },
                 headers=headers,
-                timeout=config.INFERENCE_TIMEOUT
+                timeout=self.config.INFERENCE_TIMEOUT
             )
         
         result = response.json()
@@ -439,7 +434,7 @@ class GptService:
             raise ValueError(f"Empty content in response")
         
         return content
-    
+
     # ------------------------------------------------------------------------
     # Streaming Chat with Tool Calling
     # ------------------------------------------------------------------------
@@ -447,8 +442,9 @@ class GptService:
     async def stream_chat_request(
         self,
         messages: List[dict],
-        config,
-        reasoning_effort: str = "low"
+        reasoning_effort: str = "low",
+        permitted_tools: List[str] = PERMITTED_TOOLS,
+        chat_initiator: str = "user"
     ):
         """
         Stream chat request with tool calling support
@@ -458,20 +454,22 @@ class GptService:
         """
         # Initialize tools if not already done
         if not self._tool_registry:
-            await self.init_tools(config)
+            await self.init_tools()
         
+
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
-        headers, model, url = self.get_chat_completion_params(config)
+        headers, model, url = self.get_chat_completion_params()
         
         # Get permitted tools for this request
-        tools_for_llm = self._get_permitted_tools_for_llm()
+        tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
+        print(f"Permitted Tools for stream initiated by {chat_initiator}: {tools_for_llm}")
         
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""
             request_data = {
                 "messages": msgs,
                 "temperature": 0.7,
-                "max_tokens": config.MAX_TOKENS,
+                "max_tokens": self.config.MAX_TOKENS,
                 "stream": True,
                 "model": model
             }
@@ -481,13 +479,13 @@ class GptService:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
             
-            async with httpx.AsyncClient(timeout=config.INFERENCE_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                 async with client.stream(
                     "POST",
                     f"{url}/v1/chat/completions",
                     headers=headers,
                     json=request_data,
-                    timeout=config.INFERENCE_TIMEOUT
+                    timeout=self.config.INFERENCE_TIMEOUT
                 ) as resp:
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data: "):
@@ -506,113 +504,19 @@ class GptService:
         tool_call_count = 0
         
         while tool_call_count < MAX_TOOL_CALLS:
-            current_tool_calls = []
-            saw_tool_call = False
-            
-            # Stream one LLM response
-            async for delta in llm_stream_once(conversation):
-                if "choices" not in delta or not delta["choices"]:
-                    continue
+            # Process one LLM response and handle tool calls
+            async for content_chunk, status in process_llm_response_with_tools(
+                self._execute_tool,
+                llm_stream_once,
+                conversation
+            ):
+                # Stream content to client if available
+                if content_chunk:
+                    yield content_chunk
                 
-                choice = delta["choices"][0]
-                delta_obj = choice.get("delta", {})
-                
-                # Accumulate tool calls
-                if "tool_calls" in delta_obj:
-                    saw_tool_call = True
-                    
-                    for tc_delta in delta_obj["tool_calls"]:
-                        tc_index = tc_delta.get("index", 0)
-                        
-                        # Ensure array is large enough
-                        while len(current_tool_calls) <= tc_index:
-                            current_tool_calls.append({
-                                "id": "",
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""}
-                            })
-                        
-                        # Accumulate data
-                        if "id" in tc_delta:
-                            current_tool_calls[tc_index]["id"] = tc_delta["id"]
-                        if "type" in tc_delta:
-                            current_tool_calls[tc_index]["type"] = tc_delta["type"]
-                        if "function" in tc_delta:
-                            func = tc_delta["function"]
-                            if "name" in func:
-                                current_tool_calls[tc_index]["function"]["name"] += func["name"]
-                            if "arguments" in func:
-                                current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
-                
-                # Stream content to client
-                elif "content" in delta_obj and delta_obj["content"]:
-                    yield delta_obj["content"]
-                
-                # Check finish reason
-                finish_reason = choice.get("finish_reason")
-                if finish_reason:
-                    if finish_reason == "tool_calls" and current_tool_calls:
-                        # Execute tool calls
-                        for tool_call in current_tool_calls:
-                            tool_name = tool_call["function"]["name"]
-                            tool_args_str = tool_call["function"]["arguments"]
-                            
-                            if not tool_name or not tool_args_str:
-                                continue
-                            
-                            try:
-                                # Parse arguments
-                                tool_args = json.loads(tool_args_str)
-                                
-                                # Execute tool
-                                result = await self._execute_tool(tool_name, tool_args)
-                                
-                                # Add to conversation
-                                conversation.append({
-                                    "role": "assistant",
-                                    "content": None,
-                                    "tool_calls": [tool_call]
-                                })
-                                conversation.append(
-                                    self._format_tool_result_for_llm(
-                                        tool_call["id"],
-                                        tool_name,
-                                        result
-                                    )
-                                )
-                                
-                            except json.JSONDecodeError as e:
-                                error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
-                                conversation.append(
-                                    self._format_tool_result_for_llm(
-                                        tool_call["id"],
-                                        tool_name,
-                                        error_result
-                                    )
-                                )
-                                return  # Stop on error
-                            
-                            except Exception as e:
-                                import traceback
-                                traceback.print_exc()
-                                error_result = {"error": str(e)}
-                                conversation.append(
-                                    self._format_tool_result_for_llm(
-                                        tool_call["id"],
-                                        tool_name,
-                                        error_result
-                                    )
-                                )
-                                return  # Stop on error
-                        
-                        tool_call_count += 1
-                        await asyncio.sleep(0.1)
-                        break  # Start new LLM call with tool results
-                    
-                    elif finish_reason == "stop":
-                        # Normal completion, we're done
-                        return
-            
-            # If no tools were called, we're done
-            if not saw_tool_call:
-                return
+                # Check status
+                if status == "stop":  # Normal completion or error
+                    return
+                elif status == "continue":  # Tool calls executed, continue loop
+                    tool_call_count += 1
+                    break  # Exit the inner loop to continue the outer loop

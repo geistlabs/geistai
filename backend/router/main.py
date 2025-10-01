@@ -53,7 +53,8 @@ app.add_middleware(
 )
 
 # Initialize Gpt service if enabled
-gpt_service = GptService() 
+gpt_service = GptService(config) 
+
 
 # Initialize STT service
 # Use relative paths from the backend directory to make it more portable
@@ -214,7 +215,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         try:
             # Stream tokens from gpt service
             async for token in gpt_service.stream_chat_request(
-                messages, config, reasoning_effort=config.REASONING_EFFORT
+                messages,  reasoning_effort=config.REASONING_EFFORT,
             ):
                 # Check if client is still connected
                 if await request.is_disconnected():
