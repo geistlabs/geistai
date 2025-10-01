@@ -91,19 +91,9 @@ class GptService:
         try:
             client = self._tool_registry[tool_name]["client"]
             
-            # Prepare secrets based on the tool being called
-            secrets = {}
-            if tool_name == "brave_web_search":
-                print(f"  ✓ Adding Brave API key to secrets", config.BRAVE_API_KEY)
-                brave_api_key = config.BRAVE_API_KEY
-                if brave_api_key:
-                    secrets["brave.api_key"] = brave_api_key
-                    print(f"  ✓ Adding Brave API key to secrets")
-                else:
-                    print(f"  ⚠️ BRAVE_API_KEY not found in environment")
             
             # Call the tool with secrets
-            result = await client.call_tool(tool_name, arguments, secrets=secrets)
+            result = await client.call_tool(tool_name, arguments)
             
             # Extract content from MCP result
             if "result" in result and "content" in result["result"]:
@@ -176,21 +166,34 @@ class GptService:
             if msg.get("role") != "system":
                 result_messages.append(msg)
         return result_messages
-
+    def get_chat_completion_params(self,config):
+        headers = {}
+        if config.OPENAI_KEY:
+            headers["Authorization"] = f"Bearer {config.OPENAI_KEY}"
+        model  = "gpt-3.5-turbo"
+        if config.USE_REMOTE_INFERENCE:
+            url = config.REMOTE_INFERENCE_URL
+            model = config.OPENAI_MODEL
+        else:
+            url = config.INFERENCE_URL
+        return headers, model, url
     async def process_chat_request(self, messages, config, reasoning_effort="low"):
         # This function seems correct, no changes needed here.
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
         async with httpx.AsyncClient() as client:
-            print(config.INFERENCE_URL, "my inference url")
+
+            headers, model, url = self.get_chat_completion_params(config)
 
             response = await client.post(
-                f"{config.INFERENCE_URL}/v1/chat/completions",
+                f"{url}/v1/chat/completions",
                 json={
                     "messages": conversation,
                     "temperature": 0.7,
                     "max_tokens": config.MAX_TOKENS,
-                    "stream": False
+                    "stream": False,
+                    "model": model
                 },
+                headers=headers,
                 timeout=config.INFERENCE_TIMEOUT
             )
         result = response.json()
@@ -222,15 +225,18 @@ class GptService:
             
             conversation = self.prepare_conversation_messages(messages, reasoning_effort)
             MAX_TOOL_CALLS = 3  # Reduced to prevent infinite loops
+            headers, model, url = self.get_chat_completion_params(config)
 
             async def llm_stream_once(msgs):
+
                 # Add tools to the request if available
                 request_data = {
                     
                     "messages": msgs,  # ✅ Use the parameter
                     "temperature": 0.7, 
                     "max_tokens": config.MAX_TOKENS, 
-                    "stream": True
+                    "stream": True,
+                    "model": model
                 }
 
                 
@@ -265,7 +271,8 @@ class GptService:
                     try:
                         async with client.stream(
                             "POST",
-                            f"{config.INFERENCE_URL}/v1/chat/completions",
+                            f"{url}/v1/chat/completions",
+                            headers=headers,
                             json=request_data,
                             timeout=config.INFERENCE_TIMEOUT
                         ) as resp:

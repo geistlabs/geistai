@@ -159,7 +159,7 @@ class SimpleMCPClient:
         else:
             return []
     
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any], secrets: Dict[str, str] = None) -> Dict[str, Any]:
+    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Call a tool"""
         print(f"Calling tool: {tool_name} with arguments: {arguments}")
         
@@ -182,10 +182,6 @@ class SimpleMCPClient:
         if self.session_id:
             headers["mcp-session-id"] = self.session_id
         
-        # Add secrets if provided
-        if secrets:
-            # MCP Gateway expects secrets in a specific format
-            headers["mcp-secrets"] = json.dumps(secrets)
         
         response = await self.client.post(
             self.url,

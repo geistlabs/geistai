@@ -38,8 +38,19 @@ REASONING_EFFORT = os.getenv(
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
-OPENAI_URL = "https://api.openai.com"
-OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
+REMOTE_INFERENCE_URL = "https://api.openai.com"
+USE_REMOTE_INFERENCE =  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+if USE_REMOTE_INFERENCE:
+    {
+        print("Using remote inference")
+    }
+else:
+    {
+        print("Using local inference")
+    }
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+print(OPENAI_KEY, "my openai key")
 MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 # ... rest of your existing config

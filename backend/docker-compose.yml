@@ -16,6 +16,13 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
+      
+      - OPENAI_URL=https://api.openai.com
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - OPENAI_KEY=${OPENAI_KEY}
+      - USE_REMOTE_INFERENCE=true
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - MCP_HOST=http://gateway:9011/mcp
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem

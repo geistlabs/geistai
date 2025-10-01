@@ -140,6 +140,11 @@ async def chat(request: ChatRequest):
         # Use provided conversation history and add the new message
         messages = [msg.dict() for msg in request.messages]
         messages.append({"role": "user", "content": request.message})
+        
+        print(f"[Backend] Received from frontend: {messages}")
+        ai_response = await gpt_service.process_chat_request(
+            messages, config, reasoning_effort=config.REASONING_EFFORT
+        )
     else:
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": request.message}]
