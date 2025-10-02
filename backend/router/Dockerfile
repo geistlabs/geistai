@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
     && cd /tmp/whisper.cpp \
     && make \
-    && cp whisper-cli /usr/local/bin/ \
+    && cp build/bin/whisper-cli /usr/local/bin/ \
     && rm -rf /tmp/whisper.cpp
 
 # Create models directory for volume mount (like llama.cpp pattern)
