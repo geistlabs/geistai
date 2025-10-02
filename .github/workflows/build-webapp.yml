@@ -52,6 +52,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_EMBEDDINGS_API_URL=${{ secrets.VITE_EMBEDDINGS_API_URL }}
 
       - name: Image digest
         run: echo ${{ steps.build_and_push.outputs.digest }}
