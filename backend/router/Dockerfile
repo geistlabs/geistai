@@ -10,10 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install whisper.cpp binary (like llama.cpp server pattern)
-RUN git clone https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
+RUN git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
     && cd /tmp/whisper.cpp \
-    && make \
+    && cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release -j$(nproc) \
     && cp build/bin/whisper-cli /usr/local/bin/ \
+    && find build -name "*.so*" -exec cp {} /usr/local/lib/ \; \
+    && ldconfig \
     && rm -rf /tmp/whisper.cpp
 
 # Create models directory for volume mount (like llama.cpp pattern)
