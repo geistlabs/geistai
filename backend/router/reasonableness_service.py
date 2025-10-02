@@ -62,12 +62,11 @@ class ReasonablenessService:
         """
         # Construct the evaluation context
         evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
-        print(f"{evaluation_context}", "evaluation_context")
           
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{self.base_url}/chat/completions",
+                    f"{self.base_url}/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json"
@@ -91,7 +90,6 @@ class ReasonablenessService:
                     timeout=300.0
                 )
                 if response.status_code != 200:
-                    print(f"Response: {response.json()}")
                     return {
                 
                         "rating": 0.5,
@@ -142,6 +140,7 @@ class ReasonablenessService:
                 "issues": ["Service request error"]
             }
         except Exception as e:
+            print(f"Rating service error: {str(e)}")
             return {
                 "rating": 0.5,
                 "reasoning": f"Rating service error: {str(e)}",
@@ -223,7 +222,6 @@ Rate based on reasonableness, not factual accuracy. Use the rating scale:
         try:
             # Extract and validate rating
             rating = float(arguments.get("rating", 0.5))
-            print(f"Rating: {rating}")
             rating = max(0.0, min(1.0, rating))  # Clamp to 0-1
             
             # Extract and validate confidence

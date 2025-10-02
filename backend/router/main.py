@@ -180,14 +180,14 @@ async def chat(request: ChatRequest):
         
         print(f"[Backend] Received from frontend: {messages}")
         ai_response = await gpt_service.process_chat_request(
-            messages, config, reasoning_effort=config.REASONING_EFFORT
+            messages
         )
     else:
         # Fallback to single message if no history provided
         messages = [{"role": "user", "content": request.message}]
 
         ai_response = await gpt_service.process_chat_request(
-            messages, config, reasoning_effort=config.REASONING_EFFORT
+            messages
         )
 
     return {"response": ai_response}

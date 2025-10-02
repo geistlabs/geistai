@@ -118,8 +118,8 @@ def format_tool_result_for_llm( tool_call_id: str, tool_name: str, result: dict)
 
 
 async def process_llm_response_with_tools(
-        execute_tool: callable,
-        llm_stream_once: callable,
+        execute_tool: Callable,
+        llm_stream_once: Callable,
         conversation: List[dict],
     ):
         """

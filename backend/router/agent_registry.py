@@ -49,9 +49,8 @@ async def register_custom_agent(
     name: str,
     description: str,
     system_prompt: str,
-    available_tools: List[str] = None,
-    reasoning_effort: str = "medium",
-    model_config: Dict[str, Any] = None
+    available_tools: List[str],
+    reasoning_effort: str = "medium"
 ) -> str:
     """
     Register a custom agent as a tool
@@ -74,9 +73,9 @@ async def register_custom_agent(
         name=name,
         description=description,
         system_prompt=system_prompt,
+        model_config=config,
         available_tools=available_tools,
         reasoning_effort=reasoning_effort,
-        model_config=model_config
     )
     
     # Initialize the agent
@@ -183,4 +182,5 @@ async def example_usage(config):
 
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(example_usage())
+    config= {}
+    asyncio.run(example_usage(config))

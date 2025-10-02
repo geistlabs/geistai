@@ -48,7 +48,7 @@ else:
     {
         print("Using local inference")
     }
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
 MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")

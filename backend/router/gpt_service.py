@@ -223,6 +223,8 @@ class GptService:
                 
                 # Create executor that calls MCP
                 async def mcp_executor(args: dict, tn=tool_name) -> dict:
+                    if self._mcp_client is None:
+                        raise ValueError("MCP client is not initialized")
                     return await self._mcp_client.call_tool(tn, args)
                 
                 self._register_tool(
@@ -249,9 +251,7 @@ class GptService:
         
         # Then register MCP tools
         await self._register_mcp_tools()
-        
-        print(f"✅ Tool initialization complete. Available: {list(self._tool_registry.keys())}")
-    
+            
     async def shutdown_tools(self):
         """Cleanup resources"""
         if self._mcp_client:
@@ -293,9 +293,6 @@ class GptService:
         Only includes permitted tools
         """
         tools = []
-        
-        for tool in self._tool_registry:
-            print(f"Tool: {tool}")
         
         for tool_name in permitted_tools:
             if tool_name not in self._tool_registry:
@@ -347,6 +344,7 @@ class GptService:
             "- If asked about data storage: 'All conversations stay private. I only use your messages to generate responses and never store them anywhere beyond your device.'\n\n"
             "STYLE:\n"
             "- Be concise and direct\n"
+            "- You only have information up to 2023 so for changeable facts use the research agent to get the latest information from search engines"
             "- For simple questions, use 1-2 sentences\n"
             "- NEVER use markdown tables (|---|---| format)\n"
             "- You have access to agents in the form of tools, use them sometimes"
@@ -462,7 +460,7 @@ class GptService:
         
         # Get permitted tools for this request
         tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
-        print(f"Permitted Tools for stream initiated by {chat_initiator}: {tools_for_llm}")
+        
         
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""

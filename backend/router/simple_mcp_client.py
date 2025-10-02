@@ -173,7 +173,8 @@ class SimpleMCPClient:
         # Add session ID if available
         if self.session_id:
             headers["mcp-session-id"] = self.session_id
-        
+        if(self.client is None):
+            self.client = httpx.AsyncClient(timeout=30.0)
         response = await self.client.post(
             self.gateway_url,
             headers=headers,

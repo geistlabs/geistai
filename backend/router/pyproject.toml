@@ -13,6 +13,11 @@ dependencies = [
     "python-multipart>=0.0.20",
     "python-dotenv>=1.0.0",
     "mcp>=1.0.0",
+    # Database dependencies
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.12.0",
+    "python-dateutil>=2.8.0",
 ]
 
 [project.optional-dependencies]

@@ -8,37 +8,89 @@ import httpx
 import asyncio
 import json
 from reasonableness_service import reasonableness_service
+from initial_test_cases import conversations, short_conversations
 
-async def test_conversation():
-    """Test a back-and-forth conversation with the AI"""
+
+async def evaluate_response(user_question: str, ai_response: str, turn_number: int) -> dict:
+    """
+    Evaluate an AI response for quality and reasonableness
+
+    Args:
+        user_question: The question asked by the user
+        ai_response: The AI's response
+        turn_number: The turn number in the conversation
+
+    Returns:
+        dict: Evaluation results with ratings and analysis
+    """
+    # Get reasonableness rating
+    try:
+        rating_result = await reasonableness_service.rate_response(
+            user_prompt=user_question,
+            ai_response=ai_response,
+            context=f"Conversation turn {turn_number}"
+        )
+        reasonableness_rating = rating_result['rating']
+        issues = rating_result.get('issues', [])
+    except Exception as e:
+        print(f"⚠️  Reasonableness rating unavailable: {e}")
+        reasonableness_rating = 0.7  # Default rating
+        issues = []
+
+    # Additional quality checks
+    if len(ai_response) < 50:
+        issues.append("Response too short")
+    elif len(ai_response) > 1000:
+        issues.append("Response too long")
+
+    if not ai_response.strip():
+        issues.append("Empty response")
+        reasonableness_rating = 0.0
+
+    return {
+        'reasonableness_rating': reasonableness_rating,
+        'issues': issues,
+        'response_length': len(ai_response)
+    }
+
+async def test_parallel_conversation():
+    # Run test_conversation once on each array within short_conversations
+    tasks = [
+        asyncio.create_task(test_conversation(conversation))
+        for conversation in short_conversations
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for i, (conversation, result) in enumerate(zip(short_conversations, results)):
+        if isinstance(result, Exception):
+            print(f"Conversation {i+1} ({conversation}) failed: {result}")
+        else:
+            print(f"Conversation {i+1} completed")
+
+
+async def test_conversation(conversation_turns):
+    """Test a multi-turn conversation with evaluation and adaptive questioning"""
     url = f"http://localhost:8000/api/chat/stream"
     
-    # Define a conversation flow
-    conversation = [
-        "Hello! I'm interested in learning about space exploration. Can you tell me about the first moon landing?",
-        "That's fascinating! What about Mars exploration? What are the current missions?",
-        "What challenges do astronauts face when traveling to Mars?",
-        "Do you think humans will colonize Mars in the next 50 years?",
-        "Thank you for the great conversation! What's your favorite space fact?"
-    ]
+    # Define conversation turns with next questions
+   
     
     conversation_history = []
     total_rating = 0
     response_count = 0
+    evaluation_results = []
     
-    print("🚀 Starting back-and-forth conversation test...")
-    print("=" * 60)
+
+    for turn, turn_data in enumerate(conversation_turns, 1):
+        user_message = turn_data
+        print(f"User message: {user_message} Turn: {turn}")
     
-    for turn, user_message in enumerate(conversation, 1):
-        print(f"\n🗣️  Turn {turn} - User:")
-        print(f"   {user_message}")
         
         # Build payload with conversation history
         payload = {
             "message": user_message,
             "messages": conversation_history
         }
-        
+        print(f"Calling with Payload: {payload}")
         try:
             async with httpx.AsyncClient() as client:
                 async with client.stream(
@@ -50,12 +102,9 @@ async def test_conversation():
                 ) as response:
                     
                     if response.status_code != 200:
-                        print(f"❌ Error: {await response.atext()}")
+                        print(f"❌ Error: {response.status_code}")
                         continue
-                    
-                    print(f"\n🤖 AI Response:")
-                    print("-" * 40)
-                    
+          
                     full_response = ""
                     chunk_count = 0
                     
@@ -67,11 +116,11 @@ async def test_conversation():
                                 data = json.loads(data_str)
                                 
                                 if "token" in data:
+                                
                                     token = data["token"]
                                     full_response += token
                                     chunk_count += 1
                                 elif "finished" in data:
-                                    print(f"\n\n📊 Chunks: {chunk_count}")
                                     break
                                 elif "error" in data:
                                     print(f"\n❌ Error: {data['error']}")
@@ -82,62 +131,132 @@ async def test_conversation():
                     
                     # Add to conversation history
                     conversation_history.append({"role": "user", "content": user_message})
+                    print(f"Assistant response: {full_response}")
                     conversation_history.append({"role": "assistant", "content": full_response})
                     
-                    # Rate the response
-                    try:
-                        rating_result = await reasonableness_service.rate_response(
-                            user_prompt=user_message,
-                            ai_response=full_response,
-                            context=f"Conversation turn {turn} of {len(conversation)}"
-                        )
-                        
-                        rating = rating_result['rating']
-                        total_rating += rating
-                        response_count += 1
-                        
-                        print(f"📊 Rating: {rating:.2f}/1.0")
-                        print(f"🎯 Confidence: {rating_result['confidence']:.2f}/1.0")
-                        if rating_result['issues']:
-                            print(f"⚠️  Issues: {', '.join(rating_result['issues'])}")
-                        else:
-                            print("✅ No issues found")
-                            
-                    except Exception as e:
-                        print(f"⚠️  Rating unavailable: {e}")
-                        # Manual assessment
-                        rating = 0.8 if len(full_response) > 50 else 0.5
-                        total_rating += rating
-                        response_count += 1
-                        print(f"📊 Manual Rating: {rating:.2f}/1.0")
+                    # Evaluate the response
+                    evaluation = await evaluate_response(
+                        user_question=user_message,
+                        ai_response=full_response,
+                        turn_number=turn
+                    )
                     
-                    print("-" * 40)
+                    evaluation_results.append(evaluation)
+                    total_rating += evaluation['reasonableness_rating']
+                    response_count += 1
                     
+                    # Display evaluation results
+                    
+                    if evaluation['issues']:
+                        print(f"   ⚠️  Issues: {', '.join(evaluation['issues'])}")
+
+                    
+
+                    
+
+        except httpx.TimeoutException as e:
+            print(f"❌ Turn {turn} failed: {e}")
+            continue
+        except httpx.HTTPStatusError as e:
+            print(f"❌ Turn {turn} failed: {e}")
+            continue
         except Exception as e:
             print(f"❌ Turn {turn} failed: {e}")
             continue
-    
+    print(f"Conversation history: {conversation_history}")
     # Conversation summary
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     print("📊 CONVERSATION SUMMARY")
-    print("=" * 60)
-    print(f"🗣️  Total turns: {len(conversation)}")
+    print("=" * 80)
+    print(f"🗣️  Total turns: {len(conversation_turns)}")
     print(f"🤖 Successful responses: {response_count}")
-    print(f"📈 Average rating: {(total_rating/response_count):.2f}/1.0" if response_count > 0 else "📈 Average rating: N/A")
+    print(f"📈 Average reasonableness rating: {(total_rating/response_count):.2f}/1.0" if response_count > 0 else "📈 Average rating: N/A")
     print(f"💬 Conversation history length: {len(conversation_history)} messages")
+    avg_reasonableness = 0
+    # Detailed analysis
+    if evaluation_results:
+        avg_reasonableness = sum(e['reasonableness_rating'] for e in evaluation_results) / len(evaluation_results)
+        total_issues = sum(len(e['issues']) for e in evaluation_results)
+        
+        print(f"\n🔍 DETAILED ANALYSIS:")
+        print(f"   🎯 Average reasonableness: {avg_reasonableness:.2f}/1.0")
+        print(f"   ⚠️  Total issues found: {total_issues}")
+        print(f"   📏 Average response length: {sum(e['response_length'] for e in evaluation_results) / len(evaluation_results):.0f} characters")
+        
+        # Turn-by-turn breakdown
+        print(f"\n📋 TURN-BY-TURN BREAKDOWN:")
+        for i, eval_result in enumerate(evaluation_results, 1):
+            status = "✅" if eval_result['reasonableness_rating'] > 0.7 else "⚠️" if eval_result['reasonableness_rating'] > 0.5 else "❌"
+            print(f"   Turn {i}: {status} {eval_result['reasonableness_rating']:.2f} (Quality: {eval_result['reasonableness_rating']:.2f})")
     
     # Analyze conversation flow
     if len(conversation_history) >= 4:
-        print(f"\n🔍 Conversation Analysis:")
-        print(f"   - Context maintained: {'✅ Yes' if len(conversation_history) == len(conversation) * 2 else '❌ No'}")
+        print(f"\n🔍 CONVERSATION FLOW ANALYSIS:")
+        print(f"   - Context maintained: {'✅ Yes' if len(conversation_history) == len(conversation_turns) * 2 else '❌ No'}")
         print(f"   - Response quality: {'✅ Good' if (total_rating/response_count) > 0.7 else '⚠️  Needs improvement'}")
-        print(f"   - Conversation flow: {'✅ Natural' if response_count == len(conversation) else '❌ Interrupted'}")
+        print(f"   - Conversation flow: {'✅ Natural' if response_count == len(conversation_turns) else '❌ Interrupted'}")
     
-    print("\n✨ Conversation test completed!")
-    return conversation_history
+    print("\n✨ Multi-turn conversation test completed!")
+
+
+    # INSERT_YOUR_CODE
+    # Save the conversation and evaluation results to the database using SQLAlchemy models
+
+    # Import here to avoid circular import issues
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from database import get_db_session, Conversation, ConversationResponse, ConversationResponseEvaluation
+
+    # Open a new database session
+    with get_db_session() as db:
+        # Store the conversation as a Conversation row
+        conversation_obj = Conversation(
+            conversation_json=conversation_history
+        )
+        
+        db.add(conversation_obj)
+        db.flush()  # To get conversation_obj.id
+
+        # Store each response and its evaluation
+        for i, eval_result in enumerate(evaluation_results):
+            # The response text is the AI's message at each turn (even indices in conversation_history, starting after user)
+            response_message = conversation_history[i * 2 + 1] if (i * 2 + 1) < len(conversation_history) else {}
+            response_text = response_message.get('content', '') if isinstance(response_message, dict) else str(response_message)
+            response_obj = ConversationResponse(
+                conversation_id=conversation_obj.internal_id,
+                response=response_text,
+                evaluation=eval_result.get('reasonableness_rating', 0),
+                rationality=eval_result.get('reasonableness_rating', 0),  # Using same value for now
+                coherency=eval_result.get('reasonableness_rating', 0),    # Using same value for now
+                elapsed_time=eval_result.get('elapsed_time', 0)
+            )
+            db.add(response_obj)
+            db.flush()  # To get response_obj.id
+
+            # Store evaluation details
+            evaluation_obj = ConversationResponseEvaluation(
+                conversation_response_id=response_obj.id,
+                conversation_json=eval_result,  # Store the full evaluation result as JSON
+                elapsed=eval_result.get('elapsed_time', 0),
+                rationality=eval_result.get('reasonableness_rating', 0),
+                coherency=eval_result.get('reasonableness_rating', 0)
+            )
+            db.add(evaluation_obj)
+
+        db.commit()
+    return {
+        'conversation_history': conversation_history,
+        'evaluation_results': evaluation_results,
+        'summary': {
+            'total_turns': len(conversation_turns),
+            'successful_responses': response_count,
+            'average_rating': total_rating/response_count if response_count > 0 else 0,
+            'average_reasonableness': avg_reasonableness if evaluation_results else 0
+        }
+    }
 
 
 if __name__ == "__main__":
-    print("🧪 Starting conversation test with reasonableness rating...")
     
-    asyncio.run(test_conversation())
+    asyncio.run(test_parallel_conversation())

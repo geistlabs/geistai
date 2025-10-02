@@ -37,7 +37,7 @@ class AgentTool:
         name: str,
         description: str,
         system_prompt: str,
-        available_tools: List[str] = None,
+        available_tools: List[str],
         reasoning_effort: str = "medium",
     ):
         """
@@ -222,8 +222,9 @@ def create_research_agent(config) -> AgentTool:
             "- Provide well-structured, factual reports\n"
             "- Always cite your sources when possible\n\n"
             "Be thorough, accurate, and objective in your research."
+            "You always find the results, using fetch tool if needed"
         ),
-        available_tools=["brave_web_search"],  # Only allow search tools
+        available_tools=["brave_web_search", "fetch"],  # Only allow search tools
         reasoning_effort="high"
     )
 
@@ -306,7 +307,8 @@ def create_custom_agent(
     name: str,
     description: str,
     system_prompt: str,
-    available_tools: List[str] = None,
+    model_config: Dict[str, Any],
+    available_tools: List[str],
     reasoning_effort: str = "medium",
 ) -> AgentTool:
     """
@@ -324,6 +326,7 @@ def create_custom_agent(
         AgentTool: Configured agent ready to be registered
     """
     return AgentTool(
+        model_config=model_config,
         name=name,
         description=description,
         system_prompt=system_prompt,
