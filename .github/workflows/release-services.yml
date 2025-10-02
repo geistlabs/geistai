@@ -3,7 +3,7 @@ name: (TAG) Build + Push Backend Services
 on:
   push:
     tags:
-      - "embedder-*-*.*.*"
+      - "embeddings-*-*.*.*"
       - "inference-*-*.*.*"
       - "webapp-*-*.*.*"
       - "router-*-*.*.*"
@@ -35,11 +35,11 @@ jobs:
           echo "Environment: ${ENVIRONMENT}"
           echo "Version: ${VERSION}"
 
-  build_release_embedder:
-    name: Build and Release Embedder
+  build_release_embeddings:
+    name: Build and Release embeddings
     needs: extract_info
-    if: needs.extract_info.outputs.SERVICE == 'embedder'
-    uses: ./.github/workflows/build-embedder.yml
+    if: needs.extract_info.outputs.SERVICE == 'embeddings'
+    uses: ./.github/workflows/build-embeddings.yml
     with:
       environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
       version: ${{ needs.extract_info.outputs.VERSION }}
