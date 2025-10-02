@@ -1,10 +1,23 @@
 # Start with Python 3.11 as our base
 FROM python:3.11-slim
 
-# Install system dependencies 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    build-essential \
+    cmake \
+    git \
     && rm -rf /var/lib/apt/lists/*
+
+# Install whisper.cpp binary (like llama.cpp server pattern)
+RUN git clone https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp \
+    && cd /tmp/whisper.cpp \
+    && make \
+    && cp whisper-cli /usr/local/bin/ \
+    && rm -rf /tmp/whisper.cpp
+
+# Create models directory for volume mount (like llama.cpp pattern)
+RUN mkdir -p /models && chown 1000:1000 /models
 
 # Set working directory
 WORKDIR /app
@@ -14,7 +27,7 @@ COPY . .
 
 # Note: Certificates should be mounted as a volume at runtime
 
-# Install dependencies 
+# Install dependencies
 RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette python-multipart
 
 # Create non-root user

@@ -60,10 +60,9 @@ app.add_middleware(
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
 
 # Initialize STT service
-# Use relative paths from the backend directory to make it more portable
-backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-whisper_path = os.path.join(backend_dir, "whisper.cpp/build/bin/whisper-cli")
-model_path = os.path.join(backend_dir, "whisper.cpp/models/ggml-base.bin")
+# Use volume-mounted paths like llama.cpp pattern
+whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
+model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
 stt_service = (
     STTService(whisper_path, model_path)
     if os.path.exists(whisper_path) and os.path.exists(model_path)
