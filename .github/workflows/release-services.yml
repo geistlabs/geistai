@@ -1,0 +1,76 @@
+name: (TAG) Build + Push Backend Services
+
+on:
+  push:
+    tags:
+      - "embedder-*-*.*.*"
+      - "inference-*-*.*.*"
+      - "webapp-*-*.*.*"
+      - "router-*-*.*.*"
+
+jobs:
+  extract_info:
+    name: Extract info from git tag
+    outputs:
+      SERVICE: ${{ steps.extract_tag.outputs.service }}
+      ENVIRONMENT: ${{ steps.extract_tag.outputs.environment }}
+      VERSION: ${{ steps.extract_tag.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract tag info
+        id: extract_tag
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/} 
+          IFS='-' read -ra PARTS <<< "$TAG_NAME"
+          SERVICE="${PARTS[0]}"
+          VERSION="${PARTS[-1]}"
+          ENVIRONMENT="${PARTS[-2]}"
+
+          echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          echo "Extracted from tag: ${TAG_NAME}"
+          echo "Service: ${SERVICE}"
+          echo "Environment: ${ENVIRONMENT}"
+          echo "Version: ${VERSION}"
+
+  build_release_embedder:
+    name: Build and Release Embedder
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'embedder'
+    uses: ./.github/workflows/build-embedder.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
+
+  build_release_inference:
+    name: Build and Release Inference
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'inference'
+    uses: ./.github/workflows/build-inference.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
+
+  build_release_webapp:
+    name: Build and Release Webapp
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'webapp'
+    uses: ./.github/workflows/build-webapp.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
+
+  build_release_router:
+    name: Build and Release Router
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'router'
+    uses: ./.github/workflows/build-router.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
