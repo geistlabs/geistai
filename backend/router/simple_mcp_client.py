@@ -150,8 +150,6 @@ class SimpleMCPClient:
         if "result" in result and "tools" in result["result"]:
             for tool in result["result"]["tools"]:
                 self._tool_cache[tool["name"]] = tool
-            
-            print(f"✅ Cached {len(self._tool_cache)} tools from MCP gateway")
         else:
             print("⚠️  No tools found in MCP gateway response")
     

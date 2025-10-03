@@ -10,10 +10,9 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml .
-COPY main.py .
-COPY config.py .
+# Copy entire backend directory for cross-service package access
+COPY ../.. /app/backend
+WORKDIR /app/backend/embeddings
 
 # Create models directory for caching
 RUN mkdir -p /app/models
@@ -21,6 +20,13 @@ RUN mkdir -p /app/models
 # Install dependencies (CPU-only PyTorch for smaller image size)
 RUN pip install --no-cache-dir fastapi uvicorn sentence-transformers numpy pydantic && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install all backend packages in editable mode for cross-service access
+RUN pip install -e /app/backend/router
+RUN pip install -e /app/backend/database
+
+# Set environment variables for cross-service package access
+ENV PYTHONPATH=/app/backend:/app/backend/router:/app/backend/embeddings:/app/backend/database
 
 # Create non-root user
 RUN useradd -m -u 1000 embeddings && chown -R embeddings:embeddings /app

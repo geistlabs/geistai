@@ -53,7 +53,7 @@ app.add_middleware(
 )
 
 # Initialize Gpt service if enabled
-gpt_service = GptService(config) 
+gpt_service = GptService(config, can_log=True) 
 
 
 # Initialize STT service

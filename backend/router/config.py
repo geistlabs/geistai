@@ -62,7 +62,7 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # Token settings
-MAX_TOKENS = 1500
+MAX_TOKENS = 4096
 
 # SSL settings
 SSL_ENABLED = os.getenv("SSL_ENABLED", "false").lower() == "true"

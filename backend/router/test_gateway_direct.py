@@ -4,7 +4,7 @@ Direct test of MCP gateway connection
 """
 import asyncio
 import httpx
-import mcp_patch  # Apply monkey patch for Accept header
+
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 

@@ -1,0 +1,35 @@
+[project]
+name = "database"
+version = "0.1.0"
+description = "Database ORM and migration system for GeistAI"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.12.0",
+    "python-dateutil>=2.8.0",
+]
+
+[project.optional-dependencies]
+async = [
+    "asyncpg>=0.29.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = [
+    "database",
+    "models",
+    "init_db",
+    "migrate",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["test_*"]
+
+

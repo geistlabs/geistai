@@ -1,3 +1,4 @@
+
 short_conversations = [
 
     [
@@ -5,8 +6,6 @@ short_conversations = [
         "Okay, and what about for the rest of the week? I need to know if I should pack a rain jacket for my trip.",
         "Based on that forecast, what are three indoor activities you'd recommend in Toronto this weekend?"
     ],
-]
-conversations = [
     # Conversation 1: Basic Info -> Planning -> Recommendation
     [
         "What's the weather like in Toronto today?",

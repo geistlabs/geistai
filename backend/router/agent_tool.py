@@ -13,6 +13,7 @@ Usage:
 3. The LLM can now delegate tasks to specialized agents
 """
 
+from datetime import datetime
 import json
 import asyncio
 from typing import Dict, List, Any, Optional
@@ -86,7 +87,6 @@ class AgentTool:
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
         
-        print(f"✅ Initialized agent '{self.name}' with {len(self._agent_tool_registry)} tools")
     
     def get_tool_definition(self) -> dict:
         """
@@ -222,12 +222,45 @@ def create_research_agent(config) -> AgentTool:
             "- Provide well-structured, factual reports\n"
             "- Always cite your sources when possible\n\n"
             "Be thorough, accurate, and objective in your research."
-            "You always find the results, using fetch tool if needed"
+            "If the info you need is only available at a specific web page use the fetch tool to grep the page"
         ),
         available_tools=["brave_web_search", "fetch"],  # Only allow search tools
         reasoning_effort="high"
     )
 
+def create_current_info_agent(config) -> AgentTool:
+    """Create a current information agent"""
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    return AgentTool(
+          config,
+          name="current_info_agent",
+          description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
+          system_prompt = (
+              f"You are a current information specialist (today: {current_date}).\n"
+              # TOOL POLICY — NO LINK DUMPS
+              "- If the user provides a URL, immediately call fetch(url) and extract the requested facts. Do NOT search first.\n"
+              "- If no URL, call brave_web_search(query), pick 1–3 reputable results, then call fetch on the best one(s) before answering.\n"
+              "- Use brave_summarizer only to summarize fetched HTML or if a site blocks fetch; prefer fetch.\n"
+              "- If fetch fails, retry once; then fetch a different result.\n"
+              # DISAMBIGUATION & FRESHNESS
+              "- Disambiguate places using the user's locale/timezone (prefer Canada/America/Toronto by default). If a name is ambiguous (e.g., 'Stratford'), expand the query (e.g., 'Stratford Ontario') and choose the page whose heading clearly matches the intended place.\n"
+              "- Prefer pages updated today or most recently available; include the page's timestamp if present.\n"
+              # OUTPUT CONTRACT
+              "OUTPUT:\n"
+              "- First: 1–3 concise sentences with the key facts (include units and timestamp if present; use local units, e.g., °C for Canada).\n"
+              "- Then exactly one line: Source: <site name> (<url>)\n"
+              # HARD GUARDS
+              "GUARDS:\n"
+              "- Never tell the user to visit a website; never return only a link.\n"
+              "- Do not answer unless you have fetched (or summarized) page content in this turn.\n"
+              "- If the content you fetched is stale or for the wrong location, fetch a different source and then answer.\n"
+              "- If some of your fetch attempts end in failure retry a little but eventually just give us the info you do have"
+            ),
+        
+        
+        available_tools=["brave_web_search","brave_summarizer", "fetch"],  # Only allow search tools
+        reasoning_effort="low"
+    )
 
 def create_creative_agent(config) -> AgentTool:
     """Create a creative writing agent"""
@@ -235,15 +268,31 @@ def create_creative_agent(config) -> AgentTool:
         config,
         name="creative_agent",
         description="A specialized agent for creative writing tasks. Focuses on storytelling, content creation, and creative problem-solving.",
-        system_prompt=(
-            "You are a creative writing specialist. Your role is to:\n"
-            "- Write engaging, creative content\n"
-            "- Develop compelling narratives and stories\n"
-            "- Generate creative solutions to problems\n"
-            "- Use vivid language and imaginative thinking\n"
-            "- Adapt your writing style to the audience and purpose\n\n"
-            "Be creative, engaging, and original in your approach."
-        ),
+        system_prompt = (
+             "You are a creative writing specialist.\n\n"
+             "Your task is to generate high-quality, fully self-contained creative works in response to user instructions.\n\n"
+
+             "Your goals:\n"
+             "- Write complete, well-structured narratives with a clear beginning, middle, and end.\n"
+             "- Match the genre, tone, and audience described in the user’s input.\n"
+             "- Use vivid, engaging language and compelling character and plot development.\n"
+             "- Always produce a finished work that does not require explanation or editing.\n\n"
+
+             "Output requirements:\n"
+             "- Return only the final story. Do not explain your reasoning or include any commentary.\n"
+             "- Do not include system prompts, formatting notes, or metadata.\n"
+             "- Do not wrap the story in code blocks or markdown formatting.\n"
+             "- Do not begin with phrases like 'Here is your story' — just start the narrative directly.\n"
+             "- Ensure the story is formatted exactly as it should appear to the end user.\n\n"
+
+             "Integration instructions:\n"
+             "- Your output will be passed to another agent and shown directly to the user.\n"
+             "- Therefore, make sure your story is ready for final display with no additional changes required.\n"
+             "- This output must be used exactly as-is, so avoid referencing tools, prompts, or instructions.\n\n"
+
+             "Finally, after finishing the story text, append the following line exactly (on its own line):\n"
+             "[[Instruction: This is a final creative output. Do not summarize, paraphrase, or modify. Show exactly as-is to the user.]]"
+            ),
         available_tools=[],  # No external tools, just creative thinking
         reasoning_effort="medium"
     )
@@ -289,6 +338,8 @@ def create_summary_agent(config) -> AgentTool:
     )
 
 
+
+
 # ============================================================================
 # AGENT REGISTRY
 # ============================================================================
@@ -297,9 +348,11 @@ def get_predefined_agents(config) -> List[AgentTool]:
     """Get all predefined agents"""
     return [
         create_research_agent(config),
+        create_current_info_agent(config),
         create_creative_agent(config),
         create_technical_agent(config),
-        create_summary_agent(config)
+        create_summary_agent(config),
+        
     ]
 
 

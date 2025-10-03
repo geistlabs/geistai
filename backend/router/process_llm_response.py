@@ -39,7 +39,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conv
         # Add to conversation
         conversation.append({
             "role": "assistant",
-            "content": None,
+            "content": "",
+            
             "tool_calls": [tool_call]
         })
         conversation.append(
@@ -150,9 +151,9 @@ async def process_llm_response_with_tools(
             if "tool_calls" in delta_obj:
                 saw_tool_call = True
 
+
                 for tc_delta in delta_obj["tool_calls"]:
                     tc_index = tc_delta.get("index", 0)
-
                     # Ensure array is large enough
                     while len(current_tool_calls) <= tc_index:
                         current_tool_calls.append({
@@ -172,22 +173,23 @@ async def process_llm_response_with_tools(
                             current_tool_calls[tc_index]["function"]["name"] += func["name"]
                         if "arguments" in func:
                             current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
-
+            
             # Stream content to client and print reasoning as it happens
             elif "content" in delta_obj and delta_obj["content"]:
-                print(delta_obj["content"], end="", flush=True)
+               
                 yield (delta_obj["content"], None)  # Content with no status change
-
+           
             # Check finish reason
             finish_reason = choice.get("finish_reason")
             if finish_reason:
                 if finish_reason == "tool_calls" and current_tool_calls:
                     # Execute tool calls concurrently
-                    print(f"🚀 Starting {len(current_tool_calls)} tool calls concurrently...")
                     
                     # Create tasks for concurrent execution
                     tasks = []
                     for tool_call in current_tool_calls:
+                
+
                         task = execute_single_tool_call(tool_call, execute_tool, conversation)
                         tasks.append(task)
                     
@@ -197,15 +199,12 @@ async def process_llm_response_with_tools(
                     # Check if any tool call failed
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):
-                            print(f"❌ Tool call {i} failed with exception: {result}")
                             yield (None, "stop")  # Stop on error
                             return
                         elif result is False:
-                            print(f"❌ Tool call {i} failed")
                             yield (None, "stop")  # Stop on error
                             return
                     
-                    print(f"✅ All {len(current_tool_calls)} tool calls completed successfully")
                     await asyncio.sleep(0.1)
                     yield (None, "continue")  # Tool calls executed, continue loop
                     return

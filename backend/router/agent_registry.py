@@ -157,7 +157,7 @@ async def example_usage(config):
     await register_specific_agents(
         gpt_service, 
         config, 
-        agent_names=["research_agent", "creative_agent"]
+        agent_names=["research_agent", "creative_agent", "weather_agent"]
     )
     
     # Example 3: Register a custom agent

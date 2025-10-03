@@ -8,7 +8,7 @@ import httpx
 import asyncio
 import json
 from reasonableness_service import reasonableness_service
-from initial_test_cases import conversations, short_conversations
+from initial_test_cases import  short_conversations
 
 
 async def evaluate_response(user_question: str, ai_response: str, turn_number: int) -> dict:

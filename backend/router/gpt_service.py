@@ -34,65 +34,24 @@ PERMITTED_TOOLS = [
     "creative_agent",
     "technical_agent",
     "summary_agent",
+    "current_info_agent",
       # MCP tool: Brave search
     # "fetch",           # MCP tool: Web page fetching (commented out - add if needed)
     # "calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
 ]
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 3
+MAX_TOOL_CALLS = 10
 
-
-# ============================================================================
-# HOW TO ADD CUSTOM (NON-MCP) TOOLS
-# ============================================================================
-"""
-To add a custom tool that doesn't come from MCP:
-
-1. Define the tool execution function:
-   
-   async def my_custom_tool(arguments: dict) -> dict:
-       '''Your tool implementation'''
-       query = arguments.get("query", "")
-       result = do_something(query)
-       return {"content": result, "status": "success"}
-
-2. Register it in _register_custom_tools() method:
-   
-   self._register_tool(
-       name="my_custom_tool",
-       description="What your tool does",
-       input_schema={
-           "type": "object",
-           "properties": {
-               "query": {
-                   "type": "string",
-                   "description": "Input parameter description"
-               }
-           },
-           "required": ["query"]
-       },
-       executor=my_custom_tool,
-       tool_type="custom"
-   )
-
-3. Add tool name to PERMITTED_TOOLS list above
-
-That's it! The tool will now be available to the LLM.
-"""
-
-
-# ============================================================================
-# TOOL REGISTRY & EXECUTION
-# ============================================================================
 
 class GptService:
     """Main service for handling GPT requests with tool support"""
     
-    def __init__(self, config):
+    def __init__(self, config, can_log: bool = False):
         # Tool registry: name -> {description, input_schema, executor, type}
         self._tool_registry: Dict[str, dict] = {}
         self.config = config
+        self.can_log = can_log
         
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
@@ -101,6 +60,8 @@ class GptService:
     # Tool Registration & Management
     # ------------------------------------------------------------------------
     
+
+
     def _register_tool(
         self,
         name: str,
@@ -198,11 +159,9 @@ class GptService:
     async def _register_mcp_tools(self):
         """Register tools from MCP gateway"""
         if not self.config.MCP_HOST:
-            print("⚠️  MCP_HOST not configured, skipping MCP tools")
             return
         
         try:
-            print(f"Connecting to MCP gateway at {self.config.MCP_HOST}")
             
             # Initialize MCP client
             self._mcp_client = SimpleMCPClient(self.config.MCP_HOST)
@@ -211,11 +170,9 @@ class GptService:
             # MCP handshake
             await self._mcp_client.initialize()
             await self._mcp_client.send_initialized()
-            print("✅ MCP handshake completed")
             
             # Get available tools
             tools = await self._mcp_client.list_and_register_tools()
-            print(f"✅ Found {len(tools)} MCP tools")
             
             # Register each MCP tool
             for tool in tools:
@@ -244,7 +201,6 @@ class GptService:
         Initialize all tools (MCP and custom)
         Call this once at startup
         """
-        print("Initializing tools...")
         
         # Register custom tools first
         await self._register_custom_tools()
@@ -258,8 +214,7 @@ class GptService:
             await self._mcp_client.__aexit__(None, None, None)
             self._mcp_client = None
         self._tool_registry.clear()
-        print("✅ Tools shutdown complete")
-    
+       
     # ------------------------------------------------------------------------
     # Tool Execution
     # ------------------------------------------------------------------------
@@ -277,23 +232,24 @@ class GptService:
         try:
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
-            
-            print(f"🔧 Executing {tool_info['type']} tool: {tool_name}")
+            print(f"Executing tool: {tool_name} with arguments: {arguments}")
             result = await executor(arguments)
-            print(f"Tool {tool_name} executed with result: {result}")
+            print(f"Tool result: {result.get('content', 'No content')}")
             return result
             
         except Exception as e:
-            print(f"❌ Tool execution failed: {tool_name} - {e}")
             return {"error": f"Tool execution failed: {str(e)}"}
     
+
+
+
     def _get_permitted_tools_for_llm(self, permitted_tools: List[str]) -> List[dict]:
         """
         Get tool definitions in OpenAI function calling format
         Only includes permitted tools
         """
-        tools = []
-        
+        tools = [] 
+       
         for tool_name in permitted_tools:
             if tool_name not in self._tool_registry:
                 continue
@@ -311,7 +267,6 @@ class GptService:
                         "parameters": input_schema
                     }
                 })
-        
         return tools
     
 
@@ -338,17 +293,22 @@ class GptService:
         
         system_prompt = (
             "You are Geist — a privacy-focused AI companion.\n\n"
-            f"REASONING: {reasoning_instructions.get(reasoning_effort, reasoning_instructions['low'])}\n\n"
-            "IDENTITY:\n"
-            "- If asked about your identity: 'I'm a finetuned model curated by the creators of Geist.'\n"
-            "- If asked about data storage: 'All conversations stay private. I only use your messages to generate responses and never store them anywhere beyond your device.'\n\n"
-            "STYLE:\n"
-            "- Be concise and direct\n"
-            "- You only have information up to 2023 so for changeable facts use the research agent to get the latest information from search engines"
-            "- For simple questions, use 1-2 sentences\n"
-            "- NEVER use markdown tables (|---|---| format)\n"
-            "- You have access to agents in the form of tools, use them sometimes"
-        )
+            f"REASONING:\n{reasoning_instructions.get(reasoning_effort, reasoning_instructions['low'])}\n\n"
+
+            "KNOWLEDGE LIMITS:\n"
+            "- You only have information up to 2023.\n"
+            "- For questions involving recent or changeable information, use the current info or research agent to query the web.\n\n"
+
+
+            "STYLE & BEHAVIOR:\n"
+            "- Be clear, concise, and direct, unless creativity or elaboration is explicitly requested.\n"
+            "- NEVER use markdown tables (|---|---| format).\n"
+            "- Use tools (agents) when needed — especially for creative writing, technical analysis, summarization, or external research.\n"
+            "- When you use a tool, you must integrate its result clearly and faithfully into your response.\n"
+            "- If the tool returns **long-form creative content** (e.g., stories, poems, articles, essays), include the **full output verbatim** in your response — do not summarize, paraphrase, or shorten it."
+            "- If a tool returns a link and other text, never direct the user to the link, always provide the info from the link and optionally cite the source"
+)
+
         
         result_messages = []
         has_system = any(msg.get("role") == "system" for msg in messages)
@@ -460,8 +420,9 @@ class GptService:
         
         # Get permitted tools for this request
         tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
+        print("Tools for LLM:", [tool["function"]["name"] for tool in tools_for_llm])
         
-        
+
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""
             request_data = {
@@ -476,7 +437,7 @@ class GptService:
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-            
+
             async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                 async with client.stream(
                     "POST",
@@ -485,6 +446,7 @@ class GptService:
                     json=request_data,
                     timeout=self.config.INFERENCE_TIMEOUT
                 ) as resp:
+                
                     async for line in resp.aiter_lines():
                         if not line or not line.startswith("data: "):
                             continue
@@ -502,11 +464,12 @@ class GptService:
         tool_call_count = 0
         
         while tool_call_count < MAX_TOOL_CALLS:
+
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
                 self._execute_tool,
                 llm_stream_once,
-                conversation
+                conversation,
             ):
                 # Stream content to client if available
                 if content_chunk:
