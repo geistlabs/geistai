@@ -24,6 +24,8 @@ class Conversation(Base):
     responses = relationship("ConversationResponse", back_populates="conversation", cascade="all, delete-orphan")
 
 
+
+
 class ConversationResponse(Base):
     """Conversation response model for storing AI responses"""
     __tablename__ = 'conversation_response'
@@ -58,3 +60,14 @@ class ConversationResponseEvaluation(Base):
     
     # Relationship
     conversation_response = relationship("ConversationResponse", back_populates="evaluation_detail")
+
+class Issue(Base):
+    """Issue model for storing evaluation issues"""
+    __tablename__ = 'issue'
+    
+    id = Column(Integer, primary_key=True, index=True)
+    description = Column(JSON, nullable=False)  # Store issues as JSON array
+    
+    # Foreign key to conversation response (many issues belong to one response)
+    conversation_response_id = Column(Integer, ForeignKey('conversation_response.id', ondelete='CASCADE'), nullable=True)
+    

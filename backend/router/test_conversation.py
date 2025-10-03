@@ -4,6 +4,7 @@ Test script for streaming functionality - mimics frontend behavior.
 Includes reasonableness rating of responses.
 """
 
+import time
 import httpx
 import asyncio
 import json
@@ -11,7 +12,7 @@ from reasonableness_service import reasonableness_service
 from initial_test_cases import  short_conversations
 
 
-async def evaluate_response(user_question: str, ai_response: str, turn_number: int) -> dict:
+async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float) -> dict:
     """
     Evaluate an AI response for quality and reasonableness
 
@@ -50,7 +51,9 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
     return {
         'reasonableness_rating': reasonableness_rating,
         'issues': issues,
-        'response_length': len(ai_response)
+        'response_length': len(ai_response),
+        'elapsed_time': elapsed_time
+
     }
 
 async def test_parallel_conversation():
@@ -107,6 +110,7 @@ async def test_conversation(conversation_turns):
           
                     full_response = ""
                     chunk_count = 0
+                    start_time = time.time()
                     
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
@@ -133,12 +137,13 @@ async def test_conversation(conversation_turns):
                     conversation_history.append({"role": "user", "content": user_message})
                     print(f"Assistant response: {full_response}")
                     conversation_history.append({"role": "assistant", "content": full_response})
-                    
+                    elapsed_time = time.time() - start_time
                     # Evaluate the response
                     evaluation = await evaluate_response(
                         user_question=user_message,
                         ai_response=full_response,
-                        turn_number=turn
+                        turn_number=turn,
+                        elapsed_time=elapsed_time
                     )
                     
                     evaluation_results.append(evaluation)
@@ -206,7 +211,7 @@ async def test_conversation(conversation_turns):
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-    from database import get_db_session, Conversation, ConversationResponse, ConversationResponseEvaluation
+    from database import get_db_session, Conversation, ConversationResponse, ConversationResponseEvaluation, Issue
 
     # Open a new database session
     with get_db_session() as db:
@@ -242,6 +247,12 @@ async def test_conversation(conversation_turns):
                 rationality=eval_result.get('reasonableness_rating', 0),
                 coherency=eval_result.get('reasonableness_rating', 0)
             )
+            issues = eval_result.get('issues', [])
+            issuesObj = Issue(
+                conversation_response_id=response_obj.id,
+                description=issues
+            )
+            db.add(issuesObj)
             db.add(evaluation_obj)
 
         db.commit()

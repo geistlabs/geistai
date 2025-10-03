@@ -17,7 +17,8 @@ from .models import (
     Base,
     Conversation,
     ConversationResponse,
-    ConversationResponseEvaluation
+    ConversationResponseEvaluation,
+    Issue
 )
 
 # Define DATABASE_URL directly to avoid import issues
@@ -37,5 +38,6 @@ __all__ = [
     "Base",
     "Conversation",
     "ConversationResponse",
-    "ConversationResponseEvaluation"
+    "ConversationResponseEvaluation",
+    "Issue"
 ]

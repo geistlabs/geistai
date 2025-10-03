@@ -115,6 +115,7 @@ class ReasonablenessService:
                 
                 # Validate and normalize the response
                 return self._validate_rating_response(arguments)
+
         except httpx.TimeoutException as e:
             print(f"Rating service timeout: {str(e)}")
             return {
@@ -137,7 +138,7 @@ class ReasonablenessService:
                 "rating": 0.5,
                 "reasoning": f"Rating service request error: {str(e)}",
                 "confidence": 0.0,
-                "issues": ["Service request error"]
+                "issues": [f"Rating service request error: {str(e)}"]
             }
         except Exception as e:
             print(f"Rating service error: {str(e)}")
@@ -151,71 +152,89 @@ class ReasonablenessService:
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
         """Build the evaluation context for the rating tool call."""
         
-        evaluation_text = f"""Please evaluate the reasonableness of this AI response using the provided tool.
+        RUBRIC_SYSTEM_PROMPT = (
+            "You are a strict but fair grader of AI responses for overall REASONABLENESS (not factual accuracy).\n"
+            "\n"
+            "OUTPUT FORMAT: Call the grading function tool EXACTLY ONCE. No prose.\n"
+            "\n"
+            "WHAT TO JUDGE (only these):\n"
+            "- Intent match: did it answer what was asked?\n"
+            "- Constraint adherence (format/style/length).\n"
+            "- Helpfulness & specificity for the user’s ask.\n"
+            "- Tone appropriateness.\n"
+            "- Obvious errors/contradictions.\n"
+            "- Genre appropriateness: do NOT penalize brevity when the genre warrants short turns (e.g., roleplay beats).\n"
+            "\n"
+            "LINKS & EXTRACTION POLICY:\n"
+            "- MAJOR issue: user asked to extract/summarize from a URL or page and the assistant link-dumps instead.\n"
+            "- MINOR issue: for general queries, the assistant links but also provides a usable summary.\n"
+            "\n"
+            "SCORING (use the full 0.0–1.0 scale; do NOT default to 0.6):\n"
+            "- 1.0  Excellent: direct, helpful, on-tone, fits constraints; no meaningful issues.\n"
+            "- 0.9  Very good: minor nit(s) only; still clearly excellent for the user.\n"
+            "- 0.8  Good: a couple small issues (slight verbosity/omissions) but solid overall.\n"
+            "- 0.7  Fair: one notable issue that reduces usefulness, yet answer still serviceable.\n"
+            "- 0.6  Marginal: multiple minors or one clear major that materially harms usefulness.\n"
+            "- 0.5  Weak: major issues; partially useful but notably flawed.\n"
+            "- 0.3  Poor: largely unhelpful/incorrect format or ignores key constraints.\n"
+            "- 0.1  Bad: off-topic/irrelevant/unsafe; no meaningful help.\n"
+            "\n"
+            "MAPPING RULE:\n"
+            "- Identify issues → choose the closest band from the descriptors above.\n"
+            "- Round to ONE decimal. Do not compute long penalties; pick the nearest band.\n"
+            "\n"
+            "CONFIDENCE:\n"
+            "- 0.9 clear-cut; 0.6 mixed; 0.3 borderline/ambiguous.\n"
+            "\n"
+            "CALIBRATION EXAMPLES (anchor your scale to these):\n"
+            "- 1.0  User: \"Give LaTeX quadratic formula.\" Assistant: \"\\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]\"\n"
+            "- 0.9  ROLEPLAY beat (short, in-character, on-tone): User starts scene; Assistant replies with a single in-character line that advances the scene.\n"
+            "- 0.9  TONE analysis follow-up: User asks overall tone beyond pos/neg; Assistant concisely labels it (e.g., \"mostly disappointed but appreciative\") and cites which parts.\n"
+            "- 0.8  User: \"2 sentences.\" Assistant gives 4 but helpful and correct.\n"
+            "- 0.6  User: \"Summarize key numbers from <url>.\" Assistant points to link with minimal/no extraction (major: link-dump).\n"
+            "- 0.3  User asks for a summary; Assistant writes unrelated content.\n"
+            "\n"
+            "Now grade the item below by CALLING THE TOOL:\n"
+            "\n"
+            f"USER PROMPT:\n{user_prompt}\n"
+            f"AI RESPONSE:\n{ai_response}\n"
+            "\n"
+            f"OPTIONAL CONTEXT:\n{context}\n"
+        )
 
-USER PROMPT: "{user_prompt}"
-
-AI RESPONSE: "{ai_response}"
-"""
-
-        if context:
-            evaluation_text += f"\nADDITIONAL CONTEXT: {context}"
-
-        evaluation_text += """
-
-Evaluation criteria:
-- Does the response address what the user asked?
-- Is the tone appropriate?
-- Is the length reasonable for the question?
-- Are there any obvious errors or inconsistencies?
-- Is the response helpful and relevant?
-
-Rate based on reasonableness, not factual accuracy. Use the rating scale:
-- 1.0 = Perfectly reasonable, directly addresses the prompt, appropriate tone and length
-- 0.8-0.9 = Very reasonable, minor issues
-- 0.6-0.7 = Reasonably good, some issues but mostly appropriate
-- 0.4-0.5 = Somewhat reasonable, notable issues
-- 0.2-0.3 = Not very reasonable, significant problems
-- 0.0-0.1 = Completely unreasonable, inappropriate, or irrelevant"""
-
-        return evaluation_text
-    
+        return RUBRIC_SYSTEM_PROMPT
     def _get_rating_tool_definition(self) -> Dict[str, Any]:
         """Get the tool definition for rating responses."""
         return {
-            "type": "function",
-            "function": {
-                "name": "rate_response_reasonableness",
-                "description": "Rate the reasonableness of an AI response on a 0-1 scale",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "rating": {
-                            "type": "number",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                            "description": "Reasonableness rating from 0.0 to 1.0"
-                        },
-                        "reasoning": {
-                            "type": "string",
-                            "description": "Brief explanation of the rating"
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "minimum": 0.0,
-                            "maximum": 1.0,
-                            "description": "Confidence in this rating from 0.0 to 1.0"
-                        },
-                        "issues": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of specific issues found, if any"
-                        }
-                    },
-                    "required": ["rating", "reasoning", "confidence", "issues"]
+    "type": "function",
+    "function": {
+        "name": "rate_response_reasonableness",
+        "description": "Rate the reasonableness of an AI response on a 0-1 scale.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "rating": {
+                    "type": "number", "minimum": 0.0, "maximum": 1.0,
+                    "description": "Reasonableness rating from 0.0 to 1.0 (one decimal)."
+                },
+                "reasoning": {
+                    "type": "string",
+                    "description": "Brief explanation of the rating."
+                },
+                "confidence": {
+                    "type": "number", "minimum": 0.0, "maximum": 1.0,
+                    "description": "Confidence in this rating."
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Specific issues found (e.g., 'major: link-dump')."
                 }
-            }
+            },
+            "required": ["rating", "reasoning", "confidence", "issues"]
         }
+    }
+}
     
     def _validate_rating_response(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Validate and normalize the rating response from the tool call."""
