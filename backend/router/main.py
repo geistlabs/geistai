@@ -11,7 +11,7 @@ import logging
 import os
 import config
 from harmony_service import HarmonyService
-from stt_service import STTService
+from whisper_client import WhisperSTTClient
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,22 +59,11 @@ app.add_middleware(
 # Initialize Harmony service if enabled
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
 
-# Initialize STT service
-# Use volume-mounted paths like llama.cpp pattern
-whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
-model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
-stt_service = (
-    STTService(whisper_path, model_path)
-    if os.path.exists(whisper_path) and os.path.exists(model_path)
-    else None
-)
+# Initialize Whisper STT client
+whisper_service_url = os.getenv("WHISPER_SERVICE_URL", "http://whisper-stt-service:8000")
+stt_service = WhisperSTTClient(whisper_service_url)
 
-if stt_service:
-    logger.info("STT service initialized successfully")
-else:
-    logger.warning(
-        "STT service could not be initialized - whisper binary or model not found"
-    )
+logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
 
 # Validate SSL configuration on startup
 ssl_valid, ssl_message = config.validate_ssl_config()
@@ -262,7 +251,7 @@ async def transcribe_audio(
             )
 
         # Transcribe using STT service
-        result = stt_service.transcribe_audio(audio_data, language)
+        result = await stt_service.transcribe_audio(audio_data, language)
 
         return result
 
