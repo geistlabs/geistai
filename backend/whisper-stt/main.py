@@ -37,16 +37,16 @@ def detect_gpu_info():
         "cuda_version": None,
         "compute_capability": []
     }
-    
+
     try:
         # Check if nvidia-smi is available
-        result = subprocess.run(['nvidia-smi', '--query-gpu=name,compute_cap,driver_version', '--format=csv,noheader,nounits'], 
+        result = subprocess.run(['nvidia-smi', '--query-gpu=name,compute_cap,driver_version', '--format=csv,noheader,nounits'],
                               capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             gpu_info["cuda_available"] = True
             lines = result.stdout.strip().split('\n')
             gpu_info["gpu_count"] = len(lines)
-            
+
             for i, line in enumerate(lines):
                 parts = line.split(', ')
                 if len(parts) >= 3:
@@ -58,7 +58,7 @@ def detect_gpu_info():
                         "driver_version": driver
                     })
                     gpu_info["compute_capability"].append(compute_cap)
-        
+
         # Try to get CUDA version
         try:
             result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True, timeout=5)
@@ -69,17 +69,17 @@ def detect_gpu_info():
                         break
         except:
             pass
-            
+
     except Exception as e:
         logger.warning(f"GPU detection failed: {e}")
-    
+
     return gpu_info
 
 def get_system_info():
     """Get system information"""
     import platform
     import multiprocessing
-    
+
     return {
         "platform": platform.platform(),
         "python_version": platform.python_version(),
@@ -94,46 +94,46 @@ class WhisperSTTService:
         self.model_path = model_path
         self.gpu_info = detect_gpu_info()
         self.system_info = get_system_info()
-        
+
         # Log system information
         self._log_startup_info()
-    
+
     def _log_startup_info(self):
         """Log detailed startup information"""
         logger.info("=" * 60)
         logger.info("WHISPER STT SERVICE STARTUP")
         logger.info("=" * 60)
-        
+
         # System info
         logger.info(f"Platform: {self.system_info['platform']}")
         logger.info(f"Python: {self.system_info['python_version']}")
         logger.info(f"CPU Cores: {self.system_info['cpu_count']}")
         logger.info(f"Architecture: {self.system_info['architecture']}")
-        
+
         # GPU info
         if self.gpu_info["cuda_available"]:
             logger.info("🎯 GPU DETECTION SUCCESSFUL")
             logger.info(f"CUDA Available: {self.gpu_info['cuda_available']}")
             logger.info(f"GPU Count: {self.gpu_info['gpu_count']}")
-            
+
             for i, gpu in enumerate(self.gpu_info["gpu_devices"]):
                 logger.info(f"  Device {gpu['index']}: {gpu['name']}")
                 logger.info(f"    Compute Capability: {gpu['compute_capability']}")
                 logger.info(f"    Driver Version: {gpu['driver_version']}")
-            
+
             if self.gpu_info["cuda_version"]:
                 logger.info(f"CUDA Version: {self.gpu_info['cuda_version']}")
         else:
             logger.warning("⚠️  GPU DETECTION FAILED - Running on CPU only")
             logger.warning("   This may result in slower transcription performance")
-        
+
         # Whisper binary info
         logger.info(f"Whisper Binary: {self.whisper_path}")
         logger.info(f"Model Path: {self.model_path}")
-        
+
         # Test whisper binary
         try:
-            result = subprocess.run([self.whisper_path, '--help'], 
+            result = subprocess.run([self.whisper_path, '--help'],
                                   capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 logger.info("✅ Whisper binary is functional")
@@ -141,7 +141,7 @@ class WhisperSTTService:
                 logger.error(f"❌ Whisper binary test failed: {result.stderr}")
         except Exception as e:
             logger.error(f"❌ Whisper binary test error: {e}")
-        
+
         logger.info("=" * 60)
 
     def transcribe_audio(self, audio_data: bytes, language: Optional[str] = None) -> Dict[str, Any]:
@@ -188,13 +188,13 @@ class WhisperSTTService:
 
                 # Log the command being executed
                 logger.info(f"Executing whisper command: {' '.join(cmd[:4])}...")
-                
+
                 # Run whisper
                 import time
                 start_time = time.time()
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
                 end_time = time.time()
-                
+
                 logger.info(f"Transcription completed in {end_time - start_time:.2f} seconds")
 
                 if result.returncode != 0:
@@ -328,12 +328,12 @@ async def get_info():
             "info": "/info"
         }
     }
-    
+
     # Add GPU and system info if service is available
     if stt_service:
         info["gpu_info"] = stt_service.gpu_info
         info["system_info"] = stt_service.system_info
-    
+
     return info
 
 if __name__ == "__main__":
