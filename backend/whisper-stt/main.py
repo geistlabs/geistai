@@ -99,15 +99,17 @@ class WhisperSTTService:
                         print(f"JSON decode error: {e}")
                         print(f"Raw output: {result.stdout}")
                         # Fall through to fallback
-                else:
-                    # Fallback: extract text from stdout
-                    import re
-                    text = result.stdout.strip()
-                    cleaned_text = re.sub(
-                        r"\s*\[\d{2}:\d{2}:\d{2}(?:\.\d{3})?\s*--?>\s*\d{2}:\d{2}:\d{2}(?:\.\d{3})?\]\s*",
-                        "",
-                        text,
-                    ).strip()
+                
+                # Fallback: extract text from stdout (when no JSON or JSON parsing failed)
+                import re
+                text = result.stdout.strip()
+                cleaned_text = re.sub(
+                    r"\s*\[\d{2}:\d{2}:\d{2}(?:\.\d{3})?\s*--?>\s*\d{2}:\d{2}:\d{2}(?:\.\d{3})?\]\s*",
+                    "",
+                    text,
+                ).strip()
+                
+                if cleaned_text:
                     return {
                         "success": True,
                         "text": cleaned_text,
