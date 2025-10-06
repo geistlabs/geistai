@@ -78,22 +78,27 @@ class WhisperSTTService:
                         break
 
                 if json_line:
-                    transcription_data = json.loads(json_line)
-                    raw_text = transcription_data.get("text", "") or ""
-                    # Safety net: strip any bracketed timestamps if present
-                    import re
-                    cleaned_text = re.sub(
-                        r"\s*\[\d{2}:\d{2}:\d{2}(?:\.\d{3})?\s*--?>\s*\d{2}:\d{2}:\d{2}(?:\.\d{3})?\]\s*",
-                        "",
-                        raw_text,
-                    ).strip()
-                    return {
-                        "success": True,
-                        "text": cleaned_text,
-                        "language": transcription_data.get("language", language),
-                        "segments": transcription_data.get("segments", []),
-                        "duration": transcription_data.get("duration", 0),
-                    }
+                    try:
+                        transcription_data = json.loads(json_line)
+                        raw_text = transcription_data.get("text", "") or ""
+                        # Safety net: strip any bracketed timestamps if present
+                        import re
+                        cleaned_text = re.sub(
+                            r"\s*\[\d{2}:\d{2}:\d{2}(?:\.\d{3})?\s*--?>\s*\d{2}:\d{2}:\d{2}(?:\.\d{3})?\]\s*",
+                            "",
+                            raw_text,
+                        ).strip()
+                        return {
+                            "success": True,
+                            "text": cleaned_text,
+                            "language": transcription_data.get("language", language),
+                            "segments": transcription_data.get("segments", []),
+                            "duration": transcription_data.get("duration", 0),
+                        }
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error: {e}")
+                        print(f"Raw output: {result.stdout}")
+                        # Fall through to fallback
                 else:
                     # Fallback: extract text from stdout
                     import re
@@ -111,6 +116,16 @@ class WhisperSTTService:
                         "duration": 0
                     }
 
+                # If we get here, whisper succeeded but produced no usable output
+                return {
+                    "success": False,
+                    "text": "",
+                    "language": language,
+                    "segments": [],
+                    "duration": 0,
+                    "error": "No transcription output from whisper"
+                }
+
             finally:
                 # Clean up temporary file
                 os.unlink(temp_audio_path)
@@ -119,6 +134,16 @@ class WhisperSTTService:
             raise HTTPException(status_code=408, detail="Transcription timeout")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+        # Fallback return (should never reach here)
+        return {
+            "success": False,
+            "text": "",
+            "language": language,
+            "segments": [],
+            "duration": 0,
+            "error": "Unknown transcription error"
+        }
 
 # Initialize STT service
 whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
