@@ -257,15 +257,22 @@ async def transcribe_audio(
 
         # Transcribe using STT service
         result = await stt_service.transcribe_audio(audio_data, language)
+        logger.info(f"STT transcription result: {result}")
         return result
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in speech-to-text endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail="Internal server error during transcription"
-        )
+        # Return a proper JSON error response instead of raising HTTPException
+        return {
+            "success": False,
+            "text": "",
+            "error": f"Transcription failed: {str(e)}",
+            "duration": 0,
+            "language": language or "auto",
+            "segments": []
+        }
 
 
 # Specific embeddings routes
