@@ -367,6 +367,7 @@ export default function ChatScreen() {
               disabled={isLoading || !isConnected || isTranscribing}
               isStreaming={isStreaming}
               isRecording={isRecording}
+              isTranscribing={isTranscribing}
               onStopRecording={handleStopRecording}
               onCancelRecording={handleCancelRecording}
             />
