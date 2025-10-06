@@ -2,27 +2,42 @@ FROM ghcr.io/ggml-org/llama.cpp:server-cuda
 
 # Create models directory for volume mount
 USER root
-RUN mkdir -p /models && chown 1000:1000 /models
+
+# Use platform-specific approach to avoid ARM64 emulation issues
+RUN --mount=type=cache,target=/var/cache/apt \
+    if [ "$(uname -m)" = "aarch64" ]; then \
+        # For ARM64, use simpler commands that work better with QEMU
+        mkdir -p /models; \
+        chown 1000:1000 /models; \
+    else \
+        # For AMD64, use the original command
+        mkdir -p /models && chown 1000:1000 /models; \
+    fi
+
+# Create entrypoint script to handle environment variables properly with JSON CMD
+RUN echo '#!/bin/sh\n\
+exec /app/llama-server \\\n\
+    --model "${MODEL_PATH:-/models/gpt-oss-20b-Q4_K_S.gguf}" \\\n\
+    --host "${HOST:-0.0.0.0}" \\\n\
+    --port "${PORT:-8080}" \\\n\
+    --ctx-size "${CONTEXT_SIZE:-4096}" \\\n\
+    --threads "${THREADS:-4}" \\\n\
+    --batch-size 512 \\\n\
+    --ubatch-size 512 \\\n\
+    --parallel 1 \\\n\
+    --cont-batching \\\n\
+    --mlock \\\n\
+    --n-gpu-layers "${GPU_LAYERS:-8}"' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh && \
+    chown 1000:1000 /entrypoint.sh
 
 # Switch back to non-root user
 USER 1000
 
 EXPOSE 8080
 
-# Just provide the arguments (ENTRYPOINT already has /app/llama-server)
-# Use environment variables for model path and GPU layers
-CMD /app/llama-server \
-		--model "${MODEL_PATH:-/models/gpt-oss-20b-Q4_K_S.gguf}" \
-		--host "${HOST:-0.0.0.0}" \
-		--port "${PORT:-8080}" \
-		--ctx-size "${CONTEXT_SIZE:-4096}" \
-		--threads "${THREADS:-4}" \
-		--batch-size 512 \
-		--ubatch-size 512 \
-		--parallel 1 \
-		--cont-batching \
-		--mlock \
-		--n-gpu-layers "${GPU_LAYERS:-8}"
+# Use JSON array format for CMD to prevent signal handling issues
+CMD ["/entrypoint.sh"]
 
 # Example usage:
 # docker run -d \
