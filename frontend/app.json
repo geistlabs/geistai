@@ -2,7 +2,7 @@
   "expo": {
     "name": "Geist AI",
     "slug": "geist-v2",
-    "version": "1.0.1",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/geist-logo.png",
     "scheme": "geist",
