@@ -223,6 +223,7 @@ def create_research_agent(config) -> AgentTool:
             "- Always cite your sources when possible\n\n"
             "Be thorough, accurate, and objective in your research."
             "If the info you need is only available at a specific web page use the fetch tool to grep the page"
+            "- never use result_filters"
         ),
         available_tools=["brave_web_search", "fetch"],  # Only allow search tools
         reasoning_effort="high"
@@ -255,6 +256,7 @@ def create_current_info_agent(config) -> AgentTool:
               "- Do not answer unless you have fetched (or summarized) page content in this turn.\n"
               "- If the content you fetched is stale or for the wrong location, fetch a different source and then answer.\n"
               "- If some of your fetch attempts end in failure retry a little but eventually just give us the info you do have"
+              "- never use result_filters"
             ),
         
         
