@@ -159,11 +159,9 @@ echo -e "${BLUE}🧹 Cleaning Build Artifacts${NC}"
 rm -rf ios/build ios/Pods
 print_status "Cleaned iOS build artifacts"
 
-# Install pods
+# Install pods using Expo prebuild
 echo -e "${BLUE}📦 Installing CocoaPods${NC}"
-cd ios
-pod install
-cd ..
+npx expo prebuild --platform ios --clean
 print_status "CocoaPods installed successfully"
 
 # Git operations

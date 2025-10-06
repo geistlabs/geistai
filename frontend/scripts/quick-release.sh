@@ -47,7 +47,7 @@ fi
 # Clean and build
 echo "🧹 Cleaning..."
 rm -rf ios/build ios/Pods
-cd ios && pod install && cd ..
+npx expo prebuild --platform ios --clean
 
 # Git operations
 echo "📚 Git operations..."

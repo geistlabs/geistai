@@ -67,7 +67,7 @@ Both release scripts now support automatic version incrementing:
 - ✅ Pre-flight checks (EAS CLI, login status, directory)
 - 📝 Updates version in `app.json` and `Info.plist`
 - 🧹 Cleans build artifacts (`ios/build`, `ios/Pods`)
-- 📦 Installs CocoaPods
+- 📦 Installs CocoaPods using `expo prebuild`
 - 📚 Git operations (commit, tag, push)
 - 🔨 EAS build
 - 📱 Optional App Store submission
@@ -93,7 +93,7 @@ Both release scripts now support automatic version incrementing:
 **What it does:**
 
 - 📝 Updates version
-- 🧹 Cleans and installs pods
+- 🧹 Cleans and installs pods using `expo prebuild`
 - 📚 Git operations
 - 🔨 EAS build
 
@@ -168,7 +168,7 @@ sed -i '' 's/<string>.*<\/string>/<string>1.0.5<\/string>/' ios/GeistAI/Info.pli
 
 ```bash
 rm -rf ios/build ios/Pods
-cd ios && pod install && cd ..
+npx expo prebuild --platform ios --clean
 ```
 
 ### Git Operations
