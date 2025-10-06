@@ -161,22 +161,32 @@ export default function ChatScreen() {
     }
 
     try {
+      console.log('[APP] Starting voice input...');
       setIsRecording(true);
       await recording.startRecording();
+      console.log('[APP] Recording started successfully');
     } catch (error) {
+      console.error('[APP] Failed to start recording:', error);
       setIsRecording(false);
-      Alert.alert('Recording Error', 'Failed to start recording');
+      Alert.alert(
+        'Recording Error',
+        `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   };
 
   const handleStopRecording = async () => {
     try {
+      console.log('[APP] Stopping recording...');
       const uri = await recording.stopRecording();
+      console.log('[APP] Recording stopped, URI:', uri);
       setIsRecording(false);
 
       if (uri) {
+        console.log('[APP] Starting transcription...');
         setIsTranscribing(true);
         const result = await chatApi.transcribeAudio(uri); // Use automatic language detection
+        console.log('[APP] Transcription result:', result);
 
         if (result.success && result.text.trim()) {
           await handleVoiceTranscriptionComplete(result.text.trim());
@@ -186,9 +196,16 @@ export default function ChatScreen() {
             result.error || 'No speech detected',
           );
         }
+      } else {
+        console.error('[APP] No recording URI available');
+        Alert.alert('Recording Error', 'No recording file generated');
       }
     } catch (error) {
-      Alert.alert('Recording Error', 'Failed to process recording');
+      console.error('[APP] Recording processing error:', error);
+      Alert.alert(
+        'Recording Error',
+        `Failed to process recording: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     } finally {
       setIsRecording(false);
       setIsTranscribing(false);

@@ -158,6 +158,12 @@ export class ChatAPI {
     }
 
     try {
+      console.log('[STT] Starting transcription for audio URI:', audioUri);
+      console.log(
+        '[STT] API URL:',
+        `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
+      );
+
       const response = await fetch(
         `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
         {
@@ -167,11 +173,20 @@ export class ChatAPI {
         },
       );
 
+      console.log('[STT] Response status:', response.status);
+      console.log('[STT] Response headers:', response.headers);
+
       if (!response.ok) {
-        throw new Error(`STT request failed: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[STT] Response error:', errorText);
+        throw new Error(
+          `STT request failed: ${response.status} - ${errorText}`,
+        );
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('[STT] Transcription result:', result);
+      return result;
     } catch (error) {
       console.error('[STT] Transcription failed:', error);
       return {

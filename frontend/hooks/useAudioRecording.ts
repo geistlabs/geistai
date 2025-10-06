@@ -128,8 +128,18 @@ export function useAudioRecording(): AudioRecordingState &
     try {
       setState(prev => ({ ...prev, error: null }));
 
+      // Check permissions first
+      const permissionStatus = await AudioModule.getRecordingPermissionsAsync();
+      console.log('[AUDIO] Permission status:', permissionStatus);
+
+      if (!permissionStatus.granted) {
+        throw new Error('Microphone permission not granted');
+      }
+
       // Prepare and start recording using expo-audio
+      console.log('[AUDIO] Preparing to record...');
       await audioRecorder.prepareToRecordAsync();
+      console.log('[AUDIO] Starting recording...');
       audioRecorder.record();
 
       setState(prev => ({
@@ -141,8 +151,9 @@ export function useAudioRecording(): AudioRecordingState &
       }));
 
       startDurationTimer();
+      console.log('[AUDIO] Recording started successfully');
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      console.error('[AUDIO] Failed to start recording:', error);
       setState(prev => ({
         ...prev,
         error:
@@ -153,11 +164,17 @@ export function useAudioRecording(): AudioRecordingState &
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
     try {
+      console.log('[AUDIO] Stopping recording...');
       // Stop recording using expo-audio
       await audioRecorder.stop();
 
       // The recording URI will be available on audioRecorder.uri
       const uri = audioRecorder.uri;
+      console.log('[AUDIO] Recording stopped, URI:', uri);
+
+      if (!uri) {
+        throw new Error('No recording URI generated');
+      }
 
       stopDurationTimer();
 
@@ -168,9 +185,10 @@ export function useAudioRecording(): AudioRecordingState &
         uri: uri || null,
       }));
 
+      console.log('[AUDIO] Recording completed successfully');
       return uri || null;
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      console.error('[AUDIO] Failed to stop recording:', error);
       setState(prev => ({
         ...prev,
         error:
