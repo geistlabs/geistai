@@ -18,6 +18,12 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# iOS - Generated files only
+ios/build/
+ios/Pods/
+ios/*/xcuserdata/
+ios/*/xcshareddata/swiftpm/
+
 # Metro
 .metro-health-check*
 

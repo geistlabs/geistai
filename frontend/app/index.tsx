@@ -161,34 +161,64 @@ export default function ChatScreen() {
     }
 
     try {
+      console.log('[APP] Starting voice input...');
       setIsRecording(true);
       await recording.startRecording();
+      console.log('[APP] Recording started successfully');
     } catch (error) {
+      console.error('[APP] Failed to start recording:', error);
       setIsRecording(false);
-      Alert.alert('Recording Error', 'Failed to start recording');
+      Alert.alert(
+        'Recording Error',
+        `Failed to start recording: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   };
 
   const handleStopRecording = async () => {
     try {
+      console.log('[APP] Stopping recording...');
       const uri = await recording.stopRecording();
+      console.log('[APP] Recording stopped, URI:', uri);
       setIsRecording(false);
 
       if (uri) {
+        console.log('[APP] Starting transcription...');
         setIsTranscribing(true);
         const result = await chatApi.transcribeAudio(uri); // Use automatic language detection
+        console.log('[APP] Transcription result:', result);
+        console.log('[APP] Result type:', typeof result);
+        console.log('[APP] Result is null?', result === null);
+        console.log('[APP] Result is undefined?', result === undefined);
 
-        if (result.success && result.text.trim()) {
-          await handleVoiceTranscriptionComplete(result.text.trim());
-        } else {
+        // Handle null/undefined result from API
+        if (!result) {
+          console.error('[APP] Transcription API returned null/undefined');
           Alert.alert(
             'Transcription Error',
-            result.error || 'No speech detected',
+            'Server returned invalid response. Please try again.',
           );
+          return;
         }
+
+        if (result && result.success && result.text && result.text.trim()) {
+          await handleVoiceTranscriptionComplete(result.text.trim());
+        } else {
+          const errorMessage =
+            result?.error || 'No speech detected or transcription failed';
+          console.error('[APP] Transcription failed:', errorMessage);
+          Alert.alert('Transcription Error', errorMessage);
+        }
+      } else {
+        console.error('[APP] No recording URI available');
+        Alert.alert('Recording Error', 'No recording file generated');
       }
     } catch (error) {
-      Alert.alert('Recording Error', 'Failed to process recording');
+      console.error('[APP] Recording processing error:', error);
+      Alert.alert(
+        'Recording Error',
+        `Failed to process recording: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     } finally {
       setIsRecording(false);
       setIsTranscribing(false);

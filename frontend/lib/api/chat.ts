@@ -158,6 +158,12 @@ export class ChatAPI {
     }
 
     try {
+      console.log('[STT] Starting transcription for audio URI:', audioUri);
+      console.log(
+        '[STT] API URL:',
+        `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
+      );
+
       const response = await fetch(
         `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
         {
@@ -167,11 +173,61 @@ export class ChatAPI {
         },
       );
 
+      console.log('[STT] Response status:', response.status);
+      console.log('[STT] Response headers:', response.headers);
+      console.log(
+        '[STT] Response content-type:',
+        response.headers.get('content-type'),
+      );
+      console.log(
+        '[STT] Response content-length:',
+        response.headers.get('content-length'),
+      );
+
       if (!response.ok) {
-        throw new Error(`STT request failed: ${response.status}`);
+        const errorText = await response.text();
+        console.error('[STT] Response error:', errorText);
+        throw new Error(
+          `STT request failed: ${response.status} - ${errorText}`,
+        );
       }
 
-      return await response.json();
+      // Get response text first to debug
+      const responseText = await response.text();
+      console.log('[STT] Raw response text:', responseText);
+      console.log('[STT] Response text length:', responseText.length);
+      console.log('[STT] Response text is empty?', responseText === '');
+
+      // Try to parse JSON
+      let result;
+      try {
+        result = JSON.parse(responseText);
+        console.log('[STT] Parsed JSON result:', result);
+      } catch (parseError) {
+        console.error('[STT] JSON parse error:', parseError);
+        console.error('[STT] Failed to parse response:', responseText);
+        return {
+          success: false,
+          text: '',
+          error: 'Invalid JSON response from server',
+        };
+      }
+
+      console.log('[STT] Result type:', typeof result);
+      console.log('[STT] Result is null?', result === null);
+      console.log('[STT] Result is undefined?', result === undefined);
+
+      // Ensure we always return a valid result object
+      if (!result || typeof result !== 'object') {
+        console.error('[STT] Invalid response format:', result);
+        return {
+          success: false,
+          text: '',
+          error: 'Invalid response from transcription service',
+        };
+      }
+
+      return result;
     } catch (error) {
       console.error('[STT] Transcription failed:', error);
       return {
