@@ -187,14 +187,27 @@ export default function ChatScreen() {
         setIsTranscribing(true);
         const result = await chatApi.transcribeAudio(uri); // Use automatic language detection
         console.log('[APP] Transcription result:', result);
+        console.log('[APP] Result type:', typeof result);
+        console.log('[APP] Result is null?', result === null);
+        console.log('[APP] Result is undefined?', result === undefined);
 
-        if (result.success && result.text.trim()) {
-          await handleVoiceTranscriptionComplete(result.text.trim());
-        } else {
+        // Handle null/undefined result from API
+        if (!result) {
+          console.error('[APP] Transcription API returned null/undefined');
           Alert.alert(
             'Transcription Error',
-            result.error || 'No speech detected',
+            'Server returned invalid response. Please try again.',
           );
+          return;
+        }
+
+        if (result && result.success && result.text && result.text.trim()) {
+          await handleVoiceTranscriptionComplete(result.text.trim());
+        } else {
+          const errorMessage =
+            result?.error || 'No speech detected or transcription failed';
+          console.error('[APP] Transcription failed:', errorMessage);
+          Alert.alert('Transcription Error', errorMessage);
         }
       } else {
         console.error('[APP] No recording URI available');
