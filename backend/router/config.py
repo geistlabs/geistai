@@ -16,7 +16,7 @@ INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
 
 
 # Embeddings service settings
-EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
+EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))
 
 # Embeddings API URL configuration - this is the base route for all embeddings calls

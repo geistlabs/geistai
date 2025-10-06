@@ -273,12 +273,28 @@ async def transcribe_audio(
 async def embeddings_health():
     """Proxy health check to embeddings service"""
     try:
+        target_url = f"{config.EMBEDDINGS_URL}/health"
+        logger.info(f"Checking embeddings health at: {target_url}")
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{config.EMBEDDINGS_URL}/health",
+                target_url,
                 timeout=config.EMBEDDINGS_TIMEOUT,
             )
-            return response.json()
+
+        logger.info(
+            f"Embeddings health check responded with status: {response.status_code}"
+        )
+        return response.json()
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to embeddings service at {config.EMBEDDINGS_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to embeddings service at {config.EMBEDDINGS_URL}",
+        )
     except Exception as e:
         logger.error(f"Error proxying embeddings health check: {str(e)}")
         raise HTTPException(
@@ -290,6 +306,10 @@ async def embeddings_health():
 async def embeddings_embed(request: Request):
     """Proxy embed requests to embeddings service"""
     try:
+        # Log the target URL for debugging
+        target_url = f"{config.EMBEDDINGS_URL}/embed"
+        logger.info(f"Proxying embed request to: {target_url}")
+
         # Get request body
         body = await request.body()
 
@@ -313,14 +333,29 @@ async def embeddings_embed(request: Request):
         # Forward the request to embeddings service
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                f"{config.EMBEDDINGS_URL}/embed",
+                target_url,
                 headers=forward_headers,
                 content=body,
                 timeout=config.EMBEDDINGS_TIMEOUT,
             )
 
+        logger.info(f"Embeddings service responded with status: {response.status_code}")
         return response.json()
 
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to embeddings service at {config.EMBEDDINGS_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to embeddings service at {config.EMBEDDINGS_URL}",
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to embeddings service: {str(e)}")
+        raise HTTPException(
+            status_code=504,
+            detail="Embeddings service timeout",
+        )
     except Exception as e:
         logger.error(f"Error proxying embeddings embed request: {str(e)}")
         raise HTTPException(
