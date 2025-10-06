@@ -122,12 +122,6 @@ async def embed(request: EmbedRequest):
     return await _embed_handler(request)
 
 
-@app.post("/embeddings/embed", response_model=EmbedResponse)
-async def embeddings_embed(request: EmbedRequest):
-    """Generate embeddings for input text(s) - alternative path for webapp compatibility"""
-    return await _embed_handler(request)
-
-
 def _list_models():
     """Internal models list function"""
     return {
