@@ -13,6 +13,7 @@ import config
 from harmony_service import HarmonyService
 from whisper_client import WhisperSTTClient
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -252,7 +253,6 @@ async def transcribe_audio(
 
         # Transcribe using STT service
         result = await stt_service.transcribe_audio(audio_data, language)
-
         return result
 
     except HTTPException:
