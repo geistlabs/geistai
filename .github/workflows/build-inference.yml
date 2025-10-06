@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backend/inference
-          file: ./backend/inference/Dockerfile
+          file: ./backend/inference/Dockerfile.gpu
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -55,3 +55,13 @@ jobs:
 
       - name: Image digest
         run: echo ${{ steps.build_and_push.outputs.digest }}
+
+  tagHelm:
+    needs: build_and_push
+    uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
+    with:
+      APP: inference
+      VERSION: ${{ inputs.environment }}-${{ inputs.version }}
+      ENVIRONMENT: ${{ inputs.environment }}
+    secrets:
+      PAT: ${{ secrets.PAT }}

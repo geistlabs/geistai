@@ -33,7 +33,7 @@ export interface ModelsResponse {
   data: ModelInfo[];
 }
 
-const EMBEDDINGS_API_BASE = 'http://localhost:8001'; // Adjust based on your embeddings service port
+const EMBEDDINGS_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export class EmbeddingsAPI {
   private baseUrl: string;
@@ -43,7 +43,7 @@ export class EmbeddingsAPI {
   }
 
   async embed(request: EmbedRequest): Promise<EmbedResponse> {
-    const response = await fetch(`${this.baseUrl}/embed`, {
+    const response = await fetch(`${this.baseUrl}/embeddings/embed`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,7 +62,7 @@ export class EmbeddingsAPI {
   }
 
   async getModels(): Promise<ModelsResponse> {
-    const response = await fetch(`${this.baseUrl}/models`);
+    const response = await fetch(`${this.baseUrl}/embeddings/models`);
 
     if (!response.ok) {
       throw new Error(`Models request failed: ${response.statusText}`);
@@ -72,7 +72,7 @@ export class EmbeddingsAPI {
   }
 
   async healthCheck(): Promise<{ status: string }> {
-    const response = await fetch(`${this.baseUrl}/health`);
+    const response = await fetch(`${this.baseUrl}/embeddings/health`);
 
     if (!response.ok) {
       throw new Error(`Health check failed: ${response.statusText}`);

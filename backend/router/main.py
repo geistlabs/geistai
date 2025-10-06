@@ -29,6 +29,7 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatRequest(BaseModel):
     message: str
     messages: Optional[List[ChatMessage]] = None
@@ -43,9 +44,13 @@ app.add_middleware(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://geist.im",
-        "https://*.geist.im",
+        "https://webapp.geist.im",
+        "https://inference.geist.im",
+        "https://embeddings.geist.im",
         "http://geist.im",
-        "http://*.geist.im"
+        "http://webapp.geist.im",
+        "http://inference.geist.im",
+        "http://embeddings.geist.im",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -57,16 +62,21 @@ gpt_service = GptService(config, can_log=True)
 
 
 # Initialize STT service
-# Use relative paths from the backend directory to make it more portable
-backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-whisper_path = os.path.join(backend_dir, "whisper.cpp/build/bin/whisper-cli")
-model_path = os.path.join(backend_dir, "whisper.cpp/models/ggml-base.bin")
-stt_service = STTService(whisper_path, model_path) if os.path.exists(whisper_path) and os.path.exists(model_path) else None
+# Use volume-mounted paths like llama.cpp pattern
+whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
+model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
+stt_service = (
+    STTService(whisper_path, model_path)
+    if os.path.exists(whisper_path) and os.path.exists(model_path)
+    else None
+)
 
 if stt_service:
     logger.info("STT service initialized successfully")
 else:
-    logger.warning("STT service could not be initialized - whisper binary or model not found")
+    logger.warning(
+        "STT service could not be initialized - whisper binary or model not found"
+    )
 
 # Validate SSL configuration on startup
 ssl_valid, ssl_message = config.validate_ssl_config()
@@ -245,8 +255,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
 @app.post("/api/speech-to-text")
 async def transcribe_audio(
-    audio_file: UploadFile = File(...),
-    language: Optional[str] = Form(None)
+    audio_file: UploadFile = File(...), language: Optional[str] = Form(None)
 ):
     """
     Transcribe audio using Whisper.cpp
@@ -261,7 +270,7 @@ async def transcribe_audio(
     if not stt_service:
         raise HTTPException(
             status_code=503,
-            detail="STT service not available - whisper binary or model not found"
+            detail="STT service not available - whisper binary or model not found",
         )
 
     try:
@@ -271,8 +280,7 @@ async def transcribe_audio(
         # Validate file size (max 25MB)
         if len(audio_data) > 25 * 1024 * 1024:
             raise HTTPException(
-                status_code=413,
-                detail="Audio file too large. Maximum size is 25MB."
+                status_code=413, detail="Audio file too large. Maximum size is 25MB."
             )
 
         # Transcribe using STT service
@@ -285,8 +293,7 @@ async def transcribe_audio(
     except Exception as e:
         logger.error(f"Error in speech-to-text endpoint: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail="Internal server error during transcription"
+            status_code=500, detail="Internal server error during transcription"
         )
 
 

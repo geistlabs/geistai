@@ -3,9 +3,9 @@ name: (TAG) Build + Push Backend Services
 on:
   push:
     tags:
-      - "embedder-*-*.*.*"
+      - "embeddings-*-*.*.*"
       - "inference-*-*.*.*"
-      - "nginx-*-*.*.*"
+      - "webapp-*-*.*.*"
       - "router-*-*.*.*"
 
 jobs:
@@ -29,17 +29,17 @@ jobs:
           echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
           echo "environment=${ENVIRONMENT}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          
+
           echo "Extracted from tag: ${TAG_NAME}"
           echo "Service: ${SERVICE}"
           echo "Environment: ${ENVIRONMENT}"
           echo "Version: ${VERSION}"
 
-  build_release_embedder:
-    name: Build and Release Embedder
+  build_release_embeddings:
+    name: Build and Release embeddings
     needs: extract_info
-    if: needs.extract_info.outputs.SERVICE == 'embedder'
-    uses: ./.github/workflows/build-embedder.yml
+    if: needs.extract_info.outputs.SERVICE == 'embeddings'
+    uses: ./.github/workflows/build-embeddings.yml
     with:
       environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
       version: ${{ needs.extract_info.outputs.VERSION }}
@@ -55,11 +55,11 @@ jobs:
       version: ${{ needs.extract_info.outputs.VERSION }}
     secrets: inherit
 
-  build_release_nginx:
-    name: Build and Release Nginx
+  build_release_webapp:
+    name: Build and Release Webapp
     needs: extract_info
-    if: needs.extract_info.outputs.SERVICE == 'nginx'
-    uses: ./.github/workflows/build-nginx.yml
+    if: needs.extract_info.outputs.SERVICE == 'webapp'
+    uses: ./.github/workflows/build-webapp.yml
     with:
       environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
       version: ${{ needs.extract_info.outputs.VERSION }}

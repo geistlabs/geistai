@@ -1,4 +1,4 @@
-name: Build Nginx Service
+name: Build embeddings Service
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_and_push:
-    name: Build and Push Nginx Docker Image
+    name: Build and Push embeddings Docker Image
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/nginx-server
+          images: ${{ secrets.DOCKER_USERNAME }}/embeddings
           tags: |
             type=raw,value=${{ inputs.version }}
             type=raw,value=${{ inputs.environment }}-${{ inputs.version }}
@@ -44,8 +44,8 @@ jobs:
         id: build_and_push
         uses: docker/build-push-action@v5
         with:
-          context: ./backend/nginx
-          file: ./backend/nginx/Dockerfile
+          context: ./backend/embeddings
+          file: ./backend/embeddings/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -55,3 +55,13 @@ jobs:
 
       - name: Image digest
         run: echo ${{ steps.build_and_push.outputs.digest }}
+
+  tagHelm:
+    needs: build_and_push
+    uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
+    with:
+      APP: embeddings
+      VERSION: ${{ inputs.environment }}-${{ inputs.version }}
+      ENVIRONMENT: ${{ inputs.environment }}
+    secrets:
+      PAT: ${{ secrets.PAT }}

@@ -1,4 +1,4 @@
-name: Build Embedder Service
+name: Build Webapp Service
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
 
 jobs:
   build_and_push:
-    name: Build and Push Embedder Docker Image
+    name: Build and Push Webapp Docker Image
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/embedder
+          images: ${{ secrets.DOCKER_USERNAME }}/webapp
           tags: |
             type=raw,value=${{ inputs.version }}
             type=raw,value=${{ inputs.environment }}-${{ inputs.version }}
@@ -44,14 +44,27 @@ jobs:
         id: build_and_push
         uses: docker/build-push-action@v5
         with:
-          context: ./backend/embedder
-          file: ./backend/embedder/Dockerfile
+          context: ./backend/webapp
+          file: ./backend/webapp/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL }}
+            VITE_EMBEDDINGS_API_URL=${{ secrets.VITE_EMBEDDINGS_API_URL }}
 
       - name: Image digest
         run: echo ${{ steps.build_and_push.outputs.digest }}
+
+  tagHelm:
+    needs: build_and_push
+    uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
+    with:
+      APP: webapp
+      VERSION: ${{ inputs.environment }}-${{ inputs.version }}
+      ENVIRONMENT: ${{ inputs.environment }}
+    secrets:
+      PAT: ${{ secrets.PAT }}

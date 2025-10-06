@@ -11,6 +11,7 @@ services:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
+      - EMBEDDINGS_URL=http://embeddings:8001
       - SSL_ENABLED=false
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
@@ -42,6 +43,7 @@ services:
     depends_on:
       - inference
       - gateway
+      - embeddings
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -69,6 +71,7 @@ services:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference-gpu:8080
+      - EMBEDDINGS_URL=http://embeddings:8001
       - SSL_ENABLED=false
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
@@ -93,6 +96,7 @@ services:
     depends_on:
       - inference-gpu
       - gateway
+      - embeddings
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -323,7 +327,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
       - NODE_ENV=development
     volumes:
       # Mount source code for live reloading
@@ -356,7 +360,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
       - NODE_ENV=development
     volumes:
       # Mount source code for live reloading
