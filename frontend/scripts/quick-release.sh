@@ -27,9 +27,14 @@ cd ios && pod install && cd ..
 echo "📚 Git operations..."
 git add .
 git commit -m "Release v${VERSION}"
-git tag "v${VERSION}"
-git push origin main
-git push origin "v${VERSION}"
+# Get current branch name for tagging
+CURRENT_BRANCH=$(git branch --show-current)
+TAG_NAME="ios-geistai-${VERSION}"
+git tag "${TAG_NAME}"
+echo "Current branch: ${CURRENT_BRANCH}"
+echo "Tag name: ${TAG_NAME}"
+git push origin "${CURRENT_BRANCH}"
+git push origin "${TAG_NAME}"
 
 # EAS build
 echo "🔨 Building with EAS..."

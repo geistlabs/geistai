@@ -124,13 +124,17 @@ fi
 
 # Create release tag
 echo -e "${BLUE}🏷️  Creating Release Tag${NC}"
-git tag -a "v${VERSION}" -m "Release v${VERSION}"
-print_status "Created tag v${VERSION}"
+TAG_NAME="ios-geistai-${VERSION}"
+git tag -a "${TAG_NAME}" -m "iOS GeistAI Release v${VERSION}"
+print_status "Created tag ${TAG_NAME}"
 
 # Push to remote
 echo -e "${BLUE}📤 Pushing to Remote${NC}"
-git push origin main
-git push origin "v${VERSION}"
+# Get current branch name
+CURRENT_BRANCH=$(git branch --show-current)
+echo -e "${BLUE}Current branch: ${CURRENT_BRANCH}${NC}"
+git push origin "${CURRENT_BRANCH}"
+git push origin "${TAG_NAME}"
 print_status "Pushed to remote repository"
 
 # Build with EAS

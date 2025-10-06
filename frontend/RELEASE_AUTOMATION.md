@@ -142,9 +142,9 @@ cd ios && pod install && cd ..
 ```bash
 git add .
 git commit -m "Release v1.0.5"
-git tag v1.0.5
-git push origin main
-git push origin v1.0.5
+git tag ios-geistai-1.0.5
+git push origin ios-crash
+git push origin ios-geistai-1.0.5
 ```
 
 ### EAS Build
