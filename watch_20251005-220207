@@ -1,8 +1,0 @@
-Every 2.0s: kubectl get pods                                                                                       Alexs-MacBook-Pro-2.local: 22:02:06
-                                                                                                                                         in 0.777s (0)
-NAME                                 READY   STATUS    RESTARTS   AGE                                                                                 
-geist-embeddings-574f48494d-l482k    1/1     Running   0          3d9h                                                                                
-geist-inference-84d8b7f6bf-78gr7     1/1     Running   0          20h                                                                                 
-geist-router-5fbbf5b678-lzbgg        1/1     Running   0          20h                                                                                 
-geist-webapp-85d85df6b7-vn6g8        1/1     Running   0          3d10h                                                                               
-geist-whisper-stt-57dc97c756-8r6pn   1/1     Running   0          20h                                                                                 

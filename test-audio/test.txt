@@ -1,1 +1,0 @@
-Hello, this is a test for speech to text conversion. The Whisper service should be able to transcribe this audio file correctly.
