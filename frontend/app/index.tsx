@@ -188,13 +188,13 @@ export default function ChatScreen() {
         const result = await chatApi.transcribeAudio(uri); // Use automatic language detection
         console.log('[APP] Transcription result:', result);
 
-        if (result.success && result.text.trim()) {
+        if (result && result.success && result.text && result.text.trim()) {
           await handleVoiceTranscriptionComplete(result.text.trim());
         } else {
-          Alert.alert(
-            'Transcription Error',
-            result.error || 'No speech detected',
-          );
+          const errorMessage =
+            result?.error || 'No speech detected or transcription failed';
+          console.error('[APP] Transcription failed:', errorMessage);
+          Alert.alert('Transcription Error', errorMessage);
         }
       } else {
         console.error('[APP] No recording URI available');

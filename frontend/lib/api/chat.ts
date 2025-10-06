@@ -186,6 +186,20 @@ export class ChatAPI {
 
       const result = await response.json();
       console.log('[STT] Transcription result:', result);
+      console.log('[STT] Result type:', typeof result);
+      console.log('[STT] Result is null?', result === null);
+      console.log('[STT] Result is undefined?', result === undefined);
+
+      // Ensure we always return a valid result object
+      if (!result || typeof result !== 'object') {
+        console.error('[STT] Invalid response format:', result);
+        return {
+          success: false,
+          text: '',
+          error: 'Invalid response from transcription service',
+        };
+      }
+
       return result;
     } catch (error) {
       console.error('[STT] Transcription failed:', error);
