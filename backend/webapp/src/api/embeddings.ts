@@ -33,13 +33,16 @@ export interface ModelsResponse {
   data: ModelInfo[];
 }
 
-const EMBEDDINGS_API_BASE = import.meta.env.VITE_EMBEDDINGS_API_URL || 'http://localhost:8000';
+// Get API URL from environment variable
+function getApiUrl(): string {
+  return (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+}
 
 export class EmbeddingsAPI {
   private baseUrl: string;
 
-  constructor(baseUrl: string = EMBEDDINGS_API_BASE) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    this.baseUrl = baseUrl || getApiUrl();
   }
 
   async embed(request: EmbedRequest): Promise<EmbedResponse> {

@@ -34,15 +34,21 @@ app = FastAPI(title="Geist Embedder")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://geist.im",
-        "https://*.geist.im",
+        "https://webapp.geist.im",
+        "https://router.geist.im",
+        "https://embeddings.geist.im",
+        "https://inference.geist.im",
         "http://geist.im",
-        "http://*.geist.im"
+        "http://webapp.geist.im",
+        "http://router.geist.im",
+        "http://embeddings.geist.im",
+        "http://inference.geist.im",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -71,9 +77,8 @@ def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/embed", response_model=EmbedResponse)
-async def embed(request: EmbedRequest):
-    """Generate embeddings for input text(s)"""
+async def _embed_handler(request: EmbedRequest):
+    """Internal embedding handler function"""
     try:
         # Get the model
         model = get_model(request.model)
@@ -111,9 +116,20 @@ async def embed(request: EmbedRequest):
         )
 
 
-@app.get("/models")
-def list_models():
-    """List available embedding models"""
+@app.post("/embed", response_model=EmbedResponse)
+async def embed(request: EmbedRequest):
+    """Generate embeddings for input text(s)"""
+    return await _embed_handler(request)
+
+
+@app.post("/embeddings/embed", response_model=EmbedResponse)
+async def embeddings_embed(request: EmbedRequest):
+    """Generate embeddings for input text(s) - alternative path for webapp compatibility"""
+    return await _embed_handler(request)
+
+
+def _list_models():
+    """Internal models list function"""
     return {
         "object": "list",
         "data": [
@@ -137,6 +153,24 @@ def list_models():
             },
         ],
     }
+
+
+@app.get("/models")
+def list_models():
+    """List available embedding models"""
+    return _list_models()
+
+
+@app.get("/embeddings/models")
+def embeddings_list_models():
+    """List available embedding models - alternative path for webapp compatibility"""
+    return _list_models()
+
+
+@app.get("/embeddings/health")
+def embeddings_health_check():
+    """Health check endpoint - alternative path for webapp compatibility"""
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ HARMONY_REASONING_EFFORT = os.getenv(
 INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
 
+
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))

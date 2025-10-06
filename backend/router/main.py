@@ -45,15 +45,17 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://geist.im",
         "https://webapp.geist.im",
+        "https://router.geist.im",
         "https://inference.geist.im",
         "https://embeddings.geist.im",
         "http://geist.im",
         "http://webapp.geist.im",
+        "http://router.geist.im",
         "http://inference.geist.im",
         "http://embeddings.geist.im",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -61,7 +63,9 @@ app.add_middleware(
 harmony_service = HarmonyService() if config.HARMONY_ENABLED else None
 
 # Initialize Whisper STT client
-whisper_service_url = os.getenv("WHISPER_SERVICE_URL", "http://whisper-stt-service:8000")
+whisper_service_url = os.getenv(
+    "WHISPER_SERVICE_URL", "http://whisper-stt-service:8000"
+)
 stt_service = WhisperSTTClient(whisper_service_url)
 
 logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
@@ -285,27 +289,52 @@ async def proxy_embeddings(request: Request, path: str):
         if request.method in ["POST", "PUT", "PATCH"]:
             body = await request.body()
 
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
         # Forward the request
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 method=request.method,
                 url=target_url,
-                headers=dict(request.headers),
+                headers=forward_headers,
                 content=body,
                 timeout=config.EMBEDDINGS_TIMEOUT,
             )
+
+        # Prepare response headers (exclude hop-by-hop headers)
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in skip_headers:
+                response_headers[key] = value
 
         # Return the response
         return StreamingResponse(
             iter([response.content]),
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=response_headers,
             media_type=response.headers.get("content-type"),
         )
 
     except Exception as e:
         logger.error(f"Error proxying to embeddings service: {str(e)}")
-        return {"error": "Failed to proxy request to embeddings service"}
+        raise HTTPException(
+            status_code=502, detail="Failed to proxy request to embeddings service"
+        )
 
 
 if __name__ == "__main__":
