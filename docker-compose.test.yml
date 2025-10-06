@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  whisper-stt:
+    image: alo42/whisper-stt:test-local
+    container_name: whisper-stt-test
+    ports:
+      - "8004:8004"
+    environment:
+      - NODE_ENV=development
+      - PORT=8004
+      - WHISPER_BINARY_PATH=/usr/local/bin/whisper-cli
+      - WHISPER_MODEL_PATH=/models/ggml-base.bin
+    volumes:
+      # Mount a test models directory (you'll need to create this)
+      - ./test-models:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  router:
+    image: alo42/router:test-clean
+    container_name: router-test
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=development
+      - PORT=8000
+      - API_URL=http://localhost:8000
+      - INFERENCE_URL=http://localhost:8002
+      - EMBEDDINGS_URL=http://localhost:8003
+      - WHISPER_SERVICE_URL=http://whisper-stt:8004
+    depends_on:
+      whisper-stt:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: geist-test-network

@@ -1,6 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useAudioLevels } from '../../hooks/useAudioLevels';
@@ -62,17 +68,31 @@ export function InputBar({
             </View>
           </TouchableOpacity>
 
-          {/* Transcribing animation */}
-          <View
-            className='flex-1 rounded-full'
-            style={{ backgroundColor: '#f8f8f8', height: 44 }}
-          >
-            <TranscribingAnimation
-              isActive={isTranscribing}
-              height={44}
-              color='#6B7280'
-            />
-          </View>
+          {/* Transcribing indicator */}
+          {Platform.OS === 'ios' ? (
+            <View
+              className='flex-1 flex-row items-center justify-center rounded-full'
+              style={{ backgroundColor: '#f8f8f8', height: 44 }}
+            >
+              <ActivityIndicator size='small' color={'#6B7280'} />
+              <View className='ml-3'>
+                <View>
+                  {/* Keep text lightweight to avoid UI-thread pressure during file upload */}
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View
+              className='flex-1 rounded-full'
+              style={{ backgroundColor: '#f8f8f8', height: 44 }}
+            >
+              <TranscribingAnimation
+                isActive={isTranscribing}
+                height={44}
+                color='#6B7280'
+              />
+            </View>
+          )}
         </View>
       </View>
     );
