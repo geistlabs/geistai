@@ -268,7 +268,68 @@ async def transcribe_audio(
         )
 
 
-# Proxy route for embeddings service
+# Specific embeddings routes
+@app.get("/embeddings/health")
+async def embeddings_health():
+    """Proxy health check to embeddings service"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{config.EMBEDDINGS_URL}/health",
+                timeout=config.EMBEDDINGS_TIMEOUT,
+            )
+            return response.json()
+    except Exception as e:
+        logger.error(f"Error proxying embeddings health check: {str(e)}")
+        raise HTTPException(
+            status_code=502, detail="Failed to check embeddings service health"
+        )
+
+
+@app.post("/embeddings/embed")
+async def embeddings_embed(request: Request):
+    """Proxy embed requests to embeddings service"""
+    try:
+        # Get request body
+        body = await request.body()
+
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
+        # Forward the request to embeddings service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{config.EMBEDDINGS_URL}/embed",
+                headers=forward_headers,
+                content=body,
+                timeout=config.EMBEDDINGS_TIMEOUT,
+            )
+
+        return response.json()
+
+    except Exception as e:
+        logger.error(f"Error proxying embeddings embed request: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to proxy embed request to embeddings service",
+        )
+
+
+# Proxy route for embeddings service (catch-all for other routes)
 @app.api_route(
     "/embeddings/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],

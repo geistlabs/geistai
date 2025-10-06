@@ -19,6 +19,10 @@ INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "60"))
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))
 
+# Embeddings API URL configuration - this is the base route for all embeddings calls
+# Should be set to VITE_API_URL/embeddings (e.g., http://localhost:8000/embeddings)
+EMBEDDINGS_API_URL = os.getenv("EMBEDDINGS_API_URL", "http://localhost:8000/embeddings")
+
 # API settings
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
