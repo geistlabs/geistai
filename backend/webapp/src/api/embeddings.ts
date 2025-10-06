@@ -33,7 +33,7 @@ export interface ModelsResponse {
   data: ModelInfo[];
 }
 
-const EMBEDDINGS_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const EMBEDDINGS_API_BASE = import.meta.env.VITE_EMBEDDINGS_API_URL || 'http://localhost:8000';
 
 export class EmbeddingsAPI {
   private baseUrl: string;
