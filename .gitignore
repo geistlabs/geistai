@@ -59,3 +59,4 @@ backend/*/ssl/
 backend/*/models/
 models/
 backend/whisper.cpp/
+test-models/*.bin

@@ -6,6 +6,8 @@ import Svg, { Path } from 'react-native-svg';
 import { useAudioLevels } from '../../hooks/useAudioLevels';
 import { VoiceWaveform } from '../VoiceWaveform';
 
+import { TranscribingAnimation } from './TranscribingAnimation';
+
 interface InputBarProps {
   value: string;
   onChangeText: (text: string) => void;
@@ -15,6 +17,7 @@ interface InputBarProps {
   disabled?: boolean;
   isStreaming?: boolean;
   isRecording?: boolean;
+  isTranscribing?: boolean;
   onStopRecording?: () => void;
   onCancelRecording?: () => void;
 }
@@ -28,6 +31,7 @@ export function InputBar({
   disabled = false,
   isStreaming = false,
   isRecording = false,
+  isTranscribing = false,
   onStopRecording,
   onCancelRecording,
 }: InputBarProps) {
@@ -42,6 +46,37 @@ export function InputBar({
       audioLevels.stopAnalyzing();
     }
   }, [isRecording, audioLevels]);
+
+  // Show transcribing animation when transcribing
+  if (isTranscribing) {
+    return (
+      <View className='p-2'>
+        <View className='flex-row items-center'>
+          {/* Cancel button */}
+          <TouchableOpacity
+            className='justify-center items-center mr-2'
+            onPress={onCancelRecording}
+          >
+            <View className='w-11 h-11 rounded-full bg-gray-100 items-center justify-center'>
+              <View className='w-4 h-4 bg-gray-600 rounded-sm' />
+            </View>
+          </TouchableOpacity>
+
+          {/* Transcribing animation */}
+          <View
+            className='flex-1 rounded-full'
+            style={{ backgroundColor: '#f8f8f8', height: 44 }}
+          >
+            <TranscribingAnimation
+              isActive={isTranscribing}
+              height={44}
+              color='#6B7280'
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   // Show recording interface when recording
   if (isRecording) {
