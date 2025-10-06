@@ -6,8 +6,34 @@
 
 set -e
 
-VERSION=${1:-"1.0.5"}
 PROJECT_DIR="/Users/alexmartinez/openq-ws/geistai/frontend"
+
+# Auto-increment version if not provided
+if [ -z "$1" ]; then
+    echo "🔍 Auto-detecting next version..."
+
+    # Get current version from app.json
+    if command -v jq >/dev/null 2>&1; then
+        CURRENT_VERSION=$(jq -r '.expo.version' app.json 2>/dev/null || echo "1.0.0")
+    else
+        CURRENT_VERSION=$(grep -o '"version": "[^"]*"' app.json | cut -d'"' -f4 || echo "1.0.0")
+    fi
+
+    echo "Current version: ${CURRENT_VERSION}"
+
+    # Auto-increment patch version
+    IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+    MAJOR=${VERSION_PARTS[0]}
+    MINOR=${VERSION_PARTS[1]}
+    PATCH=${VERSION_PARTS[2]}
+
+    NEW_PATCH=$((PATCH + 1))
+    VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+    echo "✅ Auto-incremented to: ${VERSION}"
+else
+    VERSION=$1
+fi
 
 echo "🚀 Quick Release v${VERSION}"
 

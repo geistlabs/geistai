@@ -14,9 +14,70 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-VERSION=${1:-"1.0.5"}
 BUILD_TYPE=${2:-"production"}
 PROJECT_DIR="/Users/alexmartinez/openq-ws/geistai/frontend"
+
+# Auto-increment version if not provided
+if [ -z "$1" ]; then
+    echo -e "${BLUE}🔍 Auto-detecting next version...${NC}"
+
+    # Get current version from app.json
+    if command -v jq >/dev/null 2>&1; then
+        CURRENT_VERSION=$(jq -r '.expo.version' app.json 2>/dev/null || echo "1.0.0")
+    else
+        CURRENT_VERSION=$(grep -o '"version": "[^"]*"' app.json | cut -d'"' -f4 || echo "1.0.0")
+    fi
+
+    echo -e "${BLUE}Current version: ${CURRENT_VERSION}${NC}"
+
+    # Auto-increment patch version (default)
+    IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+    MAJOR=${VERSION_PARTS[0]}
+    MINOR=${VERSION_PARTS[1]}
+    PATCH=${VERSION_PARTS[2]}
+
+    NEW_PATCH=$((PATCH + 1))
+    VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+    echo -e "${GREEN}Auto-incremented to: ${VERSION}${NC}"
+elif [ "$1" = "patch" ] || [ "$1" = "minor" ] || [ "$1" = "major" ]; then
+    # Increment type specified
+    INCREMENT_TYPE=$1
+    echo -e "${BLUE}🔍 Auto-incrementing ${INCREMENT_TYPE} version...${NC}"
+
+    # Get current version from app.json
+    if command -v jq >/dev/null 2>&1; then
+        CURRENT_VERSION=$(jq -r '.expo.version' app.json 2>/dev/null || echo "1.0.0")
+    else
+        CURRENT_VERSION=$(grep -o '"version": "[^"]*"' app.json | cut -d'"' -f4 || echo "1.0.0")
+    fi
+
+    echo -e "${BLUE}Current version: ${CURRENT_VERSION}${NC}"
+
+    IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+    MAJOR=${VERSION_PARTS[0]}
+    MINOR=${VERSION_PARTS[1]}
+    PATCH=${VERSION_PARTS[2]}
+
+    case $INCREMENT_TYPE in
+        "major")
+            NEW_MAJOR=$((MAJOR + 1))
+            VERSION="${NEW_MAJOR}.0.0"
+            ;;
+        "minor")
+            NEW_MINOR=$((MINOR + 1))
+            VERSION="${MAJOR}.${NEW_MINOR}.0"
+            ;;
+        "patch")
+            NEW_PATCH=$((PATCH + 1))
+            VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            ;;
+    esac
+
+    echo -e "${GREEN}Auto-incremented ${INCREMENT_TYPE} to: ${VERSION}${NC}"
+else
+    VERSION=$1
+fi
 
 echo -e "${BLUE}🚀 GeistAI Release Automation${NC}"
 echo -e "${BLUE}Version: ${VERSION}${NC}"

@@ -11,6 +11,31 @@ This document describes the automated release process for GeistAI iOS app.
 
 ## 🛠️ Available Scripts
 
+### 🚀 Auto-Increment Features
+
+Both release scripts now support automatic version incrementing:
+
+#### **Auto-Increment Types:**
+
+- **`patch`** (default): `1.0.5` → `1.0.6` (bug fixes)
+- **`minor`**: `1.0.5` → `1.1.0` (new features)
+- **`major`**: `1.0.5` → `2.0.0` (breaking changes)
+
+#### **Usage Examples:**
+
+```bash
+# Auto-increment patch (most common)
+./scripts/release.sh
+./scripts/quick-release.sh
+
+# Auto-increment specific type
+./scripts/release.sh minor production
+./scripts/release.sh major production
+
+# Manual version (override auto-increment)
+./scripts/release.sh 1.2.3 production
+```
+
 ### 1. Full Release Script (`./scripts/release.sh`)
 
 **Usage:**
@@ -22,14 +47,19 @@ This document describes the automated release process for GeistAI iOS app.
 **Examples:**
 
 ```bash
-# Production release
+# Auto-increment patch version (default)
+./scripts/release.sh
+
+# Auto-increment specific type
+./scripts/release.sh patch production
+./scripts/release.sh minor production
+./scripts/release.sh major production
+
+# Manual version
 ./scripts/release.sh 1.0.5 production
 
 # Preview release
 ./scripts/release.sh 1.0.5 preview
-
-# Default values (1.0.5, production)
-./scripts/release.sh
 ```
 
 **What it does:**
@@ -50,9 +80,13 @@ This document describes the automated release process for GeistAI iOS app.
 ./scripts/quick-release.sh [version]
 ```
 
-**Example:**
+**Examples:**
 
 ```bash
+# Auto-increment patch version
+./scripts/quick-release.sh
+
+# Manual version
 ./scripts/quick-release.sh 1.0.5
 ```
 
