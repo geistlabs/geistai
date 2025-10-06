@@ -30,6 +30,18 @@ class EmbedResponse(BaseModel):
 
 app = FastAPI(title="Geist Embedder")
 
+
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load the default model on startup"""
+    logger.info("Pre-loading default model on startup...")
+    try:
+        get_model(config.DEFAULT_MODEL)
+        logger.info("Default model loaded successfully")
+    except Exception as e:
+        logger.warning(f"Failed to pre-load default model: {e}")
+
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -61,7 +73,9 @@ def get_model(model_name: str) -> SentenceTransformer:
     if model_name not in _model_cache:
         logger.info(f"Loading model: {model_name}")
         try:
-            _model_cache[model_name] = SentenceTransformer(model_name)
+            _model_cache[model_name] = SentenceTransformer(
+                model_name, cache_folder=config.SENTENCE_TRANSFORMERS_HOME
+            )
             logger.info(f"Successfully loaded model: {model_name}")
         except Exception as e:
             logger.error(f"Failed to load model {model_name}: {e}")
