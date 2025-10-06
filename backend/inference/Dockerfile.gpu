@@ -24,6 +24,7 @@ CMD /app/llama-server \
 		--cont-batching \
 		--mlock \
 		--n-gpu-layers "${GPU_LAYERS:-8}"
+		--jinja
 
 # Example usage:
 # docker run -d \
