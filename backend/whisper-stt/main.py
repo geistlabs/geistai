@@ -99,7 +99,7 @@ class WhisperSTTService:
                         print(f"JSON decode error: {e}")
                         print(f"Raw output: {result.stdout}")
                         # Fall through to fallback
-                
+
                 # Fallback: extract text from stdout (when no JSON or JSON parsing failed)
                 import re
                 text = result.stdout.strip()
@@ -108,7 +108,7 @@ class WhisperSTTService:
                     "",
                     text,
                 ).strip()
-                
+
                 if cleaned_text:
                     return {
                         "success": True,
@@ -137,15 +137,7 @@ class WhisperSTTService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
-        # Fallback return (should never reach here)
-        return {
-            "success": False,
-            "text": "",
-            "language": language,
-            "segments": [],
-            "duration": 0,
-            "error": "Unknown transcription error"
-        }
+
 
 # Initialize STT service
 whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
