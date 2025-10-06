@@ -6,11 +6,11 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChatDrawer from '../components/chat/ChatDrawer';
 import { InputBar } from '../components/chat/InputBar';
