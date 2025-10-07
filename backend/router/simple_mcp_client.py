@@ -379,7 +379,6 @@ async def test_mcp_client():
                 # Try a simple call (may fail depending on tool requirements)
                 try:
                     result = await client.call_tool(tool_name, {})
-                    print(f"Tool result: {result}")
                 except Exception as e:
                     print(f"Tool call failed (expected): {e}")
             
