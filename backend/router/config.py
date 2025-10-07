@@ -52,8 +52,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
-MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000/mcp") + "/"
-MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000/mcp") + "/"
+MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000") + "/mcp/"
+MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000") + "/mcp/"
 MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]
 # ... rest of your existing config
 # Embeddings service settings
