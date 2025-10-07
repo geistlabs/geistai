@@ -1,0 +1,128 @@
+# Docker Compose for services NOT included in start-local-dev.sh
+# This runs alongside the local inference + router setup
+# Use: docker-compose -f docker-compose.rick.yml up -d
+
+services:
+  postgresdb:
+    image: postgres:15.5
+    user: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: test-storage
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./000-create-multiple-pg-databases.sql:/docker-entrypoint-initdb.d/000-create-multiple-pg-databases.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - geist-network
+
+  db-init:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgresdb:5432/test-storage
+      DB_ECHO: "false"
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    networks:
+      - geist-network
+    restart: "no"
+    profiles:
+      - init
+
+  gateway:
+    image: docker/mcp-gateway
+    ports:
+      - "9011:9011"
+    command:
+      - --transport=http
+      - --servers=brave,fetch
+      - --verbose=true
+      - --port=9011
+      - --static=true
+      - --log-calls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "4G"
+        reservations:
+          cpus: "1.0"
+          memory: "2G"
+    networks:
+      - geist-network
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    depends_on:
+      - mcp-brave
+      - mcp-fetch
+    restart: unless-stopped
+
+  mcp-brave:
+    image: mcp/brave-search:latest
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "node", "dist/index.js"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=brave
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    networks:
+      - geist-network
+    restart: unless-stopped
+
+  mcp-fetch:
+    image: mcp/fetch@sha256:ef9535a3f07249142f9ca5a6033d7024950afdb6dc05e98292794a23e9f5dfbe
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "mcp-server-fetch"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    networks:
+      - geist-network
+    restart: unless-stopped
+
+secrets:
+  mcp_secret:
+    file: .env
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  geist-network:
+    driver: bridge
