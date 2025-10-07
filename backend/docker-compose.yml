@@ -5,8 +5,8 @@ services:
   router:
     build: ./router
     ports:
-      - "8000:8000"
-      - "8443:8443" # HTTPS port (uncomment if using SSL)
+      - "0.0.0.0:8000:8000"  # Bind to all interfaces
+      - "0.0.0.0:8443:8443"# HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
@@ -17,13 +17,15 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-      
+
       - OPENAI_URL=https://api.openai.com
       - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
       - OPENAI_KEY=${OPENAI_KEY}
       - USE_REMOTE_INFERENCE=true
       - BRAVE_API_KEY=${BRAVE_API_KEY}
-      - MCP_HOST=http://gateway:9011/mcp
+      - MCP_BRAVE_URL=http://mcp-brave:8080/mcp
+      - MCP_FETCH_URL=http://mcp-fetch:8000/mcp
+      
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem
@@ -42,7 +44,8 @@ services:
       ]
     depends_on:
       - inference
-      - gateway
+      - mcp-brave
+      - mcp-fetch
       - embeddings
     healthcheck:
       # Use HTTP for healthcheck in local development
@@ -65,8 +68,8 @@ services:
   router-gpu:
     build: ./router
     ports:
-      - "8000:8000"
-      - "8443:8443" # HTTPS port (uncomment if using SSL)
+      - "8000:8000"  # Bind to all interfaces
+      - "8443:8443"# HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
@@ -77,6 +80,14 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
+      - MCP_BRAVE_URL=http://mcp-brave:8080/mcp
+      - MCP_FETCH_URL=http://mcp-fetch:8000/mcp
+      - OPENAI_URL=https://api.openai.com
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - OPENAI_KEY=${OPENAI_KEY}
+      - USE_REMOTE_INFERENCE=true
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem
@@ -94,9 +105,9 @@ services:
         "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True, reload_dirs=['/app'])",
       ]
     depends_on:
-      - inference-gpu
-      - gateway
-      - embeddings
+      - inference
+      - mcp-brave
+      - mcp-fetch
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -113,6 +124,67 @@ services:
       - geist-network
     profiles:
       - gpu
+
+  # Local inference router service (assumes inference runs on host)
+  router-local:
+    build: ./router
+    ports:
+      - "8000:8000"  # Bind to all interfaces
+      - "8443:8443"  # HTTPS port (uncomment if using SSL)
+    environment:
+      - LOG_LEVEL=DEBUG
+      - HARMONY_REASONING_EFFORT=low
+      - INFERENCE_URL=http://host.docker.internal:8080  # Connect to host inference
+      - EMBEDDINGS_URL=http://embeddings:8001
+      - SSL_ENABLED=false
+      # Development-specific Python settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - WATCHDOG_POLLING=true
+      - MCP_BRAVE_URL=http://mcp-brave:8080/mcp
+      - MCP_FETCH_URL=http://mcp-fetch:8000/mcp
+      - OPENAI_URL=https://api.openai.com
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - OPENAI_KEY=${OPENAI_KEY}
+      - USE_REMOTE_INFERENCE=true
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+
+      # SSL Configuration (uncomment to enable)
+      # - SSL_ENABLED=true
+      # - SSL_CERT_PATH=/app/certificates/cert.pem
+      # - SSL_KEY_PATH=/app/certificates/key.pem
+      # - API_PORT=8443
+    volumes:
+      # Mount source code for live reloading
+      - ./router:/app
+      # Mount certificates directory if needed (read-only is fine for certs)
+      - ./router/certificates:/app/certificates:ro
+    command:
+      [
+        "python",
+        "-c",
+        "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True, reload_dirs=['/app'])",
+      ]
+    depends_on:
+      - mcp-brave
+      - mcp-fetch
+      - embeddings
+    healthcheck:
+      # Use HTTP for healthcheck in local development
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Development settings
+    restart: "no"
+    labels:
+      - "dev.environment=development"
+      - "dev.service=router-local"
+    networks:
+      - geist-network
+    profiles:
+      - local
 
   gateway:
     image: docker/mcp-gateway

@@ -158,21 +158,17 @@ class GptService:
     
     async def _register_mcp_tools(self):
         """Register tools from MCP gateway"""
-        if not self.config.MCP_HOST:
+        if not self.config.MCP_URLS:
             return
-        
+        print(f"Connecting to mcp servers at MCP URLs: {self.config.MCP_URLS}")
         try:
             
             # Initialize MCP client
-            self._mcp_client = SimpleMCPClient(self.config.MCP_HOST)
+            self._mcp_client = SimpleMCPClient(self.config.MCP_URLS)
             await self._mcp_client.__aenter__()
             
-            # MCP handshake
-            await self._mcp_client.initialize()
-            await self._mcp_client.send_initialized()
+            tools = await self._mcp_client.list_tools()
             
-            # Get available tools
-            tools = await self._mcp_client.list_and_register_tools()
             
             # Register each MCP tool
             for tool in tools:
