@@ -58,7 +58,7 @@ jobs:
     needs: build_and_push
     uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
     with:
-      APP: whisper-stt
+      APP: whisper
       VERSION: ${{ inputs.environment }}-${{ inputs.version }}
       ENVIRONMENT: ${{ inputs.environment }}
     secrets:
