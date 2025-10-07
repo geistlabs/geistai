@@ -1,0 +1,282 @@
+services:
+  router:
+    build: ./router
+    ports:
+      - "0.0.0.0:8000:8000"  # Bind to all interfaces
+      - "0.0.0.0:8443:8443"# HTTPS port (uncomment if using SSL)
+    environment:
+      - LOG_LEVEL=DEBUG
+      - HARMONY_REASONING_EFFORT=low
+      - INFERENCE_URL=http://inference:8080
+
+      - OPENAI_URL=https://api.openai.com
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - OPENAI_KEY=${OPENAI_KEY}
+      - USE_REMOTE_INFERENCE=true
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - MCP_HOST=http://gateway:9011/mcp
+      - SSL_ENABLED=false
+      # Development-specific Python settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - WATCHDOG_POLLING=true
+      
+      # SSL Configuration (uncomment to enable)
+      # - SSL_ENABLED=true
+      # - SSL_CERT_PATH=/app/certificates/cert.pem
+      # - SSL_KEY_PATH=/app/certificates/key.pem
+      # - API_PORT=8443
+    volumes:
+      # Mount source code for live reloading
+      - ./router:/app
+      # Mount certificates directory if needed (read-only is fine for certs)
+      - ./router/certificates:/app/certificates:ro
+      # Add this line to give the container access to the Docker socket
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    command:
+      [
+        "python",
+        "-c",
+        "import uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=8000, reload=True, reload_dirs=['/app'])",
+      ]
+    secrets:
+      - mcp_secret
+    depends_on:
+      - inference
+      - gateway
+    healthcheck:
+      # Use HTTP for healthcheck in local development
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Development settings
+    restart: "no"
+    labels:
+      - "dev.environment=development"
+      - "dev.service=router"
+    networks:
+      - geist-network
+
+  inference:
+    build: 
+      context: ./inference
+      dockerfile: Dockerfile.chris
+    ports:
+     - "0.0.0.0:8080:8080"  # Expose inference on 8080 (host:container)
+    platform: linux/amd64 # Intel x86_64 architecture
+    environment:
+      - MODEL_PATH=/models/openai_gpt-oss-20b-Q4_K_M.gguf
+      - HOST=0.0.0.0
+      - PORT=8080
+      - N_GPU_LAYERS=15
+      - CONTEXT_SIZE=4096
+      - THREADS=6
+      - BATCH_SIZE=128
+      - UBATCH_SIZE=128
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s # Model loading takes time on CPU/GPU hybrid
+    volumes:
+      # Mount the models directory
+      - ./models:/models:ro
+    deploy:
+      resources:
+        limits:
+          memory: 12G # Conservative for 20B model on 6GB GPU
+        reservations:
+          memory: 4G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # NVIDIA runtime for GPU acceleration
+    runtime: nvidia
+    restart: unless-stopped
+    labels:
+      - "dev.environment=development"
+      - "dev.service=inference"
+    networks:
+      - geist-network
+
+  postgresdb:
+    image: postgres:15.5
+    user: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: test-storage # Database for GeistAI application
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./000-create-multiple-pg-databases.sql:/docker-entrypoint-initdb.d/000-create-multiple-pg-databases.sql
+    ports:
+      - 5433:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    attach: false
+
+  # Database initialization service
+  db-init:
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgresdb:5432/test-storage
+      DB_ECHO: "false"
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    networks:
+      - geist-network
+    restart: "no"
+    profiles:
+      - init
+
+  # MCP Gateway
+  gateway:
+    image: docker/mcp-gateway
+    ports:
+      - "9011:9011"
+    command:
+      - --transport=http
+      - --servers=brave,fetch
+      - --verbose=true
+      - --port=9011
+      - --static=true
+      - --log-calls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: "4G"
+        reservations:
+          cpus: "1.0"
+          memory: "2G"
+    networks:
+      - geist-network
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    depends_on:
+      - mcp-brave
+      - mcp-fetch
+
+  
+  mcp-brave:
+    image: mcp/brave-search:latest
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "node", "dist/index.js"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=brave
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    environment:
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+    networks:
+      - geist-network
+
+  mcp-fetch:
+    image: mcp/fetch@sha256:ef9535a3f07249142f9ca5a6033d7024950afdb6dc05e98292794a23e9f5dfbe
+    entrypoint: ["/docker-mcp/misc/docker-mcp-bridge", "mcp-server-fetch"]
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=stdio
+    volumes:
+      - type: image
+        source: docker/mcp-gateway
+        target: /docker-mcp
+    networks: 
+      - geist-network
+  embeddings:
+    build: ./embeddings
+    ports:
+      - "8001:8001"
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - DEFAULT_MODEL=all-MiniLM-L6-v2
+      - MODEL_CACHE_DIR=/app/models
+      # Development-specific Python settings
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - WATCHDOG_POLLING=true
+    volumes:
+      # Mount source code for live reloading (read-write to allow model directory creation)
+      - ./embeddings:/app
+      # Keep model cache volume for performance (this will override the /app/models from above)
+      - embeddings-models:/app/models
+    command:
+      [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8001",
+        "--reload",
+        "--reload-dir",
+        "/app",
+      ]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G  # Reduced for smaller system
+        reservations:
+          memory: 512M
+    # Development settings
+    restart: "no"
+    labels:
+      - "dev.environment=development"
+      - "dev.service=embeddings"
+    networks:
+      - geist-network    
+
+secrets:
+  mcp_secret:
+    file: .env
+
+volumes:
+  embeddings-models:
+    driver: local
+  postgres_data:
+    driver: local
+
+networks:
+  geist-network:
+    driver: bridge
+
+

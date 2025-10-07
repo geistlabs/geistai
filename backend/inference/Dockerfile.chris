@@ -1,0 +1,47 @@
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda
+
+# Create models directory for volume mount
+USER root
+RUN mkdir -p /models && chown 1000:1000 /models
+
+# Switch back to non-root user
+USER 1000
+
+EXPOSE 8080
+
+# Optimized for Intel i5-9600K + RTX 2060 6GB
+# Conservative settings to avoid VRAM issues
+
+CMD [ "--model", "/models/openai_gpt-oss-20b-Q4_K_M.gguf",\
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--ctx-size", "4096", \       
+     "--threads", "6", \           
+     "--batch-size", "128", \      
+     "--ubatch-size", "128", \     
+     "--parallel", "1", \
+     "--cont-batching", \
+     "--mlock", \
+     "--n-gpu-layers", "15", \
+     "--jinja"]    
+     
+# Example usage for Intel system:
+# docker run -d \
+#   --name inference-server \
+#   --gpus all \
+#   -p 8080:8080 \
+#   -v /path/to/models:/models:ro \
+#   your-image:latest
+
+# NVIDIA Container Toolkit installation for Intel systems:
+# 1. Add NVIDIA package repositories
+# distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+# curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+# curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+# 2. Install and restart Docker
+# sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+# sudo systemctl restart docker
+
+# 3. Test GPU access
+# docker run --rm --gpus all nvidia/cuda:11.0-base nvidia-smi

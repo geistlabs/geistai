@@ -93,6 +93,7 @@ class SimpleMCPClient:
     # ------------------------------------------------------------------------
     
     async def _initialize_session(self) -> Dict[str, Any]:
+        print("Initializing MCP session")
         """Initialize MCP session (step 1 of handshake)"""
         init_request = {
             "jsonrpc": "2.0",
