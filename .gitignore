@@ -59,7 +59,6 @@ backend/*/ssl/
 backend/*/models/
 models/
 backend/whisper.cpp/
-backend/inference/Dockerfile.chris
-backend/docker-compose.chris.yml
 frontend/.android/
 frontend/android/
+test-models/*.bin

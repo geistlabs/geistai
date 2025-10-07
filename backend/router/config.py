@@ -54,8 +54,12 @@ MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 # ... rest of your existing config
 # Embeddings service settings
-EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "https://embeddings.geist.im")
+EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))
+
+# Embeddings API URL configuration - this is the base route for all embeddings calls
+# Should be set to VITE_API_URL/embeddings (e.g., http://localhost:8000/embeddings)
+EMBEDDINGS_API_URL = os.getenv("EMBEDDINGS_API_URL", "http://localhost:8000/embeddings")
 
 # API settings
 API_HOST = os.getenv("API_HOST", "0.0.0.0")

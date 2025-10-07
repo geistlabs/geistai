@@ -30,19 +30,37 @@ class EmbedResponse(BaseModel):
 
 app = FastAPI(title="Geist Embedder")
 
+
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load the default model on startup"""
+    logger.info("Pre-loading default model on startup...")
+    try:
+        get_model(config.DEFAULT_MODEL)
+        logger.info("Default model loaded successfully")
+    except Exception as e:
+        logger.warning(f"Failed to pre-load default model: {e}")
+
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", 
+        "http://localhost:3000",
         "http://127.0.0.1:3000",
         "https://geist.im",
-        "https://*.geist.im",
+        "https://webapp.geist.im",
+        "https://router.geist.im",
+        "https://embeddings.geist.im",
+        "https://inference.geist.im",
         "http://geist.im",
-        "http://*.geist.im"
+        "http://webapp.geist.im",
+        "http://router.geist.im",
+        "http://embeddings.geist.im",
+        "http://inference.geist.im",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -55,7 +73,9 @@ def get_model(model_name: str) -> SentenceTransformer:
     if model_name not in _model_cache:
         logger.info(f"Loading model: {model_name}")
         try:
-            _model_cache[model_name] = SentenceTransformer(model_name)
+            _model_cache[model_name] = SentenceTransformer(
+                model_name, cache_folder=config.SENTENCE_TRANSFORMERS_HOME
+            )
             logger.info(f"Successfully loaded model: {model_name}")
         except Exception as e:
             logger.error(f"Failed to load model {model_name}: {e}")
@@ -71,9 +91,8 @@ def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/embed", response_model=EmbedResponse)
-async def embed(request: EmbedRequest):
-    """Generate embeddings for input text(s)"""
+async def _embed_handler(request: EmbedRequest):
+    """Internal embedding handler function"""
     try:
         # Get the model
         model = get_model(request.model)
@@ -111,9 +130,14 @@ async def embed(request: EmbedRequest):
         )
 
 
-@app.get("/models")
-def list_models():
-    """List available embedding models"""
+@app.post("/embed", response_model=EmbedResponse)
+async def embed(request: EmbedRequest):
+    """Generate embeddings for input text(s)"""
+    return await _embed_handler(request)
+
+
+def _list_models():
+    """Internal models list function"""
     return {
         "object": "list",
         "data": [
@@ -137,6 +161,24 @@ def list_models():
             },
         ],
     }
+
+
+@app.get("/models")
+def list_models():
+    """List available embedding models"""
+    return _list_models()
+
+
+@app.get("/embeddings/models")
+def embeddings_list_models():
+    """List available embedding models - alternative path for webapp compatibility"""
+    return _list_models()
+
+
+@app.get("/embeddings/health")
+def embeddings_health_check():
+    """Health check endpoint - alternative path for webapp compatibility"""
+    return {"status": "healthy"}
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ on:
       - "inference-*-*.*.*"
       - "webapp-*-*.*.*"
       - "router-*-*.*.*"
+      - "whisper-*-*.*.*"
 
 jobs:
   extract_info:
@@ -20,7 +21,7 @@ jobs:
       - name: Extract tag info
         id: extract_tag
         run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/} 
+          TAG_NAME=${GITHUB_REF#refs/tags/}
           IFS='-' read -ra PARTS <<< "$TAG_NAME"
           SERVICE="${PARTS[0]}"
           VERSION="${PARTS[-1]}"
@@ -70,6 +71,16 @@ jobs:
     needs: extract_info
     if: needs.extract_info.outputs.SERVICE == 'router'
     uses: ./.github/workflows/build-router.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
+
+  build_release_whisper:
+    name: Build and Release Whisper
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'whisper'
+    uses: ./.github/workflows/build-whisper-stt.yml
     with:
       environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
       version: ${{ needs.extract_info.outputs.VERSION }}

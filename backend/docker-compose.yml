@@ -270,7 +270,11 @@ services:
       - gpu
 
   embeddings:
-    build: ./embeddings
+    build:
+      context: ./embeddings
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     ports:
       - "8001:8001"
     environment:
@@ -279,7 +283,8 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=8001
       - DEFAULT_MODEL=all-MiniLM-L6-v2
-      - MODEL_CACHE_DIR=/app/models
+      - MODEL_CACHE_DIR=/opt/venv/models
+      - SENTENCE_TRANSFORMERS_HOME=/opt/venv/models
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -287,8 +292,8 @@ services:
     volumes:
       # Mount source code for live reloading (read-write to allow model directory creation)
       - ./embeddings:/app
-      # Keep model cache volume for performance (this will override the /app/models from above)
-      - embeddings-models:/app/models
+      # Keep model cache volume for performance using the optimized cache location
+      - embeddings-models:/opt/venv/models
     command:
       [
         "uvicorn",

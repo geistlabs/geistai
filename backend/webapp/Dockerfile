@@ -13,11 +13,9 @@ RUN npm install
 # Copy source code
 COPY . .
 
-# Build arguments for API URLs (can be overridden at build time)
+# Build arguments for API URL (can be overridden at build time)
 ARG VITE_API_URL=http://localhost:8000
-ARG VITE_EMBEDDINGS_API_URL=http://localhost:8001
 ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_EMBEDDINGS_API_URL=$VITE_EMBEDDINGS_API_URL
 
 # Expose port 3000
 EXPOSE 3000

@@ -12,7 +12,8 @@ import os
 import config
 from gpt_service import GptService
 
-from stt_service import STTService
+from whisper_client import WhisperSTTClient
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,15 +46,17 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://geist.im",
         "https://webapp.geist.im",
+        "https://router.geist.im",
         "https://inference.geist.im",
         "https://embeddings.geist.im",
         "http://geist.im",
         "http://webapp.geist.im",
+        "http://router.geist.im",
         "http://inference.geist.im",
         "http://embeddings.geist.im",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -61,22 +64,13 @@ app.add_middleware(
 gpt_service = GptService(config, can_log=True) 
 
 
-# Initialize STT service
-# Use volume-mounted paths like llama.cpp pattern
-whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
-model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
-stt_service = (
-    STTService(whisper_path, model_path)
-    if os.path.exists(whisper_path) and os.path.exists(model_path)
-    else None
+# Initialize Whisper STT client
+whisper_service_url = os.getenv(
+    "WHISPER_SERVICE_URL", "http://whisper-stt-service:8000"
 )
+stt_service = WhisperSTTClient(whisper_service_url)
 
-if stt_service:
-    logger.info("STT service initialized successfully")
-else:
-    logger.warning(
-        "STT service could not be initialized - whisper binary or model not found"
-    )
+logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
 
 # Validate SSL configuration on startup
 ssl_valid, ssl_message = config.validate_ssl_config()
@@ -284,8 +278,7 @@ async def transcribe_audio(
             )
 
         # Transcribe using STT service
-        result = stt_service.transcribe_audio(audio_data, language)
-
+        result = await stt_service.transcribe_audio(audio_data, language)
         return result
 
     except HTTPException:
@@ -297,7 +290,103 @@ async def transcribe_audio(
         )
 
 
-# Proxy route for embeddings service
+# Specific embeddings routes
+@app.get("/embeddings/health")
+async def embeddings_health():
+    """Proxy health check to embeddings service"""
+    try:
+        target_url = f"{config.EMBEDDINGS_URL}/health"
+        logger.info(f"Checking embeddings health at: {target_url}")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                target_url,
+                timeout=config.EMBEDDINGS_TIMEOUT,
+            )
+
+        logger.info(
+            f"Embeddings health check responded with status: {response.status_code}"
+        )
+        return response.json()
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to embeddings service at {config.EMBEDDINGS_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to embeddings service at {config.EMBEDDINGS_URL}",
+        )
+    except Exception as e:
+        logger.error(f"Error proxying embeddings health check: {str(e)}")
+        raise HTTPException(
+            status_code=502, detail="Failed to check embeddings service health"
+        )
+
+
+@app.post("/embeddings/embed")
+async def embeddings_embed(request: Request):
+    """Proxy embed requests to embeddings service"""
+    try:
+        # Log the target URL for debugging
+        target_url = f"{config.EMBEDDINGS_URL}/embed"
+        logger.info(f"Proxying embed request to: {target_url}")
+
+        # Get request body
+        body = await request.body()
+
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
+        # Forward the request to embeddings service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                target_url,
+                headers=forward_headers,
+                content=body,
+                timeout=config.EMBEDDINGS_TIMEOUT,
+            )
+
+        logger.info(f"Embeddings service responded with status: {response.status_code}")
+        return response.json()
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to embeddings service at {config.EMBEDDINGS_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to embeddings service at {config.EMBEDDINGS_URL}",
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to embeddings service: {str(e)}")
+        raise HTTPException(
+            status_code=504,
+            detail="Embeddings service timeout",
+        )
+    except Exception as e:
+        logger.error(f"Error proxying embeddings embed request: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to proxy embed request to embeddings service",
+        )
+
+
+# Proxy route for embeddings service (catch-all for other routes)
 @app.api_route(
     "/embeddings/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -318,27 +407,52 @@ async def proxy_embeddings(request: Request, path: str):
         if request.method in ["POST", "PUT", "PATCH"]:
             body = await request.body()
 
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
         # Forward the request
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 method=request.method,
                 url=target_url,
-                headers=dict(request.headers),
+                headers=forward_headers,
                 content=body,
                 timeout=config.EMBEDDINGS_TIMEOUT,
             )
+
+        # Prepare response headers (exclude hop-by-hop headers)
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in skip_headers:
+                response_headers[key] = value
 
         # Return the response
         return StreamingResponse(
             iter([response.content]),
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=response_headers,
             media_type=response.headers.get("content-type"),
         )
 
     except Exception as e:
         logger.error(f"Error proxying to embeddings service: {str(e)}")
-        return {"error": "Failed to proxy request to embeddings service"}
+        raise HTTPException(
+            status_code=502, detail="Failed to proxy request to embeddings service"
+        )
 
 
 if __name__ == "__main__":

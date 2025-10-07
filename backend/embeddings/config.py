@@ -10,7 +10,8 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Model Configuration
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "all-MiniLM-L6-v2")
-MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/app/models")
+MODEL_CACHE_DIR = os.getenv("MODEL_CACHE_DIR", "/opt/venv/models")
+SENTENCE_TRANSFORMERS_HOME = os.getenv("SENTENCE_TRANSFORMERS_HOME", "/opt/venv/models")
 
 # Performance Configuration
 MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "32"))

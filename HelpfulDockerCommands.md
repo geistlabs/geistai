@@ -2,7 +2,7 @@
 
 Sometimes Docker just gets... stuck.
 
-Rather than investigate the exact reason, it's often more expedient to simply unplug it all and plug it back in.
+Rather than investigate the exact reason, it's often more expedient to simply unplug it all and plug it back in
 
 ## Stop and Remove All Containers
 
