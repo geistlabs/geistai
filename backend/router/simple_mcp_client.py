@@ -28,17 +28,17 @@ class SimpleMCPClient:
     a clean async interface for tool operations.
     """
     
-    def __init__(self, gateway_url: str):
+    def __init__(self, gateway_urls: list[str]):
         """
         Initialize MCP client
         
         Args:
-            gateway_url: URL of the MCP gateway (e.g., "http://gateway:9011/mcp")
+            gateway_urls: List of MCP gateway URLs (e.g., ["http://gateway1:9011/mcp", "http://gateway2:9011/mcp"])
         """
-        self.gateway_url = gateway_url
-        self.session_id: Optional[str] = None
+        self.gateway_urls = gateway_urls
+        self.sessions: Dict[str, str] = {}  # gateway_url -> session_id
         self.client: Optional[httpx.AsyncClient] = None
-        self._tool_cache: Dict[str, dict] = {}
+        self._tool_cache: Dict[str, dict] = {}  # tool_name -> {tool_info, gateway_url}
     
     # ------------------------------------------------------------------------
     # Connection Management
@@ -57,44 +57,64 @@ class SimpleMCPClient:
     
     async def connect(self) -> bool:
         """
-        Connect to MCP gateway and establish session
+        Connect to all MCP gateways and establish sessions
         
         Returns:
-            True if connection successful, False otherwise
+            True if at least one connection successful, False otherwise
         """
         try:
-            # Initialize session
-            await self._initialize_session()
+            success_count = 0
             
-            # Complete handshake
-            await self._send_initialized()
+            for gateway_url in self.gateway_urls:
+                try:
+                    # Initialize session for this gateway
+                    session_id = await self._initialize_session(gateway_url)
+                    if not session_id:
+                        continue
+                    
+                    # Complete handshake
+                    await self._send_initialized(gateway_url, session_id)
+                    
+                    # Cache available tools from this gateway
+                    await self._cache_tools(gateway_url, session_id)
+                    
+                    # Store session
+                    self.sessions[gateway_url] = session_id
+                    success_count += 1
+                    
+                    print(f"✅ Connected to MCP gateway at {gateway_url}")
+                    
+                except Exception as e:
+                    print(f"❌ Failed to connect to gateway {gateway_url}: {e}")
+                    continue
             
-            # Cache available tools
-            await self._cache_tools()
-            
-            print(f"✅ Connected to MCP gateway at {self.gateway_url}")
-            return True
+            if success_count > 0:
+                print(f"✅ Connected to {success_count}/{len(self.gateway_urls)} MCP gateways")
+                return True
+            else:
+                print("❌ Failed to connect to any MCP gateways")
+                return False
             
         except Exception as e:
-            print(f"❌ Failed to connect to MCP gateway: {e}")
+            print(f"❌ Failed to connect to MCP gateways: {e}")
             return False
     
     async def disconnect(self):
-        """Disconnect from MCP gateway"""
+        """Disconnect from all MCP gateways"""
         if self.client:
             await self.client.aclose()
             self.client = None
-        self.session_id = None
+        self.sessions.clear()
         self._tool_cache.clear()
-        print("✅ Disconnected from MCP gateway")
+        print("✅ Disconnected from all MCP gateways")
     
     # ------------------------------------------------------------------------
     # MCP Protocol Implementation
     # ------------------------------------------------------------------------
     
-    async def _initialize_session(self) -> Dict[str, Any]:
-        print("Initializing MCP session")
+    async def _initialize_session(self, gateway_url: str) -> Optional[str]:
         """Initialize MCP session (step 1 of handshake)"""
+        print(f"Initializing MCP session with {gateway_url}")
         init_request = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -113,15 +133,15 @@ class SimpleMCPClient:
             }
         }
         
-        response = await self._send_request(init_request)
+        response = await self._send_request(gateway_url, init_request)
         
         # Extract session ID from headers
-        self.session_id = response.headers.get("mcp-session-id")
-        print(f"✅ MCP session initialized with ID: {self.session_id}")
+        session_id = response.headers.get("mcp-session-id")
+        print(f"✅ MCP session initialized with ID: {session_id}")
         
-        return self._parse_response(response)
+        return session_id
     
-    async def _send_initialized(self) -> None:
+    async def _send_initialized(self, gateway_url: str, session_id: str) -> None:
         """Send initialized notification (step 2 of handshake)"""
         initialized_notification = {
             "jsonrpc": "2.0",
@@ -129,14 +149,14 @@ class SimpleMCPClient:
             "params": {}
         }
         
-        response = await self._send_request(initialized_notification)
+        response = await self._send_request(gateway_url, initialized_notification, session_id)
         
         if response.status_code not in [200, 202]:
             raise Exception(f"Initialized notification failed: {response.status_code}")
         
         print("✅ MCP handshake completed")
     
-    async def _cache_tools(self) -> None:
+    async def _cache_tools(self, gateway_url: str, session_id: str) -> None:
         """Cache available tools from gateway"""
         tools_request = {
             "jsonrpc": "2.0",
@@ -145,21 +165,28 @@ class SimpleMCPClient:
             "params": {}
         }
         
-        response = await self._send_request(tools_request)
+        response = await self._send_request(gateway_url, tools_request, session_id)
         result = self._parse_response(response)
         
         if "result" in result and "tools" in result["result"]:
             for tool in result["result"]["tools"]:
-                self._tool_cache[tool["name"]] = tool
+                # Store tool with its gateway URL for routing
+                self._tool_cache[tool["name"]] = {
+                    "tool_info": tool,
+                    "gateway_url": gateway_url
+                }
+            print(f"✅ Cached {len(result['result']['tools'])} tools from {gateway_url}")
         else:
-            print("⚠️  No tools found in MCP gateway response")
+            print(f"⚠️  No tools found in MCP gateway response from {gateway_url}")
     
-    async def _send_request(self, request: dict) -> httpx.Response:
+    async def _send_request(self, gateway_url: str, request: dict, session_id: Optional[str] = None) -> httpx.Response:
         """
-        Send a request to the MCP gateway
+        Send a request to a specific MCP gateway
         
         Args:
+            gateway_url: URL of the MCP gateway
             request: JSON-RPC request object
+            session_id: Optional session ID for the request
             
         Returns:
             HTTP response
@@ -170,12 +197,14 @@ class SimpleMCPClient:
         }
         
         # Add session ID if available
-        if self.session_id:
-            headers["mcp-session-id"] = self.session_id
-        if(self.client is None):
+        if session_id:
+            headers["mcp-session-id"] = session_id
+        
+        if self.client is None:
             self.client = httpx.AsyncClient(timeout=30.0)
+        
         response = await self.client.post(
-            self.gateway_url,
+            gateway_url,
             headers=headers,
             json=request
         )
@@ -219,15 +248,17 @@ class SimpleMCPClient:
     
     async def list_tools(self) -> List[Dict[str, Any]]:
         """
-        Get list of available tools
+        Get list of available tools from all gateways
         
         Returns:
             List of tool definitions
         """
         if not self._tool_cache:
-            await self._cache_tools()
+            # If no tools cached, try to connect to all gateways
+            await self.connect()
         
-        return list(self._tool_cache.values())
+        # Return just the tool info, hiding the gateway URL from users
+        return [tool_data["tool_info"] for tool_data in self._tool_cache.values()]
     
     async def get_tool_info(self, tool_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -240,9 +271,11 @@ class SimpleMCPClient:
             Tool definition or None if not found
         """
         if not self._tool_cache:
-            await self._cache_tools()
+            # If no tools cached, try to connect to all gateways
+            await self.connect()
         
-        return self._tool_cache.get(tool_name)
+        tool_data = self._tool_cache.get(tool_name)
+        return tool_data["tool_info"] if tool_data else None
     
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -256,10 +289,19 @@ class SimpleMCPClient:
             Tool execution result
         """
         if not self._tool_cache:
-            await self._cache_tools()
+            # If no tools cached, try to connect to all gateways
+            await self.connect()
         
         if tool_name not in self._tool_cache:
             return {"error": f"Tool '{tool_name}' not found"}
+        
+        # Get the gateway URL and session ID for this tool
+        tool_data = self._tool_cache[tool_name]
+        gateway_url = tool_data["gateway_url"]
+        session_id = self.sessions.get(gateway_url)
+        
+        if not session_id:
+            return {"error": f"No active session for gateway {gateway_url}"}
         
         call_request = {
             "jsonrpc": "2.0",
@@ -272,7 +314,7 @@ class SimpleMCPClient:
         }
         
         try:
-            response = await self._send_request(call_request)
+            response = await self._send_request(gateway_url, call_request, session_id)
             result = self._parse_response(response)
             
             # Extract and format the result
@@ -331,16 +373,18 @@ class SimpleMCPClient:
     
     async def initialize(self) -> Dict[str, Any]:
         """Legacy method - use connect() instead"""
-        return await self._initialize_session()
+        # This method is deprecated - use connect() instead
+        raise NotImplementedError("Use connect() method instead")
     
     async def send_initialized(self) -> None:
         """Legacy method - use connect() instead"""
-        await self._send_initialized()
+        # This method is deprecated - use connect() instead
+        raise NotImplementedError("Use connect() method instead")
     
     async def list_and_register_tools(self) -> List[Dict[str, Any]]:
         """Legacy method - use list_tools() instead"""
-        await self._cache_tools()
-        return list(self._tool_cache.values())
+        # This method is deprecated - use list_tools() instead
+        raise NotImplementedError("Use list_tools() method instead")
 
 
 # ------------------------------------------------------------------------
@@ -349,12 +393,12 @@ class SimpleMCPClient:
 
 async def test_mcp_client():
     """Test the MCP client functionality"""
-    gateway_url = "http://gateway:9011/mcp"
+    brave_and_fetch = ["http://mcp-brave:3000", "http://mcp-fetch:8000"]
     
-    print(f"Testing MCP client with: {gateway_url}")
+    print(f"Testing MCP client with: {brave_and_fetch}")
     
     try:
-        async with SimpleMCPClient(gateway_url) as client:
+        async with SimpleMCPClient(brave_and_fetch) as client:
             # Connect to gateway
             if not await client.connect():
                 print("❌ Failed to connect to MCP gateway")
@@ -379,7 +423,6 @@ async def test_mcp_client():
                 # Try a simple call (may fail depending on tool requirements)
                 try:
                     result = await client.call_tool(tool_name, {})
-                    print(f"Tool result: {result}")
                 except Exception as e:
                     print(f"Tool call failed (expected): {e}")
             

@@ -35,7 +35,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conv
 
         # Execute tool
         result = await execute_tool(tool_name, tool_args)
-
+        print(f"Tool Result:{tool_name} {result}")
         # Add to conversation
         conversation.append({
             "role": "assistant",
@@ -43,12 +43,15 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conv
             
             "tool_calls": [tool_call]
         })
+
+        tool_call_result = format_tool_result_for_llm(
+            tool_call["id"],
+            tool_name,
+            result
+        )
+        print(f"Tool Call Result:{tool_call_result}")
         conversation.append(
-            format_tool_result_for_llm(
-                tool_call["id"],
-                tool_name,
-                result
-            )
+            tool_call_result
         )
         return True
 
@@ -122,6 +125,7 @@ async def process_llm_response_with_tools(
         execute_tool: Callable,
         llm_stream_once: Callable,
         conversation: List[dict],
+        agent_name: str,
     ):
         """
         Process one LLM response and handle tool calls if needed
@@ -176,7 +180,7 @@ async def process_llm_response_with_tools(
             
             # Stream content to client and print reasoning as it happens
             elif "content" in delta_obj and delta_obj["content"]:
-               
+                
                 yield (delta_obj["content"], None)  # Content with no status change
            
             # Check finish reason
@@ -195,7 +199,10 @@ async def process_llm_response_with_tools(
                     
                     # Execute all tool calls concurrently
                     results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
+                    print(f"Agent Results: {agent_name}")
+                    if agent_name == "orchestrator":
+                        print(f"Agent Results: {results}")
+               
                     # Check if any tool call failed
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):

@@ -219,7 +219,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
         try:
             # Stream tokens from gpt service
             async for token in gpt_service.stream_chat_request(
-                messages,  reasoning_effort=config.REASONING_EFFORT,
+                messages, agent_name="orchestrator", reasoning_effort=config.REASONING_EFFORT,
             ):
                 # Check if client is still connected
                 if await request.is_disconnected():

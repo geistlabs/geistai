@@ -49,9 +49,12 @@ else:
         print("Using local inference")
     }
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
-MCP_HOST = os.getenv("MCP_HOST", "http://localhost:9011")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
+MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000/mcp") + "/"
+MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000/mcp") + "/"
+MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]
 # ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")

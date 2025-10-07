@@ -30,14 +30,14 @@ from simple_mcp_client import SimpleMCPClient
 # Tools that are permitted to be used by the LLM
 # Add/remove tool names here to control what the LLM can access
 PERMITTED_TOOLS = [
-    "research_agent",
-    "creative_agent",
-    "technical_agent",
-    "summary_agent",
-    "current_info_agent",
-      # MCP tool: Brave search
-    # "fetch",           # MCP tool: Web page fetching (commented out - add if needed)
-    # "calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
+   "research_agent",
+   "creative_agent",
+   "technical_agent",
+   "summary_agent",
+   "current_info_agent",
+  # "brave_web_search",
+  # "fetch",           # MCP tool: Web page fetching (commented out - add if needed)
+    #"calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
 ]
 
 # Maximum number of tool calls in a single conversation turn
@@ -158,21 +158,17 @@ class GptService:
     
     async def _register_mcp_tools(self):
         """Register tools from MCP gateway"""
-        if not self.config.MCP_HOST:
+        if not self.config.MCP_URLS:
             return
-        
+        print(f"Connecting to mcp servers at MCP URLs: {self.config.MCP_URLS}")
         try:
             
             # Initialize MCP client
-            self._mcp_client = SimpleMCPClient(self.config.MCP_HOST)
+            self._mcp_client = SimpleMCPClient(self.config.MCP_URLS)
             await self._mcp_client.__aenter__()
             
-            # MCP handshake
-            await self._mcp_client.initialize()
-            await self._mcp_client.send_initialized()
+            tools = await self._mcp_client.list_tools()
             
-            # Get available tools
-            tools = await self._mcp_client.list_and_register_tools()
             
             # Register each MCP tool
             for tool in tools:
@@ -234,7 +230,6 @@ class GptService:
             executor = tool_info["executor"]
             print(f"Executing tool: {tool_name} with arguments: {arguments}")
             result = await executor(arguments)
-            print(f"Tool result: {result.get('content', 'No content')}")
             return result
             
         except Exception as e:
@@ -319,6 +314,9 @@ class GptService:
         "- Lead with the answer in 1–5 sentences.\n"
         "- If you had to search or fetch, you MUST integrate that data. Never answer \"I don't know\" when tools are available.\n"
         "- If you used web sources, add exactly one line: Source: <site> (<url>)\n"
+        "IMPORTANT CITATION CONTRACT:\n"
+        "- When you have provided information from a web search or an agent always cite your sources like [1], [2], etc.\n"
+        "- If the source is an agent carry over the citation from the agent to the final response, you can change the the source number if you want to"
 )
 
         
@@ -413,8 +411,9 @@ class GptService:
         self,
         messages: List[dict],
         reasoning_effort: str = "low",
+        agent_name: str = "orchestrator",
         permitted_tools: List[str] = PERMITTED_TOOLS,
-        chat_initiator: str = "user"
+        
     ):
         """
         Stream chat request with tool calling support
@@ -482,6 +481,7 @@ class GptService:
                 self._execute_tool,
                 llm_stream_once,
                 conversation,
+                agent_name
             ):
                 # Stream content to client if available
                 if content_chunk:
