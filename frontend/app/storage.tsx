@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Alert,
   FlatList,
@@ -8,138 +9,178 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 
 import BackIcon from '../components/BackIcon';
+import {
+  vectorStorage,
+  embeddingService,
+  VectorEmbedding,
+} from '../lib/vectorStorage';
 import '../global.css';
 
-interface StorageItem {
-  key: string;
-  value: string;
+interface StorageItem extends VectorEmbedding {
+  similarity?: number;
 }
 
 export default function StorageScreen() {
   const [storageItems, setStorageItems] = useState<StorageItem[]>([]);
-  const [newKey, setNewKey] = useState('');
-  const [newValue, setNewValue] = useState('');
+  const [newText, setNewText] = useState('');
+  const [searchText, setSearchText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isEmbedding, setIsEmbedding] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Load all storage items on component mount
-  useEffect(() => {
-    loadStorageItems();
-  }, []);
-
-  const loadStorageItems = async () => {
+  const loadStorageItems = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Get all keys from AsyncStorage
-      const keys = await getStorageKeys();
-      const items: StorageItem[] = [];
-      
-      // Get values for each key
-      for (const key of keys) {
-        try {
-          const value = await getStorageValue(key);
-          if (value !== null) {
-            items.push({ key, value });
-          }
-        } catch (error) {
-          console.warn(`Failed to get value for key ${key}:`, error);
-        }
-      }
-      
-      setStorageItems(items);
+      const embeddings = await vectorStorage.getAllEmbeddings();
+      setStorageItems(embeddings);
     } catch (error) {
-      console.error('Failed to load storage items:', error);
-      Alert.alert('Error', 'Failed to load storage items');
+      // eslint-disable-next-line no-console
+      console.error('Failed to load embeddings:', error);
+      Alert.alert('Error', 'Failed to load stored embeddings');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const getStorageKeys = async (): Promise<string[]> => {
+  const initializeAndLoadItems = useCallback(async () => {
     try {
-      // Use AsyncStorage to get all keys
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      const keys = await AsyncStorage.getAllKeys();
-      return keys || [];
+      await vectorStorage.initDatabase();
+      await loadStorageItems();
     } catch (error) {
-      console.error('Failed to get storage keys:', error);
-      return [];
+      // eslint-disable-next-line no-console
+      console.error('Failed to initialize database:', error);
+      Alert.alert('Error', 'Failed to initialize vector storage');
     }
-  };
+  }, [loadStorageItems]);
 
-  const getStorageValue = async (key: string): Promise<string | null> => {
-    try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      return await AsyncStorage.getItem(key);
-    } catch (error) {
-      console.error(`Failed to get value for key ${key}:`, error);
-      return null;
-    }
-  };
+  // Load all storage items on component mount
+  useEffect(() => {
+    initializeAndLoadItems();
+  }, [initializeAndLoadItems]);
 
-  const setStorageValue = async (key: string, value: string): Promise<boolean> => {
-    try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      await AsyncStorage.setItem(key, value);
-      return true;
-    } catch (error) {
-      console.error(`Failed to set value for key ${key}:`, error);
-      return false;
-    }
-  };
-
-  const removeStorageValue = async (key: string): Promise<boolean> => {
-    try {
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      await AsyncStorage.removeItem(key);
-      return true;
-    } catch (error) {
-      console.error(`Failed to remove key ${key}:`, error);
-      return false;
-    }
-  };
-
-  const handleAddItem = async () => {
-    if (!newKey.trim() || !newValue.trim()) {
-      Alert.alert('Error', 'Please enter both key and value');
+  const handleEmbedAndStore = async () => {
+    if (!newText.trim()) {
+      Alert.alert('Error', 'Please enter some text to embed');
       return;
     }
 
-    const success = await setStorageValue(newKey.trim(), newValue.trim());
-    if (success) {
-      setNewKey('');
-      setNewValue('');
-      await loadStorageItems(); // Refresh the list
-      Alert.alert('Success', 'Item added successfully');
-    } else {
-      Alert.alert('Error', 'Failed to add item');
+    try {
+      setIsEmbedding(true);
+
+      // Generate embedding for the text
+      const embedding = await embeddingService.generateEmbedding(
+        newText.trim(),
+      );
+
+      // Store the embedding
+      await vectorStorage.storeEmbedding(newText.trim(), embedding);
+
+      // Clear input and refresh list
+      setNewText('');
+      await loadStorageItems();
+
+      Alert.alert('Success', 'Text embedded and stored successfully!');
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to embed and store text:', error);
+      Alert.alert('Error', 'Failed to embed and store text');
+    } finally {
+      setIsEmbedding(false);
     }
   };
 
-  const handleDeleteItem = async (key: string) => {
+  const handleSimilaritySearch = async () => {
+    if (!searchText.trim()) {
+      Alert.alert('Error', 'Please enter search text');
+      return;
+    }
+
+    try {
+      setIsSearching(true);
+
+      // Generate embedding for search query
+      const queryEmbedding = await embeddingService.generateEmbedding(
+        searchText.trim(),
+      );
+
+      // Search for similar embeddings
+      const results = await vectorStorage.searchSimilar(queryEmbedding, 10);
+
+      // Convert results to StorageItem format with similarity scores
+      const itemsWithSimilarity: StorageItem[] = results.map(result => ({
+        id: result.id,
+        text: result.text,
+        embedding: [], // We don't need to display the full embedding
+        created_at: result.created_at,
+        similarity: result.similarity,
+      }));
+
+      setStorageItems(itemsWithSimilarity);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to search similar embeddings:', error);
+      Alert.alert('Error', 'Failed to search similar embeddings');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleShowAll = async () => {
+    await loadStorageItems();
+  };
+
+  const handleDeleteItem = async (id: number, text: string) => {
     Alert.alert(
-      'Delete Item',
-      `Are you sure you want to delete "${key}"?`,
+      'Delete Embedding',
+      `Are you sure you want to delete this embedding?\n\n"${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const success = await removeStorageValue(key);
-            if (success) {
+            try {
+              await vectorStorage.deleteEmbedding(id);
               await loadStorageItems(); // Refresh the list
-              Alert.alert('Success', 'Item deleted successfully');
-            } else {
-              Alert.alert('Error', 'Failed to delete item');
+              Alert.alert('Success', 'Embedding deleted successfully');
+            } catch (error) {
+              // eslint-disable-next-line no-console
+              console.error('Failed to delete embedding:', error);
+              Alert.alert('Error', 'Failed to delete embedding');
             }
           },
         },
-      ]
+      ],
+    );
+  };
+
+  const handleClearAll = async () => {
+    Alert.alert(
+      'Clear All Embeddings',
+      'Are you sure you want to delete all stored embeddings? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await vectorStorage.clearAllEmbeddings();
+              await loadStorageItems();
+              Alert.alert('Success', 'All embeddings cleared successfully');
+            } catch (error) {
+              // eslint-disable-next-line no-console
+              console.error('Failed to clear embeddings:', error);
+              Alert.alert('Error', 'Failed to clear embeddings');
+            }
+          },
+        },
+      ],
     );
   };
 
@@ -151,13 +192,33 @@ export default function StorageScreen() {
     <View className='mb-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm'>
       <View className='flex-row items-start justify-between'>
         <View className='flex-1 mr-3'>
-          <Text className='mb-1 text-sm font-medium text-gray-900'>Key:</Text>
-          <Text className='mb-3 text-base text-gray-700'>{item.key}</Text>
-          <Text className='mb-1 text-sm font-medium text-gray-900'>Value:</Text>
-          <Text className='text-base text-gray-700'>{item.value}</Text>
+          <View className='mb-2 flex-row items-center justify-between'>
+            <Text className='text-sm font-medium text-gray-900'>
+              ID: {item.id}
+            </Text>
+            <Text className='text-xs text-gray-500'>
+              {new Date(item.created_at).toLocaleDateString()}
+            </Text>
+          </View>
+
+          {item.similarity !== undefined && (
+            <View className='mb-2'>
+              <Text className='text-sm font-medium text-blue-600'>
+                Similarity: {(item.similarity * 100).toFixed(1)}%
+              </Text>
+            </View>
+          )}
+
+          <Text className='mb-1 text-sm font-medium text-gray-900'>Text:</Text>
+          <Text className='text-base text-gray-700 leading-5'>{item.text}</Text>
+
+          <Text className='mt-2 text-xs text-gray-500'>
+            Vector dimensions:{' '}
+            {item.embedding.length > 0 ? item.embedding.length : '128'}
+          </Text>
         </View>
         <TouchableOpacity
-          onPress={() => handleDeleteItem(item.key)}
+          onPress={() => handleDeleteItem(item.id, item.text)}
           className='rounded-lg bg-red-50 px-3 py-2'
         >
           <Text className='text-sm font-medium text-red-600'>Delete</Text>
@@ -175,52 +236,106 @@ export default function StorageScreen() {
         {/* Header */}
         <View className='border-b border-gray-200 bg-white px-4 py-3'>
           <View className='flex-row items-center'>
-            <TouchableOpacity
-              onPress={handleBack}
-              className='-ml-2 mr-2 p-2'
-            >
+            <TouchableOpacity onPress={handleBack} className='-ml-2 mr-2 p-2'>
               <BackIcon size={20} color='#374151' />
             </TouchableOpacity>
-            <Text className='text-lg font-medium text-black'>Local Storage</Text>
+            <Text className='text-lg font-medium text-black'>
+              Vector Embeddings
+            </Text>
           </View>
         </View>
 
-        {/* Add New Item Form */}
+        {/* Add New Embedding Form */}
         <View className='bg-white p-4 shadow-sm'>
           <Text className='mb-3 text-lg font-medium text-gray-900'>
-            Add New Item
+            Add New Text Embedding
           </Text>
           <View className='space-y-3'>
             <View>
-              <Text className='mb-1 text-sm font-medium text-gray-700'>Key</Text>
+              <Text className='mb-1 text-sm font-medium text-gray-700'>
+                Text to Embed
+              </Text>
               <TextInput
-                value={newKey}
-                onChangeText={setNewKey}
-                placeholder='Enter key'
-                className='rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900'
-                autoCapitalize='none'
-                autoCorrect={false}
-              />
-            </View>
-            <View>
-              <Text className='mb-1 text-sm font-medium text-gray-700'>Value</Text>
-              <TextInput
-                value={newValue}
-                onChangeText={setNewValue}
-                placeholder='Enter value'
+                value={newText}
+                onChangeText={setNewText}
+                placeholder='Enter text to convert to vector embedding...'
                 className='rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900'
                 multiline
-                numberOfLines={3}
+                numberOfLines={4}
+                editable={!isEmbedding}
               />
             </View>
             <TouchableOpacity
-              onPress={handleAddItem}
-              className='rounded-lg bg-blue-600 px-4 py-3'
+              onPress={handleEmbedAndStore}
+              disabled={isEmbedding}
+              className={`rounded-lg px-4 py-3 ${isEmbedding ? 'bg-gray-400' : 'bg-blue-600'
+                }`}
             >
-              <Text className='text-center text-base font-medium text-white'>
-                Add Item
-              </Text>
+              <View className='flex-row items-center justify-center'>
+                {isEmbedding && (
+                  <ActivityIndicator
+                    size='small'
+                    color='white'
+                    className='mr-2'
+                  />
+                )}
+                <Text className='text-center text-base font-medium text-white'>
+                  {isEmbedding ? 'Embedding...' : 'Embed & Store'}
+                </Text>
+              </View>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Search Similar Embeddings */}
+        <View className='bg-white p-4 shadow-sm border-t border-gray-100'>
+          <Text className='mb-3 text-lg font-medium text-gray-900'>
+            Search Similar Embeddings
+          </Text>
+          <View className='space-y-3'>
+            <View>
+              <Text className='mb-1 text-sm font-medium text-gray-700'>
+                Search Query
+              </Text>
+              <TextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder='Enter text to find similar embeddings...'
+                className='rounded-lg border border-gray-300 bg-white px-3 py-2 text-base text-gray-900'
+                multiline
+                numberOfLines={2}
+                editable={!isSearching}
+              />
+            </View>
+            <View className='flex-row space-x-3'>
+              <TouchableOpacity
+                onPress={handleSimilaritySearch}
+                disabled={isSearching}
+                className={`flex-1 rounded-lg px-4 py-3 ${isSearching ? 'bg-gray-400' : 'bg-green-600'
+                  }`}
+              >
+                <View className='flex-row items-center justify-center'>
+                  {isSearching && (
+                    <ActivityIndicator
+                      size='small'
+                      color='white'
+                      className='mr-2'
+                    />
+                  )}
+                  <Text className='text-center text-base font-medium text-white'>
+                    {isSearching ? 'Searching...' : 'Search Similar'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleShowAll}
+                className='flex-1 rounded-lg bg-gray-600 px-4 py-3'
+              >
+                <Text className='text-center text-base font-medium text-white'>
+                  Show All
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -228,33 +343,49 @@ export default function StorageScreen() {
         <View className='flex-1 p-4'>
           <View className='mb-3 flex-row items-center justify-between'>
             <Text className='text-lg font-medium text-gray-900'>
-              Stored Items ({storageItems.length})
+              Stored Embeddings ({storageItems.length})
             </Text>
-            <TouchableOpacity
-              onPress={loadStorageItems}
-              className='rounded-lg bg-gray-100 px-3 py-2'
-            >
-              <Text className='text-sm font-medium text-gray-700'>Refresh</Text>
-            </TouchableOpacity>
+            <View className='flex-row space-x-2'>
+              <TouchableOpacity
+                onPress={loadStorageItems}
+                className='rounded-lg bg-gray-100 px-3 py-2'
+              >
+                <Text className='text-sm font-medium text-gray-700'>
+                  Refresh
+                </Text>
+              </TouchableOpacity>
+              {storageItems.length > 0 && (
+                <TouchableOpacity
+                  onPress={handleClearAll}
+                  className='rounded-lg bg-red-100 px-3 py-2'
+                >
+                  <Text className='text-sm font-medium text-red-600'>
+                    Clear All
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {isLoading ? (
             <View className='flex-1 items-center justify-center'>
-              <Text className='text-gray-500'>Loading...</Text>
+              <ActivityIndicator size='large' color='#3B82F6' />
+              <Text className='mt-2 text-gray-500'>Loading embeddings...</Text>
             </View>
           ) : storageItems.length === 0 ? (
             <View className='flex-1 items-center justify-center'>
               <Text className='text-center text-gray-500'>
-                No items stored yet.{'\n'}Add your first key-value pair above.
+                No embeddings stored yet.{'\n'}Add your first text embedding
+                above.
               </Text>
             </View>
           ) : (
             <FlatList
               data={storageItems}
               renderItem={renderStorageItem}
-              keyExtractor={(item) => item.key}
+              keyExtractor={item => item.id.toString()}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: 20 }} // eslint-disable-line react-native/no-inline-styles
             />
           )}
         </View>
