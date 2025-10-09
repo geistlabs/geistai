@@ -9,7 +9,7 @@ def _load_openai_key_from_env():
     """Load OpenAI API key from .env file in parent directory if not already set."""
     if os.getenv("OPENAI_API_KEY"):
         return  # Already set, don't override
-    
+
     try:
         from dotenv import load_dotenv
         # Get the directory where this config.py file is located
@@ -17,7 +17,7 @@ def _load_openai_key_from_env():
         # Go up one directory to find the .env file
         parent_dir = current_dir.parent
         env_file = parent_dir / ".env"
-        
+
         if env_file.exists():
             load_dotenv(env_file)
             print(f"Loaded OpenAI key from: {env_file}")
@@ -35,7 +35,7 @@ REASONING_EFFORT = os.getenv(
 )  # "low", "medium", "high"
 
 # External service settings
-INFERENCE_URL = "https://inference.geist.im" #os.getenv("INFERENCE_URL", "http://localhost:8080")
+INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"

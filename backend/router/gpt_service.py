@@ -35,8 +35,8 @@ PERMITTED_TOOLS = [
    "technical_agent",
    "summary_agent",
    "current_info_agent",
-  # "brave_web_search",
-  # "fetch",           # MCP tool: Web page fetching (commented out - add if needed)
+  # "brave_web_search",  # MCP tool: Web search via Brave API
+  # "fetch",             # MCP tool: Web page fetching (commented out - add if needed)
     #"calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
 ]
 
@@ -46,20 +46,20 @@ MAX_TOOL_CALLS = 10
 
 class GptService:
     """Main service for handling GPT requests with tool support"""
-    
+
     def __init__(self, config, can_log: bool = False):
         # Tool registry: name -> {description, input_schema, executor, type}
         self._tool_registry: Dict[str, dict] = {}
         self.config = config
         self.can_log = can_log
-        
+
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
-    
+
     # ------------------------------------------------------------------------
     # Tool Registration & Management
     # ------------------------------------------------------------------------
-    
+
 
 
     def _register_tool(
@@ -72,7 +72,7 @@ class GptService:
     ):
         """
         Register a tool in the registry
-        
+
         Args:
             name: Unique tool identifier
             description: What the tool does (shown to LLM)
@@ -86,16 +86,16 @@ class GptService:
             "executor": executor,
             "type": tool_type
         }
-    
+
     async def _register_custom_tools(self):
         """
         Register custom (non-MCP) tools here
-        
+
         This is where you add your own tools. See examples below and
         documentation at top of file for how to add new tools.
         """
         # Example custom tool (commented out - uncomment to use):
-        # 
+        #
         # async def calculator(arguments: dict) -> dict:
         #     """Simple calculator tool"""
         #     try:
@@ -104,7 +104,7 @@ class GptService:
         #         return {"content": str(result), "status": "success"}
         #     except Exception as e:
         #         return {"error": str(e)}
-        # 
+        #
         # self._register_tool(
         #     name="calculator",
         #     description="Perform mathematical calculations",
@@ -121,19 +121,19 @@ class GptService:
         #     executor=calculator,
         #     tool_type="custom"
         #     )
-        
+
         # ========================================================================
         # AGENT TOOLS - Uncomment to add specialized agents
         # ========================================================================
-        
+
         # Example: Register all predefined agents
         from agent_registry import register_predefined_agents
         await register_predefined_agents(self, self.config)
-        
+
         # Example: Register only specific agents
         #from agent_registry import register_specific_agents
         #await register_specific_agents(self, config=None, agent_names=["research_agent", "creative_agent"])
-        
+
         # Example: Register a custom agent
         # from agent_registry import register_custom_agent
         # await register_custom_agent(
@@ -153,33 +153,33 @@ class GptService:
         #     available_tools=[],  # Could add calculator tool here
         #     reasoning_effort="high"
         # )
-        
+
         pass  # Add your custom tools above this line
-    
+
     async def _register_mcp_tools(self):
         """Register tools from MCP gateway"""
         if not self.config.MCP_URLS:
             return
         print(f"Connecting to mcp servers at MCP URLs: {self.config.MCP_URLS}")
         try:
-            
+
             # Initialize MCP client
             self._mcp_client = SimpleMCPClient(self.config.MCP_URLS)
             await self._mcp_client.__aenter__()
-            
+
             tools = await self._mcp_client.list_tools()
-            
-            
+
+
             # Register each MCP tool
             for tool in tools:
                 tool_name = tool['name']
-                
+
                 # Create executor that calls MCP
                 async def mcp_executor(args: dict, tn=tool_name) -> dict:
                     if self._mcp_client is None:
                         raise ValueError("MCP client is not initialized")
                     return await self._mcp_client.call_tool(tn, args)
-                
+
                 self._register_tool(
                     name=tool_name,
                     description=tool.get('description', f'MCP tool: {tool_name}'),
@@ -187,54 +187,54 @@ class GptService:
                     executor=mcp_executor,
                     tool_type="mcp"
                 )
-                
+
         except Exception as e:
             print(f"❌ Failed to initialize MCP: {e}")
             # Don't raise - allow service to continue without MCP
-    
+
     async def init_tools(self):
         """
         Initialize all tools (MCP and custom)
         Call this once at startup
         """
-        
+
         # Register custom tools first
         await self._register_custom_tools()
-        
+
         # Then register MCP tools
         await self._register_mcp_tools()
-            
+
     async def shutdown_tools(self):
         """Cleanup resources"""
         if self._mcp_client:
             await self._mcp_client.__aexit__(None, None, None)
             self._mcp_client = None
         self._tool_registry.clear()
-       
+
     # ------------------------------------------------------------------------
     # Tool Execution
     # ------------------------------------------------------------------------
-    
+
     async def _execute_tool(self, tool_name: str, arguments: dict) -> dict:
         """
         Execute a tool (works for both MCP and custom tools)
-        
+
         Returns:
             dict with 'content' or 'error' key
         """
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
-        
+
         try:
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
             print(f"Executing tool: {tool_name} with arguments: {arguments}")
             result = await executor(arguments)
             return result
-            
+
         except Exception as e:
             return {"error": f"Tool execution failed: {str(e)}"}
-    
+
 
 
 
@@ -243,15 +243,15 @@ class GptService:
         Get tool definitions in OpenAI function calling format
         Only includes permitted tools
         """
-        tools = [] 
-       
+        tools = []
+
         for tool_name in permitted_tools:
             if tool_name not in self._tool_registry:
                 continue
-                
+
             tool_info = self._tool_registry[tool_name]
             input_schema = tool_info.get("input_schema", {})
-            
+
             # Only include tools with valid schemas
             if input_schema and "properties" in input_schema:
                 tools.append({
@@ -263,20 +263,20 @@ class GptService:
                     }
                 })
         return tools
-    
+
 
     # ------------------------------------------------------------------------
     # Message Preparation
     # ------------------------------------------------------------------------
-    
+
     def prepare_conversation_messages(self, messages: List[dict], reasoning_effort: str = "low") -> List[dict]:
         """
         Prepare messages for the LLM with system prompt
-        
+
         Args:
             messages: Raw conversation history
             reasoning_effort: "low", "medium", or "high"
-        
+
         Returns:
             Messages with system prompt injected
         """
@@ -285,7 +285,7 @@ class GptService:
             "medium": "Think step by step before responding. Consider potential issues or alternatives.",
             "high": "Think deeply through this problem. Consider multiple approaches, potential issues, edge cases, and alternatives before providing your final response."
         }
-        
+
         system_prompt = (
             "You are Geist — a privacy-focused AI companion.\n\n"
             f"REASONING:\n{reasoning_instructions.get(reasoning_effort, reasoning_instructions['low'])}\n\n"
@@ -319,10 +319,10 @@ class GptService:
         "- If the source is an agent carry over the citation from the agent to the final response, you can change the the source number if you want to"
 )
 
-        
+
         result_messages = []
         has_system = any(msg.get("role") == "system" for msg in messages)
-        
+
         if not has_system:
             result_messages.append({"role": "system", "content": system_prompt})
             result_messages.extend(messages)
@@ -333,31 +333,31 @@ class GptService:
                     result_messages.append({"role": "system", "content": enhanced})
                 else:
                     result_messages.append(msg)
-        
+
         return result_messages
-    
+
     # ------------------------------------------------------------------------
     # LLM Configuration
     # ------------------------------------------------------------------------
-    
+
     def get_chat_completion_params(self) -> tuple:
         headers = {}
         if self.config.OPENAI_KEY:
             headers["Authorization"] = f"Bearer {self.config.OPENAI_KEY}"
-        
+
         if self.config.USE_REMOTE_INFERENCE:
             url = self.config.REMOTE_INFERENCE_URL
             model = self.config.OPENAI_MODEL
         else:
             url = self.config.INFERENCE_URL
             model = "gpt-3.5-turbo"
-        
+
         return headers, model, url
-    
+
     # ------------------------------------------------------------------------
     # Non-Streaming Chat
     # ------------------------------------------------------------------------
-    
+
     async def process_chat_request(
         self,
         messages: List[dict],
@@ -365,14 +365,14 @@ class GptService:
     ) -> str:
         """
         Process a non-streaming chat request (no tool calling)
-        
+
         Returns:
             AI response as string
         """
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
-        
+
         headers, model, url = self.get_chat_completion_params()
-        
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{url}/v1/chat/completions",
@@ -386,53 +386,53 @@ class GptService:
                 headers=headers,
                 timeout=self.config.INFERENCE_TIMEOUT
             )
-        
+
         result = response.json()
-        
+
         # Validate response structure
         if "choices" not in result or not result["choices"]:
             raise ValueError(f"Invalid response from inference service: {result}")
-        
+
         choice = result["choices"][0]
         if "message" not in choice:
             raise ValueError(f"No message in response: {choice}")
-        
+
         content = choice["message"].get("content", "")
         if not content:
             raise ValueError(f"Empty content in response")
-        
+
         return content
 
     # ------------------------------------------------------------------------
     # Streaming Chat with Tool Calling
     # ------------------------------------------------------------------------
-    
+
     async def stream_chat_request(
         self,
         messages: List[dict],
         reasoning_effort: str = "low",
         agent_name: str = "orchestrator",
         permitted_tools: List[str] = PERMITTED_TOOLS,
-        
+
     ):
         """
         Stream chat request with tool calling support
-        
+
         Yields:
             str: Content chunks to stream to client
         """
         # Initialize tools if not already done
         if not self._tool_registry:
             await self.init_tools()
-        
+
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
         headers, model, url = self.get_chat_completion_params()
-        
+
         # Get permitted tools for this request
         tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
         print("Tools for LLM:", [tool["function"]["name"] for tool in tools_for_llm])
-        
+
 
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""
@@ -443,38 +443,45 @@ class GptService:
                 "stream": True,
                 "model": model
             }
-            
+
             # Add tools if available
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-            
-            async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
-                async with client.stream(
-                    "POST",
-                    f"{url}/v1/chat/completions",
-                    headers=headers,
-                    json=request_data,
-                    timeout=self.config.INFERENCE_TIMEOUT
-                ) as resp:
-                
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data: "):
-                            continue
-                        
-                        if "[DONE]" in line:
-                            break
-                        
-                        try:
-                            payload = json.loads(line[6:])  # Remove "data: " prefix
-                            yield payload
-                        except json.JSONDecodeError:
-                            continue
-        
+
+
+            try:
+                async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{url}/v1/chat/completions",
+                        headers=headers,
+                        json=request_data,
+                        timeout=self.config.INFERENCE_TIMEOUT
+                    ) as resp:
+
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+
+                            if "[DONE]" in line:
+                                break
+
+                            try:
+                                payload = json.loads(line[6:])  # Remove "data: " prefix
+                                yield payload
+                            except json.JSONDecodeError:
+                                continue
+            except Exception as e:
+                print(f"❌ DEBUG: Exception in llm_stream_once: {e}")
+                import traceback
+                traceback.print_exc()
+
         # Main tool calling loop
         tool_call_count = 0
-        
+
         while tool_call_count < MAX_TOOL_CALLS:
+            print(f"🔄 Tool calling loop iteration {tool_call_count + 1}/{MAX_TOOL_CALLS} for agent: {agent_name}")
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -486,10 +493,12 @@ class GptService:
                 # Stream content to client if available
                 if content_chunk:
                     yield content_chunk
-                
+
                 # Check status
                 if status == "stop":  # Normal completion or error
+                    print(f"✅ Agent {agent_name} stopped normally")
                     return
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
+                    print(f"🔁 Agent {agent_name} continuing after tool execution (iteration {tool_call_count})")
                     break  # Exit the inner loop to continue the outer loop

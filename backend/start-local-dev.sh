@@ -28,7 +28,7 @@ WHISPER_PORT=8004
 
 # GPU settings for Apple Silicon
 GPU_LAYERS=32  # All layers on GPU for best performance
-CONTEXT_SIZE=4096
+CONTEXT_SIZE=16384  # 4096 per slot with --parallel 4 (required for tool calling)
 THREADS=0  # Auto-detect CPU threads
 
 echo -e "${BLUE}🚀 Starting Geist Backend Local Development Environment${NC}"
@@ -225,6 +225,7 @@ cd "$INFERENCE_DIR"
     --batch-size 512 \
     --ubatch-size 256 \
     --mlock \
+    --jinja \
     > /tmp/geist-inference.log 2>&1 &
 
 INFERENCE_PID=$!
@@ -318,76 +319,26 @@ if [[ $attempt -eq $max_attempts ]]; then
     exit 1
 fi
 
-# Start router service
-echo -e "${BLUE}⚡ Starting router service (FastAPI)...${NC}"
-echo -e "${YELLOW}   Harmony: Enabled${NC}"
-echo -e "${YELLOW}   Reasoning: Low (fast responses)${NC}"
-echo -e "${YELLOW}   Port: $ROUTER_PORT${NC}"
-
-cd "$ROUTER_DIR"
-
-# Set environment variables for local development
-export ENVIRONMENT=development
-export LOG_LEVEL=INFO
-export HARMONY_ENABLED=true
-export HARMONY_REASONING_EFFORT=low
-export INFERENCE_URL=http://localhost:$INFERENCE_PORT
-export INFERENCE_TIMEOUT=60
-export API_HOST=0.0.0.0
-export API_PORT=$ROUTER_PORT
-export WHISPER_SERVICE_URL=http://localhost:$WHISPER_PORT
-
-uv run python main.py > /tmp/geist-router.log 2>&1 &
-ROUTER_PID=$!
-echo -e "${GREEN}✅ Router service starting (PID: $ROUTER_PID)${NC}"
-
-# Wait for router to be ready
-echo -e "${BLUE}⏳ Waiting for router service...${NC}"
-sleep 3
-
-max_attempts=15
-attempt=0
-while [[ $attempt -lt $max_attempts ]]; do
-    if curl -s http://localhost:$ROUTER_PORT/health >/dev/null 2>&1; then
-        echo -e "${GREEN}✅ Router service is ready!${NC}"
-        break
-    fi
-
-    if ! kill -0 $ROUTER_PID 2>/dev/null; then
-        echo -e "${RED}❌ Router service failed to start. Check logs: tail -f /tmp/geist-router.log${NC}"
-        exit 1
-    fi
-
-    echo -e "${YELLOW}   ... starting router (attempt $((attempt+1))/$max_attempts)${NC}"
-    sleep 1
-    ((attempt++))
-done
-
-if [[ $attempt -eq $max_attempts ]]; then
-    echo -e "${RED}❌ Router service failed to respond after $max_attempts attempts${NC}"
-    echo -e "${YELLOW}Check logs: tail -f /tmp/geist-router.log${NC}"
-    exit 1
-fi
+# Router service is now started via Docker (docker-compose --profile local)
+# This script only starts GPU services (inference + whisper)
+echo -e "${BLUE}⚡ Router service should be started separately via Docker:${NC}"
+echo -e "${YELLOW}   cd backend && docker-compose --profile local up -d${NC}"
 
 # Display status
 echo ""
-echo -e "${GREEN}🎉 Geist Backend Local Development Environment Ready!${NC}"
+echo -e "${GREEN}🎉 Native GPU Services Ready!${NC}"
 echo ""
-echo -e "${BLUE}📊 Service Status:${NC}"
+echo -e "${BLUE}📊 GPU Service Status:${NC}"
 echo -e "   🧠 Inference Server: ${GREEN}http://localhost:$INFERENCE_PORT${NC} (GPT-OSS 20B + Metal GPU)"
 echo -e "   🗣️  Whisper STT:       ${GREEN}http://localhost:$WHISPER_PORT${NC} (FastAPI + whisper.cpp)"
-echo -e "   ⚡ Router Service:    ${GREEN}http://localhost:$ROUTER_PORT${NC} (FastAPI + Harmony)"
 echo ""
-echo -e "${BLUE}🔗 API Endpoints:${NC}"
-echo -e "   Health Check:     ${YELLOW}GET  http://localhost:$ROUTER_PORT/health${NC}"
-echo -e "   Chat (blocking):  ${YELLOW}POST http://localhost:$ROUTER_PORT/api/chat${NC}"
-echo -e "   Chat (streaming): ${YELLOW}POST http://localhost:$ROUTER_PORT/api/chat/stream${NC} ${GREEN}(recommended)${NC}"
-echo -e "   Speech-to-Text:   ${YELLOW}POST http://localhost:$ROUTER_PORT/api/speech-to-text${NC}"
-echo -e "   Whisper Health:   ${YELLOW}GET  http://localhost:$WHISPER_PORT/health${NC}"
+echo -e "${BLUE}🐳 Next Step - Start Docker Services:${NC}"
+echo -e "   ${YELLOW}cd backend && docker-compose --profile local up -d${NC}"
+echo -e "   This will start: Router, Embeddings, MCP Brave, MCP Fetch"
 echo ""
-echo -e "${BLUE}🧪 Quick Test Commands:${NC}"
-echo -e "   Health: ${YELLOW}curl http://localhost:$ROUTER_PORT/health${NC}"
-echo -e "   Chat:   ${YELLOW}curl -X POST http://localhost:$ROUTER_PORT/api/chat -H 'Content-Type: application/json' -d '{\"message\":\"Hello!\"}'${NC}"
+echo -e "${BLUE}🧪 Test GPU Services:${NC}"
+echo -e "   Inference: ${YELLOW}curl http://localhost:$INFERENCE_PORT/health${NC}"
+echo -e "   Whisper:   ${YELLOW}curl http://localhost:$WHISPER_PORT/health${NC}"
 echo ""
 echo -e "${BLUE}📝 Log Files:${NC}"
 echo -e "   Inference: ${YELLOW}tail -f /tmp/geist-inference.log${NC}"
@@ -410,14 +361,9 @@ echo ""
 
 # Keep script running and show live status
 while true; do
-    # Check if services are still running
+    # Check if GPU services are still running
     if ! kill -0 $INFERENCE_PID 2>/dev/null; then
         echo -e "${RED}❌ Inference server died unexpectedly${NC}"
-        exit 1
-    fi
-
-    if ! kill -0 $ROUTER_PID 2>/dev/null; then
-        echo -e "${RED}❌ Router service died unexpectedly${NC}"
         exit 1
     fi
 

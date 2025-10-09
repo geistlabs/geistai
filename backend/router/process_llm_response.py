@@ -4,7 +4,7 @@ import json
 
 
 
-    
+
 # ------------------------------------------------------------------------
 # Tool Calling Logic
 # ------------------------------------------------------------------------
@@ -14,12 +14,12 @@ import json
 async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conversation: List[dict]) -> bool:
     """
     Execute a single tool call and add result to conversation
-    
+
     Args:
         tool_call: Tool call object
         execute_tool: Function to execute the tool
         conversation: Current conversation messages
-        
+
     Returns:
         bool: True if successful, False if error occurred
     """
@@ -40,7 +40,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conv
         conversation.append({
             "role": "assistant",
             "content": "",
-            
+
             "tool_calls": [tool_call]
         })
 
@@ -84,7 +84,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable, conv
 def format_tool_result_for_llm( tool_call_id: str, tool_name: str, result: dict) -> dict:
     """
     Format tool execution result for the LLM
-    
+
     Handles both MCP format and simple format
     """
     # Extract content from result
@@ -98,21 +98,21 @@ def format_tool_result_for_llm( tool_call_id: str, tool_name: str, result: dict)
                 else:
                     content_parts.append(str(item))
             content = "\n".join(content_parts)
-        
+
         # Simple format: {"content": "...", "status": "success"}
         elif "content" in result:
             content = result["content"]
-        
+
         # Error format
         elif "error" in result:
             content = f"Error: {result['error']}"
-        
+
         # Unknown format
         else:
             content = json.dumps(result, ensure_ascii=False)
     else:
         content = str(result)
-    
+
     # Return in OpenAI tool result format
     return {
         "role": "tool",
@@ -129,11 +129,11 @@ async def process_llm_response_with_tools(
     ):
         """
         Process one LLM response and handle tool calls if needed
-        
+
         Args:
             llm_stream_once: Function that streams one LLM response
             conversation: Current conversation messages
-            
+
         Yields:
             tuple: (content_chunk, status)
             - content_chunk: str or None (content to stream to client)
@@ -141,7 +141,7 @@ async def process_llm_response_with_tools(
         """
         current_tool_calls = []
         saw_tool_call = False
-        
+
         # Stream one LLM response
         async for delta in llm_stream_once(conversation):
             if "choices" not in delta or not delta["choices"]:
@@ -177,32 +177,33 @@ async def process_llm_response_with_tools(
                             current_tool_calls[tc_index]["function"]["name"] += func["name"]
                         if "arguments" in func:
                             current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
-            
+
             # Stream content to client and print reasoning as it happens
             elif "content" in delta_obj and delta_obj["content"]:
-                
+
                 yield (delta_obj["content"], None)  # Content with no status change
-           
+
             # Check finish reason
             finish_reason = choice.get("finish_reason")
             if finish_reason:
+                print(f"🏁 Agent {agent_name} finish_reason={finish_reason}, tool_calls={len(current_tool_calls)}, saw_content={bool([c for c in [delta_obj.get('content')] if c])}")
                 if finish_reason == "tool_calls" and current_tool_calls:
                     # Execute tool calls concurrently
-                    
+
                     # Create tasks for concurrent execution
                     tasks = []
                     for tool_call in current_tool_calls:
-                
+
 
                         task = execute_single_tool_call(tool_call, execute_tool, conversation)
                         tasks.append(task)
-                    
+
                     # Execute all tool calls concurrently
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     print(f"Agent Results: {agent_name}")
                     if agent_name == "orchestrator":
                         print(f"Agent Results: {results}")
-               
+
                     # Check if any tool call failed
                     for i, result in enumerate(results):
                         if isinstance(result, Exception):
@@ -211,7 +212,7 @@ async def process_llm_response_with_tools(
                         elif result is False:
                             yield (None, "stop")  # Stop on error
                             return
-                    
+
                     await asyncio.sleep(0.1)
                     yield (None, "continue")  # Tool calls executed, continue loop
                     return
@@ -225,7 +226,6 @@ async def process_llm_response_with_tools(
         if not saw_tool_call:
             yield (None, "stop")
             return
-        
+
         # This shouldn't happen, but just in case
         yield (None, "stop")
-    
