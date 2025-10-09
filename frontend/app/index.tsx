@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import ChatDrawer from '../components/chat/ChatDrawer';
 import { InputBar } from '../components/chat/InputBar';
@@ -154,6 +155,10 @@ export default function ChatScreen() {
     setIsDrawerVisible(false);
   };
 
+  const handleStoragePress = () => {
+    router.push('/storage');
+  };
+
   const handleVoiceInput = async () => {
     if (!isConnected) {
       Alert.alert('No Connection', 'Please check your internet connection');
@@ -262,8 +267,14 @@ export default function ChatScreen() {
                   <Text className='text-lg font-medium text-black'>Geist</Text>
                 </View>
 
-                {/* Right side - New Chat Button */}
-                <View className='ml-auto'>
+                {/* Right side - Buttons */}
+                <View className='ml-auto flex-row space-x-2'>
+                  <TouchableOpacity
+                    onPress={handleStoragePress}
+                    className='px-3 py-1.5 bg-blue-100 rounded-lg'
+                  >
+                    <Text className='text-sm text-blue-700'>Storage</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleNewChat}
                     className='px-3 py-1.5 bg-gray-100 rounded-lg'
