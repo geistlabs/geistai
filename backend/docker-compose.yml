@@ -25,7 +25,7 @@ services:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_BRAVE_URL=http://mcp-brave:8080
       - MCP_FETCH_URL=http://mcp-fetch:8000
-      
+
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
       # - SSL_CERT_PATH=/app/certificates/cert.pem
@@ -141,12 +141,11 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-      - MCP_BRAVE_URL=http://mcp-brave:8080/mcp
-      - MCP_FETCH_URL=http://mcp-fetch:8000/mcp
+      - MCP_BRAVE_URL=http://mcp-brave:8080
+      - MCP_FETCH_URL=http://mcp-fetch:8000
       - OPENAI_URL=https://api.openai.com
-      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - USE_REMOTE_INFERENCE=false
       - OPENAI_KEY=${OPENAI_KEY}
-      - USE_REMOTE_INFERENCE=true
       - BRAVE_API_KEY=${BRAVE_API_KEY}
 
       # SSL Configuration (uncomment to enable)
@@ -215,15 +214,15 @@ services:
       - mcp-brave
       - mcp-fetch
 
-  
+
   mcp-brave:
     image: mcp/brave-search:latest
-    
+
     environment:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - BRAVE_MCP_TRANSPORT=http
-      - MCP_PORT=3000
-      - PORT=3000
+      - MCP_PORT=8080
+      - PORT=8080
     init: true
     cpus: 1
     mem_limit: 2g
@@ -235,7 +234,7 @@ services:
       - docker-mcp-name=brave
       - docker-mcp-transport=http
     ports:
-      - "3001:3000"  # Expose MCP service on port 3001
+      - "3001:8080"  # Expose MCP service on port 3001
     networks:
       - geist-network
 
@@ -258,9 +257,9 @@ services:
       - docker-mcp-transport=http
     ports:
       - "3002:8000"  # Expose MCP service on port 3002
-    networks: 
+    networks:
       - geist-network
-  
+
   # CPU-only inference service (default)
   inference:
     build:

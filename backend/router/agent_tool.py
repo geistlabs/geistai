@@ -24,14 +24,14 @@ from gpt_service import GptService
 class AgentTool:
     """
     A configurable agent that can be used as a tool by the main GPT service
-    
+
     This creates a sub-agent with its own:
     - System prompt
     - Available tools
     - Reasoning level
     - Model configuration
     """
-    
+
     def __init__(
         self,
         model_config: Dict[str, Any],
@@ -43,7 +43,7 @@ class AgentTool:
     ):
         """
         Initialize the agent tool
-        
+
         Args:
             name: Unique name for this agent
             description: What this agent does (shown to main LLM)
@@ -58,17 +58,17 @@ class AgentTool:
         self.available_tools = available_tools or []
         self.reasoning_effort = reasoning_effort
         self.model_config = model_config or {}
-        
+
         # Create a GPT service instance for this agent
         self.gpt_service = GptService(model_config)
-        
+
         # Tool registry for this agent (will be populated when initialized)
         self._agent_tool_registry: Dict[str, dict] = {}
-    
+
     async def initialize(self, main_gpt_service: GptService, config):
         """
         Initialize the agent with tools from the main GPT service
-        
+
         Args:
             main_gpt_service: The main GPT service to get tools from
             config: Configuration object
@@ -82,16 +82,16 @@ class AgentTool:
         else:
             # Include all tools from main service
             self._agent_tool_registry = main_gpt_service._tool_registry.copy()
-        
+
         # Initialize the agent's GPT service with the filtered tools
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
-        
-    
+
+
     def get_tool_definition(self) -> dict:
         """
         Get the tool definition for this agent (to register with main GPT service)
-        
+
         Returns:
             dict: Tool definition in OpenAI function calling format
         """
@@ -117,27 +117,27 @@ class AgentTool:
                 }
             }
         }
-    
+
     async def execute(self, arguments: dict) -> dict:
         """
         Execute the agent tool
-        
+
         Args:
             arguments: dict with 'task' and optional 'context'
-            
+
         Returns:
             dict: Agent's response with 'content' key
         """
         task = arguments.get("task", "")
         context = arguments.get("context", "")
-        
+
         if not task:
             return {"error": "No task provided"}
-        
+
         try:
             # Prepare the conversation
             messages = []
-            
+
             # Add context if provided
             if context:
                 messages.append({
@@ -149,15 +149,15 @@ class AgentTool:
                     "role": "user",
                     "content": task
                 })
-            
+
             # Override system prompt
             original_prepare = self.gpt_service.prepare_conversation_messages
-            
+
             def custom_prepare(messages, reasoning_effort="medium"):
                 # Use our custom system prompt instead of the default
                 result_messages = []
                 has_system = any(msg.get("role") == "system" for msg in messages)
-                
+
                 if not has_system:
                     result_messages.append({"role": "system", "content": self.system_prompt})
                     result_messages.extend(messages)
@@ -168,12 +168,12 @@ class AgentTool:
                             result_messages.append({"role": "system", "content": self.system_prompt})
                         else:
                             result_messages.append(msg)
-                
+
                 return result_messages
-            
+
             # Temporarily override the prepare method
             self.gpt_service.prepare_conversation_messages = custom_prepare
-            
+
             # Get response from agent using streaming
             response_chunks = []
             async for chunk in self.gpt_service.stream_chat_request(
@@ -183,19 +183,31 @@ class AgentTool:
                 permitted_tools=self.available_tools,
             ):
                 response_chunks.append(chunk)
-            
+
             # Combine all chunks into final response
             response = "".join(response_chunks)
-            
+
             # Restore original method
             self.gpt_service.prepare_conversation_messages = original_prepare
-            
+
+            # Handle empty responses (can happen when agent only uses tools with Harmony format)
+            # In this case, the agent executed tools but didn't generate visible content
+            # This is likely a model issue with Harmony format not producing final content
+            if not response or response.strip() == "":
+                # Return error to signal the orchestrator should try a different approach
+                return {
+                    "content": "",
+                    "agent": self.name,
+                    "status": "empty_response",
+                    "error": f"Agent {self.name} completed tool execution but produced no content. This may indicate a Harmony format issue where reasoning_content was generated but no final content channel was used."
+                }
+
             return {
                 "content": response,
                 "agent": self.name,
                 "status": "success"
             }
-            
+
         except Exception as e:
             return {
                 "error": f"Agent execution failed: {str(e)}",
@@ -215,16 +227,20 @@ def create_research_agent(config) -> AgentTool:
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
         system_prompt=(
-            "You are a research specialist. Your role is to:\n"
-            "- Conduct thorough research on given topics\n"
-            "- Use web search tools to find current information\n"
-            "- Analyze and synthesize information from multiple sources\n"
-            "- Provide well-structured, factual reports\n"
-            "- Always cite your sources when possible\n\n"
-            "Be thorough, accurate, and objective in your research."
-            "If the info you need is only available at a specific web page use the fetch tool to grep the page"
-            "- never use result_filters"
-            "- IMPORTANT: Cite sources like [1], [2], etc."
+            "You are a research specialist.\n\n"
+            "RESEARCH WORKFLOW:\n"
+            "1. Call brave_web_search to find relevant sources\n"
+            "2. Call fetch on 1-3 most relevant URLs to get detailed content\n"
+            "3. CRITICAL: After fetching content, ANSWER immediately with your analysis. DO NOT call more tools.\n\n"
+            "OUTPUT FORMAT:\n"
+            "- Provide thorough, well-structured analysis of the topic\n"
+            "- Synthesize information from multiple sources\n"
+            "- Always cite sources as [1], [2], etc.\n"
+            "- Be accurate, objective, and factual\n\n"
+            "RULES:\n"
+            "- Never use result_filters\n"
+            "- After calling fetch and getting results, your NEXT response must be the final answer\n"
+            "- Do not call tools repeatedly - search once, fetch once or twice, then answer\n"
         ),
         available_tools=["brave_web_search", "fetch"],  # Only allow search tools
         reasoning_effort="high"
@@ -238,37 +254,27 @@ def create_current_info_agent(config) -> AgentTool:
           name="current_info_agent",
           description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
           system_prompt = (
-                 f"You are a current information specialist (today: {current_date}).\n"
-                # TOOL POLICY — NO LINK DUMPS
-                "- If the user provides a URL, immediately call fetch(url) and extract the requested facts. Do NOT search first.\n"
-                "- If no URL, call brave_web_search(query), pick 1–3 reputable results, then call fetch on the best one(s) before answering.\n"
-                "- Use brave_summarizer only to summarize fetched HTML or if a site blocks fetch; prefer fetch.\n"
-                "- If fetch fails, retry once; then fetch a different result.\n"
-                # DISAMBIGUATION & FRESHNESS
-                "- Disambiguate places using the user's locale/timezone (prefer Canada/America/Toronto by default). "
-                "If a name is ambiguous (e.g., 'Stratford'), expand the query (e.g., 'Stratford Ontario') and choose the page whose heading clearly matches the intended place.\n"
-                "- Prefer pages updated today or most recently available; include the page's timestamp if present.\n"
-                # OUTPUT CONTRACT
-                "OUTPUT CONTRACT:\n"
-                "- Return 1–3 concise sentences summarizing the key facts (include units and timestamps if present; use local units, e.g., °C for Canada).\n"
-                "- After the summary, include a 'Sources:' section formatted *exactly* as follows (no extra text):\n"
+                 f"You are a current information specialist (today: {current_date}).\n\n"
+                "TOOL USAGE WORKFLOW:\n"
+                "1. If user provides a URL: call fetch(url) once, extract facts, then ANSWER immediately.\n"
+                "2. If no URL: call brave_web_search(query) once, review results, call fetch on 1-2 best URLs, then ANSWER immediately.\n"
+                "3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT call more tools.\n"
+                "4. If fetch fails: try one different URL, then answer with what you have.\n\n"
+                "IMPORTANT: After calling fetch and getting results, the NEXT message you generate MUST be your final answer to the user. Do not call tools again.\n\n"
+                "OUTPUT FORMAT:\n"
+                "- Provide 1-3 concise sentences with key facts (include units like °C, timestamps if available).\n"
+                "- End with sources in this exact format:\n"
                 "  Sources:\n"
                 "  [1] <site name> — <url>\n"
-                "  [2] <site name> — <url>\n"
-                "  (Include up to 3 sources; always number them sequentially starting from 1.)\n"
-                "- Do NOT include any other commentary, bullet points, or JSON—just the summary followed by the numbered list.\n"
-                # HARD GUARDS
-                "GUARDS:\n"
-                "- Never tell the user to visit a website; never return only a link.\n"
-                "- Do not answer unless you have fetched (or summarized) page content in this turn.\n"
-                "- If the content you fetched is stale or for the wrong location, fetch a different source and then answer.\n"
-                "- If some of your fetch attempts end in failure retry a little but eventually just give the info you do have.\n"
-                "- Never use result_filters.\n"
-
-
+                "  [2] <site name> — <url>\n\n"
+                "RULES:\n"
+                "- Never tell user to visit a website or return only links\n"
+                "- Never use result_filters\n"
+                "- Disambiguate locations (e.g., 'Paris France' not just 'Paris')\n"
+                "- Prefer recent/fresh content when available\n"
             ),
-        
-        
+
+
         available_tools=["brave_web_search","brave_summarizer", "fetch"],  # Only allow search tools
         reasoning_effort="low"
     )
@@ -363,7 +369,7 @@ def get_predefined_agents(config) -> List[AgentTool]:
         create_creative_agent(config),
         create_technical_agent(config),
         create_summary_agent(config),
-        
+
     ]
 
 
@@ -377,7 +383,7 @@ def create_custom_agent(
 ) -> AgentTool:
     """
     Create a custom agent with your own configuration
-    
+
     Args:
         name: Unique name for the agent
         description: What the agent does
@@ -385,7 +391,7 @@ def create_custom_agent(
         available_tools: List of tool names the agent can use
         reasoning_effort: "low", "medium", or "high"
         model_config: Model configuration overrides
-        
+
     Returns:
         AgentTool: Configured agent ready to be registered
     """
