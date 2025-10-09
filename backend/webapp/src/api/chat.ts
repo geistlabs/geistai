@@ -69,6 +69,7 @@ export async function sendStreamingMessage(
   message: string, 
   conversationHistory: ChatMessage[],
   onToken: (token: string) => void,
+  onCitations: (citations: any[]) => void,
   onComplete: () => void,
   onError: (error: string) => void
 ): Promise<void> {
@@ -114,8 +115,13 @@ export async function sendStreamingMessage(
             try {
               const data = JSON.parse(line.slice(6))
               
-              if (data.token) {
-                onToken(data.token)
+              if (data.token || data.new_citations) {
+                if (data.token) {
+                  onToken(data.token)
+                }
+                if (data.new_citations) {
+                  onCitations(data.new_citations)
+                }
               } else if (data.finished) {
                 onComplete()
                 return

@@ -216,9 +216,10 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
     async def event_stream():
         chunk_sequence = 0
         print(f"INFERENCE_URL: {config.INFERENCE_URL}")
+
         try:
             # Stream tokens from gpt service
-            async for token in gpt_service.stream_chat_request(
+            async for token, new_citations in gpt_service.stream_chat_request(
                 messages, agent_name="orchestrator", reasoning_effort=config.REASONING_EFFORT,
             ):
                 # Check if client is still connected
@@ -227,7 +228,7 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
 
                 # Send token as SSE event (no encryption)
                 yield {
-                    "data": json.dumps({"token": token, "sequence": chunk_sequence}),
+                    "data": json.dumps({"token": token, "sequence": chunk_sequence, "new_citations": new_citations}),
                     "event": "chunk",
                 }
                 chunk_sequence += 1

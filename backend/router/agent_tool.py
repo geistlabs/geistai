@@ -176,31 +176,44 @@ class AgentTool:
             
             # Get response from agent using streaming
             response_chunks = []
-            async for chunk in self.gpt_service.stream_chat_request(
+            citations = []
+            print(f"Messages: {messages}")
+            async for chunk, new_citations in self.gpt_service.stream_chat_request(
                 messages=messages,
                 reasoning_effort=self.reasoning_effort,
                 agent_name=self.name,
                 permitted_tools=self.available_tools,
             ):
                 response_chunks.append(chunk)
+                def citation_key(c):
+                        return (c.get("url"), c.get("number"))
+                existing_keys = set(citation_key(c) for c in citations)
+                for nc in new_citations:
+                    if citation_key(nc) not in existing_keys:
+                           citations.append(nc)
+                           existing_keys.add(citation_key(nc))
             
             # Combine all chunks into final response
             response = "".join(response_chunks)
-            
+
             # Restore original method
             self.gpt_service.prepare_conversation_messages = original_prepare
             
-            return {
+            agent_result = {
                 "content": response,
                 "agent": self.name,
-                "status": "success"
+                "status": "success",
+                "citations": citations
             }
+            print(f"Agent Result: {agent_result}")
+            return agent_result
             
         except Exception as e:
             return {
                 "error": f"Agent execution failed: {str(e)}",
                 "agent": self.name,
-                "status": "error"
+                "status": "error",
+                "citations": []
             }
 
 
@@ -224,7 +237,9 @@ def create_research_agent(config) -> AgentTool:
             "Be thorough, accurate, and objective in your research."
             "If the info you need is only available at a specific web page use the fetch tool to grep the page"
             "- never use result_filters"
-            "- IMPORTANT: Cite sources like [1], [2], etc."
+            "- Never use result_filter params.\n"
+            "- IMPORTANT TOOL CONTRACT: When you have provided information from a web search or an agent always cite your sources using the text_citation tool like and be sure to include the sources in the text part like [1], [2], etc.\n"
+            " -Never use result_filters on the web search or agent results."
         ),
         available_tools=["brave_web_search", "fetch"],  # Only allow search tools
         reasoning_effort="high"
@@ -251,25 +266,21 @@ def create_current_info_agent(config) -> AgentTool:
                 # OUTPUT CONTRACT
                 "OUTPUT CONTRACT:\n"
                 "- Return 1–3 concise sentences summarizing the key facts (include units and timestamps if present; use local units, e.g., °C for Canada).\n"
-                "- After the summary, include a 'Sources:' section formatted *exactly* as follows (no extra text):\n"
-                "  Sources:\n"
-                "  [1] <site name> — <url>\n"
-                "  [2] <site name> — <url>\n"
-                "  (Include up to 3 sources; always number them sequentially starting from 1.)\n"
-                "- Do NOT include any other commentary, bullet points, or JSON—just the summary followed by the numbered list.\n"
+           
                 # HARD GUARDS
                 "GUARDS:\n"
                 "- Never tell the user to visit a website; never return only a link.\n"
                 "- Do not answer unless you have fetched (or summarized) page content in this turn.\n"
                 "- If the content you fetched is stale or for the wrong location, fetch a different source and then answer.\n"
                 "- If some of your fetch attempts end in failure retry a little but eventually just give the info you do have.\n"
-                "- Never use result_filters.\n"
+                "- Never use result_filter params.\n"
+                "- IMPORTANT CITATION CONTRACT: When you have provided information from a web search or an agent always cite your sources using the text_citation tool like and be sure to include the sources in the text part like [1], [2], etc.\n"
 
 
             ),
         
         
-        available_tools=["brave_web_search","brave_summarizer", "fetch"],  # Only allow search tools
+        available_tools=["brave_web_search","brave_summarizer", "fetch","text_citation"],  # Only allow search tools
         reasoning_effort="low"
     )
 

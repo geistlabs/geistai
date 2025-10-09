@@ -41,7 +41,7 @@ PERMITTED_TOOLS = [
 ]
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 10
+MAX_TOOL_CALLS = 3
 
 
 class GptService:
@@ -92,41 +92,65 @@ class GptService:
         Register custom (non-MCP) tools here
         
         This is where you add your own tools. See examples below and
-        documentation at top of file for how to add new tools.
         """
-        # Example custom tool (commented out - uncomment to use):
-        # 
-        # async def calculator(arguments: dict) -> dict:
-        #     """Simple calculator tool"""
-        #     try:
-        #         expression = arguments.get("expression", "")
-        #         result = eval(expression)  # WARNING: eval is dangerous in production!
-        #         return {"content": str(result), "status": "success"}
-        #     except Exception as e:
-        #         return {"error": str(e)}
-        # 
-        # self._register_tool(
-        #     name="calculator",
-        #     description="Perform mathematical calculations",
-        #     input_schema={
-        #         "type": "object",
-        #         "properties": {
-        #             "expression": {
-        #                 "type": "string",
-        #                 "description": "Mathematical expression to evaluate"
-        #             }
-        #         },
-        #         "required": ["expression"]
-        #     },
-        #     executor=calculator,
-        #     tool_type="custom"
-        #     )
-        
-        # ========================================================================
-        # AGENT TOOLS - Uncomment to add specialized agents
-        # ========================================================================
-        
-        # Example: Register all predefined agents
+        print("Registering citation tool")
+        async def citation_handler(arguments) -> Dict:
+
+           """Simple calculator tool"""
+           print("Citation handler called with arguments:", arguments)
+           try:               
+                print(f"Citation handler returning arguments: {arguments.get('text')}")
+                return arguments
+           except Exception as e:
+                print(f"Error in citation handler: {e}")
+                mock_result = {
+                    "text": arguments.get("text"),
+                    "sources": [                       
+                    ]
+                }
+                return mock_result
+
+       
+        self._register_tool(
+            name="text_citation",
+            description="Format the text info into a structured body of text with citations",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string",
+                        "description": "The main text, which always includes numbered references to the sources in the format [1], [2], etc."
+                    },
+                    "sources": {
+                        "type": "array",
+                        "description": "An array of source objects related to the text.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "number": {
+                                    "type": "number",
+                                    "description": "The number used to reference this source in the text."
+                                },
+                                "name": {
+                                    "type": "string",
+                                    "description": "The name or title of the source."
+                                },
+                                "url": {
+                                    "type": "string",
+                                    "description": "The URL where the source can be found."
+                                }
+                            },
+                            "required": ["number", "name", "url"]
+                        }
+                    }
+                },
+                "required": ["text", "sources"]
+            },
+            executor=citation_handler,
+            tool_type="custom"
+            )
+
+
         from agent_registry import register_predefined_agents
         await register_predefined_agents(self, self.config)
         
@@ -420,6 +444,7 @@ class GptService:
         
         Yields:
             str: Content chunks to stream to client
+            citations: List[dict]
         """
         # Initialize tools if not already done
         if not self._tool_registry:
@@ -427,6 +452,7 @@ class GptService:
         
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
+        citations = []
         headers, model, url = self.get_chat_completion_params()
         
         # Get permitted tools for this request
@@ -475,18 +501,19 @@ class GptService:
         tool_call_count = 0
         
         while tool_call_count < MAX_TOOL_CALLS:
-
+            
+            
             # Process one LLM response and handle tool calls
-            async for content_chunk, status in process_llm_response_with_tools(
+            async for content_chunk, status, new_citations in process_llm_response_with_tools(
                 self._execute_tool,
                 llm_stream_once,
                 conversation,
+                citations,
                 agent_name
             ):
                 # Stream content to client if available
                 if content_chunk:
-                    yield content_chunk
-                
+                    yield content_chunk, new_citations
                 # Check status
                 if status == "stop":  # Normal completion or error
                     return

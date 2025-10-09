@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
-import { sendMessage, sendStreamingMessage, ChatMessage } from '../api/chat'
+import {  sendStreamingMessage, ChatMessage } from '../api/chat'
 
 export interface Message {
   id: string
@@ -9,10 +9,18 @@ export interface Message {
   role: 'user' | 'assistant'
   timestamp: Date
   isStreaming?: boolean // Indicates if this message is currently being streamed
+  citations?: any[]
 }
 
 interface ChatInterfaceProps {
   chatId?: string; // Optional chat ID prop
+}
+
+
+const getUniqueCitations = (newCitations: any[], existingCitations: any[]) => {
+  return newCitations.filter((citation, index, self) =>
+    index === self.findIndex((t) => t.url === citation.url && t.number === citation.number)
+  );
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => {
@@ -25,6 +33,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
       timestamp: new Date()
     }
   ])
+  console.log(messages)
   const [isLoading, setIsLoading] = useState(false)
 
   // Function to create embedding for a message
@@ -102,6 +111,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
           setMessages(prev => prev.map(msg => 
             msg.id === assistantMessageId 
               ? { ...msg, content: msg.content + token }
+              : msg
+          ));
+        },
+        (citations: any[]) => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === assistantMessageId 
+              ? { ...msg, citations: getUniqueCitations(citations, msg.citations) }
               : msg
           ));
         },
