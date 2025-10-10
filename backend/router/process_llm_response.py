@@ -4,7 +4,7 @@ import json
 
 
 
-    
+
 # ------------------------------------------------------------------------
 # Tool Calling Logic
 # ------------------------------------------------------------------------
@@ -20,12 +20,12 @@ class ToolCallResponse(TypedDict):
 async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> ToolCallResponse:
     """
     Execute a single tool call and add result to conversation
-    
+
     Args:
         tool_call: Tool call object
         execute_tool: Function to execute the tool
         conversation: Current conversation messages
-        
+
     Returns:
         bool: True if successful, False if error occurred
     """
@@ -52,7 +52,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         local_conversation.append({
             "role": "assistant",
             "content": "",
-            
+
             "tool_calls": [tool_call]
         })
 
@@ -131,7 +131,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 def format_tool_result_for_llm( tool_call_id: str, result: dict) -> dict:
     """
     Format tool execution result for the LLM
-    
+
     Handles both MCP format and simple format
     """
     # Extract content from result
@@ -146,21 +146,21 @@ def format_tool_result_for_llm( tool_call_id: str, result: dict) -> dict:
                 else:
                     content_parts.append(str(item))
             content = "\n".join(content_parts)
-        
+
         # Simple format: {"content": "...", "status": "success"}
         elif "content" in result:
             content = result["content"]
-        
+
         # Error format
         elif "error" in result:
             content = f"Error: {result['error']}"
-        
+
         # Unknown format
         else:
             content = json.dumps(result, ensure_ascii=False)
     else:
         content = str(result)
-    
+
     # Return in OpenAI tool result format
     return {
         "role": "tool",
