@@ -81,7 +81,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
             result = await execute_tool(tool_name, tool_args)
             if "agent" in tool_name:
                 print(f"Result of tool call: {result} agent tool call tool name: {tool_name}")
-            if result["citations"]:
+        
+            if "citations" in result and result["citations"]:
                 local_citations.extend(result["citations"])
             tool_call_result = format_tool_result_for_llm(
                 tool_call["id"],

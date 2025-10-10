@@ -11,6 +11,9 @@ import logging
 import os
 import config
 from gpt_service import GptService
+from orchestrator import create_orchestrator
+from agent_registry import get_predefined_agents
+from response_schema import convert_to_legacy_citations
 
 from whisper_client import WhisperSTTClient
 
@@ -61,8 +64,21 @@ app.add_middleware(
 )
 
 # Initialize Gpt service if enabled
-gpt_service = GptService(config, can_log=True) 
+gpt_service = GptService(config, can_log=True)
 
+# Initialize tools for the GPT service on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize GPT service tools on startup"""
+    await gpt_service.init_tools()
+    
+    # Register sub-agents as tools
+    from agent_registry import register_predefined_agents
+    registered_agents = await register_predefined_agents(gpt_service, config)
+    print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
+    
+    print(f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools")
+    print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
 
 # Initialize Whisper STT client
 whisper_service_url = os.getenv(
@@ -246,6 +262,128 @@ async def chat_stream(chat_request: ChatRequest, request: Request):
             }
 
     return EventSourceResponse(event_stream())
+
+
+@app.post("/api/stream")
+async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
+    """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
+    print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
+
+    # Build messages array with conversation history
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    print(f"[Backend] Created messages array with {len(messages)} messages")
+
+    async def orchestrator_event_stream():
+        chunk_sequence = 0
+        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
+        
+
+        try:
+            # Create orchestrator with sub-agents
+            sub_agents = get_predefined_agents(config)
+            print(f"🎯 Created {len(sub_agents)} sub-agents: {[agent.name for agent in sub_agents]}")
+            
+            # Create orchestrator first (without tools)
+            orchestrator = create_orchestrator(
+                config=config,
+                sub_agents=sub_agents,
+                stream_sub_agents=True,
+                available_tools=None  # Will be set after initialization
+            )
+            print(f"🎯 Created orchestrator: {orchestrator.name}")
+            
+            # Initialize the orchestrator with the main GPT service
+            await orchestrator.initialize(gpt_service, config)
+            
+            # Now get the available tools after initialization, but filter out MCP tools
+            # The orchestrator should only use sub-agents, not direct MCP tools
+            all_tools = list(gpt_service._tool_registry.keys())
+            mcp_tools_to_exclude = ['brave_web_search', 'fetch']
+            available_tool_names = [tool for tool in all_tools if tool not in mcp_tools_to_exclude]
+            print(f"🎯 Orchestrator tools: {available_tool_names}")
+            
+            # Set the available tools on the orchestrator
+            orchestrator.available_tools = available_tool_names
+            
+            # Make sure the orchestrator uses the main GPT service with all tools
+            orchestrator.gpt_service = gpt_service
+            
+            # Simple approach: just run the orchestrator and capture events
+            events_captured = []
+            
+            def capture_event(event_type):
+                def handler(data):
+                    events_captured.append({
+                        "type": event_type,
+                        "data": data,
+                        "sequence": chunk_sequence
+                    })
+                return handler
+            
+            # Register event listeners BEFORE running the orchestrator
+            orchestrator.on("orchestrator_start", capture_event("orchestrator_start"))
+            orchestrator.on("agent_token", capture_event("orchestrator_token"))
+            orchestrator.on("orchestrator_complete", capture_event("orchestrator_complete"))
+            orchestrator.on("sub_agent_event", capture_event("sub_agent_event"))
+            
+            # Also listen to sub-agent events directly
+            for sub_agent in orchestrator.sub_agents:
+                sub_agent.on("agent_start", capture_event("sub_agent_event"))
+                sub_agent.on("agent_token", capture_event("sub_agent_event"))
+                sub_agent.on("agent_complete", capture_event("sub_agent_event"))
+                sub_agent.on("agent_error", capture_event("sub_agent_event"))
+            
+            # Run the orchestrator
+            print(f"🚀 Starting orchestrator with message: {chat_request.message}")
+            final_response = await orchestrator.run(chat_request.message)
+            print(f"✅ Orchestrator completed with status: {final_response.status}")
+            
+            # Send all captured events
+            for event in events_captured:
+                if await request.is_disconnected():
+                    return
+                    
+                yield {
+                    "data": json.dumps(event),
+                    "event": event.get("type", "unknown")
+                }
+                chunk_sequence += 1
+            
+            # Send final response with citations
+            if final_response:
+                yield {
+                    "data": json.dumps({
+                        "type": "final_response",
+                        "text": final_response.text,
+                        "citations": convert_to_legacy_citations(final_response.citations or []),
+                        "status": final_response.status,
+                        "meta": final_response.meta,
+                        "sequence": chunk_sequence
+                    }),
+                    "event": "final_response"
+                }
+                chunk_sequence += 1
+            
+            # Send end event
+            yield {"data": json.dumps({"finished": True}), "event": "end"}
+
+        except asyncio.TimeoutError as e:
+            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
+        except Exception as e:
+            print(f"Error in orchestrator stream: {e}")
+            import traceback
+            traceback.print_exc()
+            yield {
+                "data": json.dumps({"error": "Internal server error"}),
+                "event": "error"
+            }
+
+    return EventSourceResponse(orchestrator_event_stream())
 
 
 @app.post("/api/speech-to-text")

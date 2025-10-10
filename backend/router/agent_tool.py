@@ -19,9 +19,11 @@ import asyncio
 from typing import Dict, List, Any, Optional
 import httpx
 from gpt_service import GptService
+from response_schema import AgentResponse, Citation, convert_legacy_citations, convert_to_legacy_citations
+from events import EventEmitter
 
 
-class AgentTool:
+class AgentTool(EventEmitter):
     """
     A configurable agent that can be used as a tool by the main GPT service
 
@@ -30,6 +32,7 @@ class AgentTool:
     - Available tools
     - Reasoning level
     - Model configuration
+    - Event streaming capabilities
     """
 
     def __init__(
@@ -40,6 +43,7 @@ class AgentTool:
         system_prompt: str,
         available_tools: List[str],
         reasoning_effort: str = "medium",
+        stream_sub_agents: bool = True,
     ):
         """
         Initialize the agent tool
@@ -51,13 +55,16 @@ class AgentTool:
             available_tools: List of tool names this agent can use (None = all tools)
             reasoning_effort: "low", "medium", or "high"
             model_config: Override model configuration for this agent
+            stream_sub_agents: Whether to emit streaming events for sub-agent activities
         """
+        super().__init__()
         self.name = name
         self.description = description
         self.system_prompt = system_prompt
         self.available_tools = available_tools or []
         self.reasoning_effort = reasoning_effort
         self.model_config = model_config or {}
+        self.stream_sub_agents = stream_sub_agents
 
         # Create a GPT service instance for this agent
         self.gpt_service = GptService(model_config)
@@ -86,6 +93,150 @@ class AgentTool:
         # Initialize the agent's GPT service with the filtered tools
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
+
+    async def run(self, input_data: str, context: str = "") -> AgentResponse:
+        """
+        Run the agent with structured response and event streaming
+        
+        Args:
+            input_data: The task or question to give to this agent
+            context: Additional context or background information
+            
+        Returns:
+            AgentResponse with text, citations, and metadata
+        """
+        # Emit start event
+        print(f"🎯 AgentTool {self.name} emitting agent_start event")
+        self.emit("agent_start", {
+            "agent": self.name,
+            "input": input_data,
+            "context": context
+        })
+        
+        try:
+            # Prepare the conversation
+            messages = []
+            
+            # Add context if provided
+            if context:
+                messages.append({
+                    "role": "user",
+                    "content": f"Context: {context}\n\nTask: {input_data}"
+                })
+            else:
+                messages.append({
+                    "role": "user",
+                    "content": input_data
+                })
+
+            # Override system prompt
+            original_prepare = self.gpt_service.prepare_conversation_messages
+
+            def custom_prepare(messages, reasoning_effort="medium"):
+                # Use our custom system prompt instead of the default
+                result_messages = []
+                has_system = any(msg.get("role") == "system" for msg in messages)
+
+                if not has_system:
+                    result_messages.append({"role": "system", "content": self.system_prompt})
+                    result_messages.extend(messages)
+                else:
+                    for msg in messages:
+                        if msg.get("role") == "system":
+                            # Replace system message with our custom prompt
+                            result_messages.append({"role": "system", "content": self.system_prompt})
+                        else:
+                            result_messages.append(msg)
+
+                return result_messages
+
+            # Temporarily override the prepare method
+            self.gpt_service.prepare_conversation_messages = custom_prepare
+
+            # Get response from agent using streaming
+            response_chunks = []
+            citations = []
+            
+            async for chunk, new_citations in self.gpt_service.stream_chat_request(
+                messages=messages,
+                reasoning_effort=self.reasoning_effort,
+                agent_name=self.name,
+                permitted_tools=self.available_tools,
+            ):
+                response_chunks.append(chunk)
+                
+                # Emit token event for streaming
+                self.emit("agent_token", {
+                    "agent": self.name,
+                    "content": chunk
+                })
+                
+                # Handle citations
+                def citation_key(c):
+                    return (c.get("url"), c.get("number"))
+                existing_keys = set(citation_key(c) for c in citations)
+                for nc in new_citations:
+                    if citation_key(nc) not in existing_keys:
+                        citations.append(nc)
+                        existing_keys.add(citation_key(nc))
+            
+            # Combine all chunks into final response
+            response_text = "".join(response_chunks)
+
+            # Restore original method
+            self.gpt_service.prepare_conversation_messages = original_prepare
+
+            # Convert legacy citations to new format
+            structured_citations = convert_legacy_citations(citations)
+
+            # Handle empty responses
+            if not response_text or response_text.strip() == "":
+                agent_response = AgentResponse(
+                    text="",
+                    citations=structured_citations,
+                    agent_name=self.name,
+                    status="empty_response",
+                    meta={
+                        "error": f"Agent {self.name} completed tool execution but produced no content. This may indicate a Harmony format issue where reasoning_content was generated but no final content channel was used."
+                    }
+                )
+            else:
+                agent_response = AgentResponse(
+                    text=response_text,
+                    citations=structured_citations,
+                    agent_name=self.name,
+                    status="success",
+                    meta={"reasoning_effort": self.reasoning_effort}
+                )
+
+            # Emit completion event
+            print(f"🎯 AgentTool {self.name} emitting agent_complete event")
+            self.emit("agent_complete", {
+                "agent": self.name,
+                "text": agent_response.text,
+                "citations": convert_to_legacy_citations(agent_response.citations or []),
+                "status": agent_response.status,
+                "meta": agent_response.meta
+            })
+
+            return agent_response
+
+        except Exception as e:
+            error_response = AgentResponse(
+                text="",
+                citations=[],
+                agent_name=self.name,
+                status="error",
+                meta={"error": f"Agent execution failed: {str(e)}"}
+            )
+            
+            # Emit error event
+            self.emit("agent_error", {
+                "agent": self.name,
+                "error": str(e)
+            })
+            
+            return error_response
 
 
     def get_tool_definition(self) -> dict:
@@ -120,13 +271,13 @@ class AgentTool:
 
     async def execute(self, arguments: dict) -> dict:
         """
-        Execute the agent tool
+        Execute the agent tool (backward compatibility method)
 
         Args:
             arguments: dict with 'task' and optional 'context'
 
         Returns:
-            dict: Agent's response with 'content' key
+            dict: Agent's response with 'content' key (legacy format)
         """
         task = arguments.get("task", "")
         context = arguments.get("context", "")
@@ -134,96 +285,17 @@ class AgentTool:
         if not task:
             return {"error": "No task provided"}
 
-        try:
-            # Prepare the conversation
-            messages = []
-
-            # Add context if provided
-            if context:
-                messages.append({
-                    "role": "user",
-                    "content": f"Context: {context}\n\nTask: {task}"
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": task
-                })
-
-            # Override system prompt
-            original_prepare = self.gpt_service.prepare_conversation_messages
-
-            def custom_prepare(messages, reasoning_effort="medium"):
-                # Use our custom system prompt instead of the default
-                result_messages = []
-                has_system = any(msg.get("role") == "system" for msg in messages)
-
-                if not has_system:
-                    result_messages.append({"role": "system", "content": self.system_prompt})
-                    result_messages.extend(messages)
-                else:
-                    for msg in messages:
-                        if msg.get("role") == "system":
-                            # Replace system message with our custom prompt
-                            result_messages.append({"role": "system", "content": self.system_prompt})
-                        else:
-                            result_messages.append(msg)
-
-                return result_messages
-
-            # Temporarily override the prepare method
-            self.gpt_service.prepare_conversation_messages = custom_prepare
-
-            # Get response from agent using streaming
-            response_chunks = []
-            citations = []
-            print(f"Messages: {messages}")
-            async for chunk, new_citations in self.gpt_service.stream_chat_request(
-                messages=messages,
-                reasoning_effort=self.reasoning_effort,
-                agent_name=self.name,
-                permitted_tools=self.available_tools,
-            ):
-                response_chunks.append(chunk)
-                def citation_key(c):
-                        return (c.get("url"), c.get("number"))
-                existing_keys = set(citation_key(c) for c in citations)
-                for nc in new_citations:
-                    if citation_key(nc) not in existing_keys:
-                           citations.append(nc)
-                           existing_keys.add(citation_key(nc))
-            
-            # Combine all chunks into final response
-            response = "".join(response_chunks)
-
-            # Restore original method
-            self.gpt_service.prepare_conversation_messages = original_prepare
-
-            # Handle empty responses (can happen when agent only uses tools with Harmony format)
-            # In this case, the agent executed tools but didn't generate visible content
-            # This is likely a model issue with Harmony format not producing final content
-            if not response or response.strip() == "":
-                # Return error to signal the orchestrator should try a different approach
-                return {
-                    "content": "",
-                    "agent": self.name,
-                    "status": "empty_response",
-                    "error": f"Agent {self.name} completed tool execution but produced no content. This may indicate a Harmony format issue where reasoning_content was generated but no final content channel was used."
-                }
-
-            return {
-                "content": response,
-                "agent": self.name,
-                "status": "success",
-                "citations": citations
-            }
-        except Exception as e:
-            return {
-                "error": f"Agent execution failed: {str(e)}",
-                "agent": self.name,
-                "status": "error",
-                "citations": []
-            }
+        # Use the new run method
+        agent_response = await self.run(task, context)
+        
+        # Convert to legacy format for backward compatibility
+        return {
+            "content": agent_response.text,
+            "agent": agent_response.agent_name,
+            "status": agent_response.status,
+            "citations": convert_to_legacy_citations(agent_response.citations or []),
+            "meta": agent_response.meta
+        }
 
 
 # ============================================================================

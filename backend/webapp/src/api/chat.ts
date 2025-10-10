@@ -79,7 +79,7 @@ export async function sendStreamingMessage(
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
+    const response = await fetch(`${API_BASE_URL}/api/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -108,6 +108,7 @@ export async function sendStreamingMessage(
         }
 
         const chunk = decoder.decode(value, { stream: true })
+        console.log("Incoming chunk:", chunk)
         const lines = chunk.split('\n')
 
         for (const line of lines) {
@@ -115,7 +116,7 @@ export async function sendStreamingMessage(
             try {
               const data = JSON.parse(line.slice(6))
               
-              if (data.token || data.new_citations) {
+              if ((data.token || data.new_citations)&& data.agent === "orchestrator") {
                 if (data.token) {
                   onToken(data.token)
                 }

@@ -17,6 +17,7 @@ import json
 from typing import Dict, List,  Callable, Optional
 import httpx
 from process_llm_response import process_llm_response_with_tools
+from response_schema import AgentResponse, Citation, convert_legacy_citations, convert_to_legacy_citations
 
 
 # MCP imports
@@ -35,8 +36,9 @@ PERMITTED_TOOLS = [
    "technical_agent",
    "summary_agent",
    "current_info_agent",
-  # "brave_web_search",  # MCP tool: Web search via Brave API
-  # "fetch",             # MCP tool: Web page fetching (commented out - add if needed)
+   "brave_web_search",  # MCP tool: Web search via Brave API
+   "fetch",             # MCP tool: Web page fetching
+   "text_citation",     # Custom tool for citations
     #"calculator",      # Custom tool example (see HOW TO ADD CUSTOM TOOLS below)
 ]
 
@@ -246,6 +248,7 @@ class GptService:
         Returns:
             dict with 'content' or 'error' key
         """
+        print(f"🎯 GPT SERVICE _execute_tool called: {tool_name}")
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
 
@@ -524,6 +527,116 @@ class GptService:
                 if status == "stop":  # Normal completion or error
                     print(f"✅ Agent {agent_name} stopped normally")
                     return
+                elif status == "continue":  # Tool calls executed, continue loop
+                    tool_call_count += 1
+                    print(f"🔁 Agent {agent_name} continuing after tool execution (iteration {tool_call_count})")
+                    break  # Exit the inner loop to continue the outer loop
+
+    async def stream_chat_request_structured(
+        self,
+        messages: List[dict],
+        reasoning_effort: str = "low",
+        agent_name: str = "orchestrator",
+        permitted_tools: List[str] = PERMITTED_TOOLS,
+    ):
+        """
+        Stream chat request with structured response support
+        
+        Yields:
+            AgentResponse: Structured responses with text, citations, and metadata
+        """
+        # Initialize tools if not already done
+        if not self._tool_registry:
+            await self.init_tools()
+
+        conversation = self.prepare_conversation_messages(messages, reasoning_effort)
+        citations = []
+        headers, model, url = self.get_chat_completion_params()
+
+        # Get permitted tools for this request
+        tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
+        print("Tools for LLM:", [tool["function"]["name"] for tool in tools_for_llm])
+
+        async def llm_stream_once(msgs: List[dict]):
+            """Make a single streaming LLM call"""
+            request_data = {
+                "messages": msgs,
+                "temperature": 0.7,
+                "max_tokens": self.config.MAX_TOKENS,
+                "stream": True,
+                "model": model
+            }
+
+            # Add tools if available
+            if tools_for_llm:
+                request_data["tools"] = tools_for_llm
+                request_data["tool_choice"] = "auto"
+
+            try:
+                async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{url}/v1/chat/completions",
+                        headers=headers,
+                        json=request_data,
+                        timeout=self.config.INFERENCE_TIMEOUT
+                    ) as resp:
+
+                        async for line in resp.aiter_lines():
+                            if not line or not line.startswith("data: "):
+                                continue
+
+                            if "[DONE]" in line:
+                                break
+
+                            try:
+                                payload = json.loads(line[6:])  # Remove "data: " prefix
+                                yield payload
+                            except json.JSONDecodeError:
+                                continue
+            except Exception as e:
+                print(f"❌ DEBUG: Exception in llm_stream_once: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Main tool calling loop
+        tool_call_count = 0
+        accumulated_text = ""
+
+        while tool_call_count < MAX_TOOL_CALLS:
+            print(f"🔄 Tool calling loop iteration {tool_call_count + 1}/{MAX_TOOL_CALLS} for agent: {agent_name}")
+
+            # Process one LLM response and handle tool calls
+            async for content_chunk, status, new_citations in process_llm_response_with_tools(
+                self._execute_tool,
+                llm_stream_once,
+                conversation,
+                citations,
+                agent_name
+            ):
+                # Accumulate content
+                if content_chunk:
+                    accumulated_text += content_chunk
+                    
+                # Update citations
+                citations.extend(new_citations)
+                
+                # Check status
+                if status == "stop":  # Normal completion or error
+                    print(f"✅ Agent {agent_name} stopped normally")
+                    
+                    # Create structured response
+                    structured_citations = convert_legacy_citations(citations)
+                    response = AgentResponse(
+                        text=accumulated_text,
+                        citations=structured_citations,
+                        agent_name=agent_name,
+                        status="success",
+                        meta={"reasoning_effort": reasoning_effort, "tool_calls": tool_call_count}
+                    )
+                    yield response
+                    return
+                    
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
                     print(f"🔁 Agent {agent_name} continuing after tool execution (iteration {tool_call_count})")
