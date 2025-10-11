@@ -11,9 +11,9 @@ import logging
 import os
 import config
 from gpt_service import GptService
-from orchestrator import create_orchestrator
+from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
-from response_schema import convert_to_legacy_citations
+from prompts import get_prompt
 
 from whisper_client import WhisperSTTClient
 
@@ -189,81 +189,6 @@ async def test_tool(tool_name: str, arguments: dict = {}):
         raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
 
 
-@app.post("/api/chat")
-async def chat(request: ChatRequest):
-    """Non-streaming chat endpoint for backwards compatibility"""
-    # Prepare messages for the model
-    if request.messages:
-        # Use provided conversation history and add the new message
-        messages = [msg.dict() for msg in request.messages]
-        messages.append({"role": "user", "content": request.message})
-        
-        print(f"[Backend] Received from frontend: {messages}")
-        ai_response = await gpt_service.process_chat_request(
-            messages
-        )
-    else:
-        # Fallback to single message if no history provided
-        messages = [{"role": "user", "content": request.message}]
-
-        ai_response = await gpt_service.process_chat_request(
-            messages
-        )
-
-    return {"response": ai_response}
-
-
-@app.post("/api/chat/stream")
-async def chat_stream(chat_request: ChatRequest, request: Request):
-    """Streaming chat endpoint using Server-Sent Events"""
-    print(f"[Backend] Received from frontend: {chat_request.model_dump_json(indent=2)}")
-
-    # Build messages array with conversation history
-    if chat_request.messages:
-        # Use provided conversation history and add the new message
-        messages = [msg.dict() for msg in chat_request.messages]
-        messages.append({"role": "user", "content": chat_request.message})
-    else:
-        # Fallback to single message if no history provided
-        messages = [{"role": "user", "content": chat_request.message}]
-
-    print(f"[Backend] Created messages array with {len(messages)} messages")
-
-    async def event_stream():
-        chunk_sequence = 0
-        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
-
-        try:
-            # Stream tokens from gpt service
-            async for token, new_citations in gpt_service.stream_chat_request(
-                messages, agent_name="orchestrator", reasoning_effort=config.REASONING_EFFORT,
-            ):
-                # Check if client is still connected
-                if await request.is_disconnected():
-                    break
-
-                # Send token as SSE event (no encryption)
-                yield {
-                    "data": json.dumps({"token": token, "sequence": chunk_sequence, "new_citations": new_citations}),
-                    "event": "chunk",
-                }
-                chunk_sequence += 1
-
-            # Send end event
-            yield {"data": json.dumps({"finished": True}), "event": "end"}
-
-        except asyncio.TimeoutError as e:
-            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
-        except Exception as e:
-            print(f"Error in chat_stream: {e}")
-            yield {
-                "data": json.dumps({"error": "Internal server error"}),
-                "event": "error",
-            }
-
-    return EventSourceResponse(event_stream())
-
-
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
@@ -284,28 +209,22 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         
 
         try:
-            # Create orchestrator with sub-agents
-            sub_agents = get_predefined_agents(config)
-            print(f"🎯 Created {len(sub_agents)} sub-agents: {[agent.name for agent in sub_agents]}")
-            
-            # Create orchestrator first (without tools)
-            orchestrator = create_orchestrator(
-                config=config,
-                sub_agents=sub_agents,
-                stream_sub_agents=True,
-                available_tools=None  # Will be set after initialization
-            )
-            print(f"🎯 Created orchestrator: {orchestrator.name}")
+            # Always use nested orchestrator (can handle single-layer or multi-layer)
+            print("🎯 Using nested orchestrator mode")
+            # Create a nested orchestrator structure
+            orchestrator = create_nested_research_system(config)
+            print(f"🎯 Created nested orchestrator: {orchestrator.name}")
+            print(f"🎯 Agent hierarchy: {orchestrator.get_agent_hierarchy()}")
             
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
             
-            # Now get the available tools after initialization, but filter out MCP tools
-            # The orchestrator should only use sub-agents, not direct MCP tools
+            # Configure available tools (only sub-agents, not MCP tools)
             all_tools = list(gpt_service._tool_registry.keys())
-            mcp_tools_to_exclude = ['brave_web_search', 'fetch']
-            available_tool_names = [tool for tool in all_tools if tool not in mcp_tools_to_exclude]
-            print(f"🎯 Orchestrator tools: {available_tool_names}")
+            # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
+            sub_agent_names = ['research_agent', 'current_info_agent', 'creative_agent', 'brave_web_search', 'fetch']
+            available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
+            print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
             
             # Set the available tools on the orchestrator
             orchestrator.available_tools = available_tool_names
@@ -354,13 +273,13 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                 }
                 chunk_sequence += 1
             
-            # Send final response with citations
+            # Send final response (citations are now handled by frontend)
             if final_response:
                 yield {
                     "data": json.dumps({
                         "type": "final_response",
                         "text": final_response.text,
-                        "citations": convert_to_legacy_citations(final_response.citations or []),
+                       
                         "status": final_response.status,
                         "meta": final_response.meta,
                         "sequence": chunk_sequence
@@ -624,6 +543,49 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         sys.exit(1)
+
+# ============================================================================
+# Nested Orchestrator Factory Functions
+# ============================================================================
+
+def create_nested_research_system(config):
+    """
+    Create a nested orchestrator system using your existing agents at the top level:
+    
+    Main Orchestrator
+    ├── research_agent
+    ├── current_info_agent
+    ├── creative_agent
+    ├── technical_agent
+    └── summary_agent
+    
+    Each agent has access to brave_search and fetch MCP tools.
+    """
+    from agent_tool import get_predefined_agents
+    
+    # Get your existing agents
+    existing_agents = get_predefined_agents(config)
+    
+    # Configure each agent to use brave_search and brave_summarizer tools
+    mcp_tools = ["brave_web_search", "brave_summarizer", "fetch"]
+    
+    for agent in existing_agents:
+        # Update each agent to only use MCP tools
+        agent.available_tools = mcp_tools
+        print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
+    
+    # Create main orchestrator with all agents at the top level
+    main_orchestrator = NestedOrchestrator(
+        model_config=config,
+        name="main_orchestrator",
+        description="Main coordination hub with all agents at top level",
+        system_prompt=get_prompt("main_orchestrator"),
+        sub_agents=existing_agents,  # All agents at top level
+        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
+    )
+    
+    return main_orchestrator
+
 
 # TEST INFERENCE SERVER CONNECTION
 # curl -X POST https://inference.geist.im/v1/chat/completions -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"hello how are you"}],"temperature":0.7,"max_tokens":100}'

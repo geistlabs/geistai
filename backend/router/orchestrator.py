@@ -10,8 +10,10 @@ The Orchestrator is a specialized Agent that:
 
 from typing import List, Dict, Any, Optional
 from agent_tool import AgentTool
-from response_schema import AgentResponse, merge_agent_responses, convert_to_legacy_citations
+from prompts import get_prompt
+from response_schema import AgentResponse,  merge_agent_responses
 from gpt_service import GptService
+# Removed system_prompt_utils import - using direct system prompt parameter
 
 
 class Orchestrator(AgentTool):
@@ -48,27 +50,7 @@ class Orchestrator(AgentTool):
         """
         # Default orchestrator system prompt
         if system_prompt is None:
-            system_prompt = (
-                "You are the main orchestrator for Geist AI.\n\n"
-                "CRITICAL: You MUST use tools when users ask for current information, research, or facts you don't know.\n\n"
-                "Your role is to:\n"
-                "- Analyze user requests and determine the best approach\n"
-                "- ALWAYS use appropriate tools for current information, research, or specialized tasks\n"
-                "- Coordinate with specialized sub-agents when needed\n"
-                "- Synthesize information from multiple sources\n"
-                "- Provide comprehensive, well-structured responses\n"
-                "- Always cite sources when using information from agents or web searches\n\n"
-                "MANDATORY TOOL USAGE:\n"
-                "- For current events, sports scores, weather, news: Call current_info_agent with the user's question as the 'task' parameter\n"
-                "- For research, fact-finding, web searches: Call research_agent with the user's question as the 'task' parameter\n"
-                "- For creative writing, stories: Call creative_agent with the user's question as the 'task' parameter\n"
-                "- For technical analysis, coding: Call technical_agent with the user's question as the 'task' parameter\n"
-                "- For summarization: Call summary_agent with the user's question as the 'task' parameter\n\n"
-                "CRITICAL: When you need current information, you MUST call the appropriate tool function immediately.\n"
-                "NEVER say 'I'll check' or 'Let me look that up' without actually calling the tool.\n"
-                "ALWAYS call the tool function with the user's exact question as the 'task' parameter.\n\n"
-                "Always provide clear, accurate, and well-cited responses."
-            )
+            system_prompt =  get_prompt("main_orchestrator")
         
         super().__init__(
             model_config=model_config,
@@ -187,41 +169,17 @@ class Orchestrator(AgentTool):
             # Use the orchestrator's GPT service to handle the request
             # This will automatically coordinate with sub-agents via tool calls
             response_chunks = []
-            citations = []
-            
-            # Override system prompt for orchestrator
-            original_prepare = self.gpt_service.prepare_conversation_messages
-
-            def custom_prepare(messages, reasoning_effort="medium"):
-                # Use our custom system prompt instead of the default
-                result_messages = []
-                has_system = any(msg.get("role") == "system" for msg in messages)
-
-                if not has_system:
-                    result_messages.append({"role": "system", "content": self.system_prompt})
-                    result_messages.extend(messages)
-                else:
-                    for msg in messages:
-                        if msg.get("role") == "system":
-                            # Replace system message with our custom prompt
-                            result_messages.append({"role": "system", "content": self.system_prompt})
-                        else:
-                            result_messages.append(msg)
-
-                return result_messages
-
-            # Temporarily override the prepare method
-            self.gpt_service.prepare_conversation_messages = custom_prepare
             
             print(f"🎯 Orchestrator starting with {len(self.available_tools)} available tools")
             print(f"🎯 Available tools: {self.available_tools}")
             
             try:
-                async for chunk, new_citations in self.gpt_service.stream_chat_request(
+                async for chunk in self.gpt_service.stream_chat_request(
                     messages=messages,
+                    permitted_tools=self.available_tools,
                     reasoning_effort=self.reasoning_effort,
                     agent_name=self.name,
-                    permitted_tools=self.available_tools,
+                    agent_prompt=self.system_prompt,
                 ):
                     response_chunks.append(chunk)
                     
@@ -230,37 +188,27 @@ class Orchestrator(AgentTool):
                         "agent": self.name,
                         "content": chunk
                     })
-                    
-                    # Handle citations
-                    def citation_key(c):
-                        return (c.get("url"), c.get("number"))
-                    existing_keys = set(citation_key(c) for c in citations)
-                    for nc in new_citations:
-                        if citation_key(nc) not in existing_keys:
-                            citations.append(nc)
-                            existing_keys.add(citation_key(nc))
                 
                 # Combine all chunks into final response
                 response_text = "".join(response_chunks)
                 print(f"🎯 Orchestrator completed with {len(response_chunks)} chunks")
+                print(f"🔍 Raw orchestrator response text: {response_text[:200]}...")
                 
             finally:
-                # Restore original methods
-                self.gpt_service.prepare_conversation_messages = original_prepare
+                # No need to restore - using direct system prompt parameter
                 
                 # Clean up event listeners from sub-agents
                 if self.stream_sub_agents:
                     self._cleanup_sub_agent_event_forwarding()
 
-            # Convert legacy citations to new format
-            from response_schema import convert_legacy_citations
-            structured_citations = convert_legacy_citations(citations)
+            # Keep the original response text with citation tags intact
+            # Citations will be parsed at the frontend level
+            # NO citation processing on backend - pass everything through
 
             # Handle empty responses
             if not response_text or response_text.strip() == "":
                 final_response = AgentResponse(
                     text="",
-                    citations=structured_citations,
                     agent_name=self.name,
                     status="empty_response",
                     meta={
@@ -270,7 +218,6 @@ class Orchestrator(AgentTool):
             else:
                 final_response = AgentResponse(
                     text=response_text,
-                    citations=structured_citations,
                     agent_name=self.name,
                     status="success",
                     meta={"reasoning_effort": self.reasoning_effort}
@@ -280,7 +227,6 @@ class Orchestrator(AgentTool):
             self.emit("orchestrator_complete", {
                 "orchestrator": self.name,
                 "text": final_response.text,
-                "citations": convert_to_legacy_citations(final_response.citations or []),
                 "status": final_response.status,
                 "meta": final_response.meta
             })
@@ -290,7 +236,6 @@ class Orchestrator(AgentTool):
         except Exception as e:
             error_response = AgentResponse(
                 text="",
-                citations=[],
                 agent_name=self.name,
                 status="error",
                 meta={"error": f"Orchestrator execution failed: {str(e)}"}
@@ -315,7 +260,7 @@ class Orchestrator(AgentTool):
             Synthesized AgentResponse
         """
         if not responses:
-            return AgentResponse(text="", citations=[], agent_name=self.name)
+            return AgentResponse(text="", agent_name=self.name)
         
         # Use the merge logic from response_schema
         merged_response = merge_agent_responses(responses)
@@ -352,7 +297,6 @@ class Orchestrator(AgentTool):
             except Exception as e:
                 error_response = AgentResponse(
                     text="",
-                    citations=[],
                     agent_name=agent.name,
                     status="error",
                     meta={"error": f"Sub-agent {agent.name} failed: {str(e)}"}

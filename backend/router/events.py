@@ -37,18 +37,15 @@ class EventEmitter:
     
     def emit(self, event: str, *args, **kwargs):
         """Emit an event to all listeners"""
-        print(f"🎯 EventEmitter.emit called: {event}, listeners: {len(self._listeners.get(event, []))}")
         if event in self._listeners:
             for callback in self._listeners[event]:
                 try:
-                    print(f"🎯 Calling listener: {callback}")
                     if asyncio.iscoroutinefunction(callback):
                         # For async callbacks, we'll need to handle them differently
                         # For now, just call them synchronously
                         callback(*args, **kwargs)
                     else:
                         callback(*args, **kwargs)
-                    print(f"🎯 Listener called successfully")
                 except Exception as e:
                     print(f"Error in event listener for {event}: {e}")
     

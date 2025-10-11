@@ -13,7 +13,6 @@ from typing import TypedDict, List, Any
 class ToolCallResponse(TypedDict):
     success: bool
     new_conversation_entries: List[Any]
-    new_citations: List[Any]
 
 
 
@@ -32,15 +31,13 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     tool_name = tool_call["function"]["name"]
     tool_args_str = tool_call["function"]["arguments"]
     local_conversation = []
-    local_citations = []
   
 
     if not tool_name or not tool_args_str:
         
         return ToolCallResponse(
         success=False,
-        new_conversation_entries=[],
-        new_citations=[]
+        new_conversation_entries=[]
     )  # Skip invalid tool calls
 
     try:
@@ -62,39 +59,22 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
             "tool_call_id": tool_call["id"],
             "content": empty_tool_call_text
         }
-        if tool_name == "text_citation":
-            try:
-                local_citations = tool_args.get("sources")                
-                tool_call_text  = tool_args.get("text") + " preserve numbered links to the sources"
-                tool_call_result = format_tool_result_for_llm(
-                    tool_call["id"],
-                    tool_call_text
-                )
-                local_conversation.append(
-                    tool_call_result
-                )
-            except Exception as e:
-                print(f"Failed to parse tool_call arguments: {e}")
-                raise e
-            
-        else:
-            result = await execute_tool(tool_name, tool_args)
-            if "agent" in tool_name:
-                print(f"Result of tool call: {result} agent tool call tool name: {tool_name}")
-        
-            if "citations" in result and result["citations"]:
-                local_citations.extend(result["citations"])
-            tool_call_result = format_tool_result_for_llm(
-                tool_call["id"],
-                result
-            )
-            local_conversation.append(
-                tool_call_result
-            )   
+        # Execute tool
+        result = await execute_tool(tool_name, tool_args)
+        if "agent" in tool_name:
+            print(f"Result of tool call: {result} agent tool call tool name: {tool_name}")
+    
+      
+        tool_call_result = format_tool_result_for_llm(
+            tool_call["id"],
+            result
+        )
+        local_conversation.append(
+            tool_call_result
+        )   
         return ToolCallResponse(
             success=True,
-            new_conversation_entries=local_conversation,
-            new_citations=local_citations
+            new_conversation_entries=local_conversation
         )
 
     except json.JSONDecodeError as e:
@@ -107,8 +87,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
         return ToolCallResponse(
             success=False,
-            new_conversation_entries=local_conversation,
-            new_citations=local_citations
+            new_conversation_entries=local_conversation
         )
 
     except Exception as e:
@@ -123,8 +102,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
         return ToolCallResponse(
             success=False,
-            new_conversation_entries=local_conversation,
-            new_citations=local_citations
+            new_conversation_entries=local_conversation
         )
 
 
@@ -174,7 +152,6 @@ async def process_llm_response_with_tools(
         execute_tool: Callable,
         llm_stream_once: Callable,
         conversation: List[dict],
-        citations: List[dict],
         agent_name: str,
     ):
     """
@@ -230,7 +207,7 @@ async def process_llm_response_with_tools(
 
         # Stream content to client and print reasoning as it happens
         elif "content" in delta_obj and delta_obj["content"]:
-            yield (delta_obj["content"], None, citations)  # Content with no status change
+            yield (delta_obj["content"], None)  # Content with no status change
 
         # Check finish reason
         finish_reason = choice.get("finish_reason")
@@ -250,28 +227,27 @@ async def process_llm_response_with_tools(
                 for result in results:
                     if isinstance(result, BaseException):
                         print("Stop on error")
-                        yield (None, "stop", citations)  # Stop on error
+                        yield (None, "stop")  # Stop on error
                         return
                     elif isinstance(result, dict) and "success" in result:
                         conversation.extend(result["new_conversation_entries"])
-                        citations.extend(result["new_citations"])
 
                         await asyncio.sleep(0.01)
-                        yield (None, "continue", citations)  # Continue with updated citations
+                        yield (None, "continue")  # Continue with updated citations
                         return
                     else:  # Tool calls executed, continue loop
-                        yield (None, "stop", citations)
+                        yield (None, "stop")
                         return
 
             elif finish_reason == "stop":
                 # Normal completion, we're done
-                yield (None, "stop", citations)
+                yield (None, "stop")
                 return
 
     # If no tools were called, we're done
     if not saw_tool_call:
-        yield (None, "stop", citations)
+        yield (None, "stop")
         return
 
     # This shouldn't happen, but just in case
-    yield (None, "stop", citations)
+    yield (None, "stop")

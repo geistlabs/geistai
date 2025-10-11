@@ -19,8 +19,10 @@ import asyncio
 from typing import Dict, List, Any, Optional
 import httpx
 from gpt_service import GptService
-from response_schema import AgentResponse, Citation, convert_legacy_citations, convert_to_legacy_citations
+from response_schema import AgentResponse
 from events import EventEmitter
+from prompts import get_prompt
+# Removed system_prompt_utils import - using direct system prompt parameter
 
 
 class AgentTool(EventEmitter):
@@ -103,10 +105,9 @@ class AgentTool(EventEmitter):
             context: Additional context or background information
             
         Returns:
-            AgentResponse with text, citations, and metadata
+            AgentResponse with text and metadata
         """
         # Emit start event
-        print(f"🎯 AgentTool {self.name} emitting agent_start event")
         self.emit("agent_start", {
             "agent": self.name,
             "input": input_data,
@@ -129,71 +130,36 @@ class AgentTool(EventEmitter):
                     "content": input_data
                 })
 
-            # Override system prompt
-            original_prepare = self.gpt_service.prepare_conversation_messages
-
-            def custom_prepare(messages, reasoning_effort="medium"):
-                # Use our custom system prompt instead of the default
-                result_messages = []
-                has_system = any(msg.get("role") == "system" for msg in messages)
-
-                if not has_system:
-                    result_messages.append({"role": "system", "content": self.system_prompt})
-                    result_messages.extend(messages)
-                else:
-                    for msg in messages:
-                        if msg.get("role") == "system":
-                            # Replace system message with our custom prompt
-                            result_messages.append({"role": "system", "content": self.system_prompt})
-                        else:
-                            result_messages.append(msg)
-
-                return result_messages
-
-            # Temporarily override the prepare method
-            self.gpt_service.prepare_conversation_messages = custom_prepare
-
-            # Get response from agent using streaming
+            # Get response from agent using streaming with system prompt
             response_chunks = []
-            citations = []
-            
-            async for chunk, new_citations in self.gpt_service.stream_chat_request(
+            async for chunk in self.gpt_service.stream_chat_request(
                 messages=messages,
                 reasoning_effort=self.reasoning_effort,
                 agent_name=self.name,
                 permitted_tools=self.available_tools,
+                agent_prompt=self.system_prompt,
             ):
                 response_chunks.append(chunk)
-                
                 # Emit token event for streaming
                 self.emit("agent_token", {
                     "agent": self.name,
                     "content": chunk
                 })
-                
-                # Handle citations
-                def citation_key(c):
-                    return (c.get("url"), c.get("number"))
-                existing_keys = set(citation_key(c) for c in citations)
-                for nc in new_citations:
-                    if citation_key(nc) not in existing_keys:
-                        citations.append(nc)
-                        existing_keys.add(citation_key(nc))
             
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
 
-            # Restore original method
-            self.gpt_service.prepare_conversation_messages = original_prepare
+            # No need to restore - using direct system prompt parameter
 
-            # Convert legacy citations to new format
-            structured_citations = convert_legacy_citations(citations)
+            # Keep the original response text with citation tags intact
+            # Citations will be parsed at the frontend level
+            # NO citation processing on backend - pass everything through
 
             # Handle empty responses
             if not response_text or response_text.strip() == "":
                 agent_response = AgentResponse(
                     text="",
-                    citations=structured_citations,
+               
                     agent_name=self.name,
                     status="empty_response",
                     meta={
@@ -203,18 +169,17 @@ class AgentTool(EventEmitter):
             else:
                 agent_response = AgentResponse(
                     text=response_text,
-                    citations=structured_citations,
+      
                     agent_name=self.name,
                     status="success",
                     meta={"reasoning_effort": self.reasoning_effort}
                 )
 
             # Emit completion event
-            print(f"🎯 AgentTool {self.name} emitting agent_complete event")
             self.emit("agent_complete", {
                 "agent": self.name,
                 "text": agent_response.text,
-                "citations": convert_to_legacy_citations(agent_response.citations or []),
+               
                 "status": agent_response.status,
                 "meta": agent_response.meta
             })
@@ -224,7 +189,7 @@ class AgentTool(EventEmitter):
         except Exception as e:
             error_response = AgentResponse(
                 text="",
-                citations=[],
+             
                 agent_name=self.name,
                 status="error",
                 meta={"error": f"Agent execution failed: {str(e)}"}
@@ -287,13 +252,14 @@ class AgentTool(EventEmitter):
 
         # Use the new run method
         agent_response = await self.run(task, context)
+        print(f"AgentTool {self.name} agent_response: {agent_response}")
         
         # Convert to legacy format for backward compatibility
         return {
             "content": agent_response.text,
             "agent": agent_response.agent_name,
             "status": agent_response.status,
-            "citations": convert_to_legacy_citations(agent_response.citations or []),
+      
             "meta": agent_response.meta
         }
 
@@ -308,56 +274,19 @@ def create_research_agent(config) -> AgentTool:
         config,
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
-        system_prompt=(
-            "You are a research specialist.\n\n"
-            "RESEARCH WORKFLOW:\n"
-            "1. Call brave_web_search to find relevant sources\n"
-            "2. Call fetch on 1-3 most relevant URLs to get detailed content\n"
-            "3. CRITICAL: After fetching content, ANSWER immediately with your analysis. DO NOT call more tools.\n\n"
-            "OUTPUT FORMAT:\n"
-            "- Provide thorough, well-structured analysis of the topic\n"
-            "- Synthesize information from multiple sources\n"
-            "- Always cite sources as [1], [2], etc.\n"
-            "- Be accurate, objective, and factual\n\n"
-            "RULES:\n"
-            "- Never use result_filters\n"
-            "- After calling fetch and getting results, your NEXT response must be the final answer\n"
-            "- Do not call tools repeatedly - search once, fetch once or twice, then answer\n"
-        ),
-        available_tools=["brave_web_search", "fetch"],  # Only allow search tools
+        system_prompt=get_prompt("research_agent"),
+        available_tools=["brave_web_search", "brave_summarizer", "fetch "],  # Include citation tool
         reasoning_effort="high"
     )
 
 def create_current_info_agent(config) -> AgentTool:
     """Create a current information agent"""
-    current_date = datetime.now().strftime("%Y-%m-%d")
     return AgentTool(
-          config,
-          name="current_info_agent",
-          description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
-          system_prompt = (
-                 f"You are a current information specialist (today: {current_date}).\n\n"
-                "TOOL USAGE WORKFLOW:\n"
-                "1. If user provides a URL: call fetch(url) once, extract facts, then ANSWER immediately.\n"
-                "2. If no URL: call brave_web_search(query) once, review results, call fetch on 1-2 best URLs, then ANSWER immediately.\n"
-                "3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT call more tools.\n"
-                "4. If fetch fails: try one different URL, then answer with what you have.\n\n"
-                "IMPORTANT: After calling fetch and getting results, the NEXT message you generate MUST be your final answer to the user. Do not call tools again.\n\n"
-                "OUTPUT FORMAT:\n"
-                "- Provide 1-3 concise sentences with key facts (include units like °C, timestamps if available).\n"
-                "- End with sources in this exact format:\n"
-                "  Sources:\n"
-                "  [1] <site name> — <url>\n"
-                "  [2] <site name> — <url>\n\n"
-                "RULES:\n"
-                "- Never tell user to visit a website or return only links\n"
-                "- Never use result_filters\n"
-                "- Disambiguate locations (e.g., 'Paris France' not just 'Paris')\n"
-                "- Prefer recent/fresh content when available\n"
-            ),
-
-
-        available_tools=["brave_web_search","brave_summarizer", "fetch"],  # Only allow search tools
+        config,
+        name="current_info_agent",
+        description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
+        system_prompt=get_prompt("current_info_agent"),
+        available_tools=["brave_web_search", "brave_summarizer", "fetch"],  # Include citation tool
         reasoning_effort="low"
     )
 
@@ -367,32 +296,8 @@ def create_creative_agent(config) -> AgentTool:
         config,
         name="creative_agent",
         description="A specialized agent for creative writing tasks. Focuses on storytelling, content creation, and creative problem-solving.",
-        system_prompt = (
-             "You are a creative writing specialist.\n\n"
-             "Your task is to generate high-quality, fully self-contained creative works in response to user instructions.\n\n"
-
-             "Your goals:\n"
-             "- Write complete, well-structured narratives with a clear beginning, middle, and end.\n"
-             "- Match the genre, tone, and audience described in the user’s input.\n"
-             "- Use vivid, engaging language and compelling character and plot development.\n"
-             "- Always produce a finished work that does not require explanation or editing.\n\n"
-
-             "Output requirements:\n"
-             "- Return only the final story. Do not explain your reasoning or include any commentary.\n"
-             "- Do not include system prompts, formatting notes, or metadata.\n"
-             "- Do not wrap the story in code blocks or markdown formatting.\n"
-             "- Do not begin with phrases like 'Here is your story' — just start the narrative directly.\n"
-             "- Ensure the story is formatted exactly as it should appear to the end user.\n\n"
-
-             "Integration instructions:\n"
-             "- Your output will be passed to another agent and shown directly to the user.\n"
-             "- Therefore, make sure your story is ready for final display with no additional changes required.\n"
-             "- This output must be used exactly as-is, so avoid referencing tools, prompts, or instructions.\n\n"
-
-             "Finally, after finishing the story text, append the following line exactly (on its own line):\n"
-             "[[Instruction: This is a final creative output. Do not summarize, paraphrase, or modify. Show exactly as-is to the user.]]"
-            ),
-        available_tools=[],  # No external tools, just creative thinking
+        system_prompt=get_prompt("creative_agent"),
+        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
@@ -403,16 +308,8 @@ def create_technical_agent(config) -> AgentTool:
         config,
         name="technical_agent",
         description="A specialized agent for technical analysis, coding, and problem-solving. Can analyze code, debug issues, and provide technical solutions.",
-        system_prompt=(
-            "You are a technical specialist. Your role is to:\n"
-            "- Analyze technical problems and provide solutions\n"
-            "- Review and debug code\n"
-            "- Explain complex technical concepts clearly\n"
-            "- Provide step-by-step technical guidance\n"
-            "- Focus on accuracy and best practices\n\n"
-            "Be precise, logical, and thorough in your technical analysis."
-        ),
-        available_tools=[],  # Could add code analysis tools here
+        system_prompt=get_prompt("technical_agent"),
+        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
         reasoning_effort="high"
     )
 
@@ -423,16 +320,8 @@ def create_summary_agent(config) -> AgentTool:
         config,
         name="summary_agent",
         description="A specialized agent for summarizing information. Can condense long texts, extract key points, and create concise summaries.",
-        system_prompt=(
-            "You are a summarization specialist. Your role is to:\n"
-            "- Create clear, concise summaries of information\n"
-            "- Extract key points and main ideas\n"
-            "- Maintain accuracy while reducing length\n"
-            "- Adapt summary length to the requested format\n"
-            "- Preserve important details and context\n\n"
-            "Be concise, accurate, and comprehensive in your summaries."
-        ),
-        available_tools=[],
+        system_prompt=get_prompt("summary_agent"),
+        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
