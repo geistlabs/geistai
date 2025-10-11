@@ -34,6 +34,9 @@ REASONING_EFFORT = os.getenv(
     "REASONING_EFFORT", "low"
 )  # "low", "medium", "high"
 
+# Orchestrator configuration
+# Note: Always using nested orchestrator (can handle single-layer or multi-layer scenarios)
+
 # External service settings
 INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
 

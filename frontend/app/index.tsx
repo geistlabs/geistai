@@ -13,9 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ChatDrawer from '../components/chat/ChatDrawer';
+import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble';
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
-import { MessageBubble } from '../components/chat/MessageBubble';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
 import '../global.css';
@@ -28,7 +28,7 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
-  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const { isConnected } = useNetworkStatus();
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(
     undefined,
@@ -44,7 +44,7 @@ export default function ChatScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
 
   const {
-    messages,
+    enhancedMessages,
     isLoading,
     isStreaming,
     error,
@@ -52,19 +52,22 @@ export default function ChatScreen() {
     stopStreaming,
     clearMessages,
     retryLastMessage,
-    currentChat,
     createNewChat,
     storageError,
     chatApi,
+    // Rich event data (legacy - kept for backward compatibility)
+    toolCallEvents,
+    agentEvents,
+    orchestratorStatus,
   } = useChatWithStorage({ chatId: currentChatId });
 
   useEffect(() => {
-    if (messages.length > 0) {
+    if (enhancedMessages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
-  }, [messages.length]);
+  }, [enhancedMessages.length]);
 
   useEffect(() => {
     if (error) {
@@ -276,7 +279,7 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
-              {isLoading && messages.length === 0 ? (
+              {isLoading && enhancedMessages.length === 0 ? (
                 <View className='flex-1 items-center justify-center p-8'>
                   <LoadingIndicator size='medium' />
                   {storageError && (
@@ -288,7 +291,7 @@ export default function ChatScreen() {
               ) : (
                 <FlatList
                   ref={flatListRef}
-                  data={messages.filter(message => {
+                  data={enhancedMessages.filter(message => {
                     const isValid =
                       message &&
                       typeof message === 'object' &&
@@ -321,9 +324,9 @@ export default function ChatScreen() {
                   renderItem={({ item, index }) => {
                     try {
                       return (
-                        <MessageBubble
+                        <EnhancedMessageBubble
                           message={item}
-                          allMessages={messages}
+                          allMessages={enhancedMessages}
                           messageIndex={index}
                         />
                       );

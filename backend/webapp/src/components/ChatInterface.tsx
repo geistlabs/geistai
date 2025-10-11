@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
-import { sendMessage, sendStreamingMessage, ChatMessage } from '../api/chat'
+import ActivityPanel from './ActivityPanel'
+import {  sendStreamingMessage, ChatMessage } from '../api/chat'
+import { extractCitationsAndCleanText } from '../utils/citationParser'
 
 export interface Message {
   id: string
@@ -9,11 +11,49 @@ export interface Message {
   role: 'user' | 'assistant'
   timestamp: Date
   isStreaming?: boolean // Indicates if this message is currently being streamed
+  citations?: any[]
+  agentConversations?: AgentConvo[] // Agent conversations associated with this message
+  collectedLinks?: CollectedLink[] // All unique links collected from this message and its agents
+  toolCallEvents?: ToolCallEvent[] // Tool call events associated with this message
+}
+
+export interface CollectedLink {
+  id: string
+  url: string
+  title?: string
+  source?: string
+  snippet?: string
+  agent?: string
+  type: 'citation' | 'link'
+}
+
+export interface ToolCallEvent {
+  id: string
+  type: 'start' | 'complete' | 'error'
+  toolName: string
+  arguments?: any
+  result?: any
+  error?: string
+  timestamp: Date
+  status: 'active' | 'completed' | 'error'
 }
 
 interface ChatInterfaceProps {
   chatId?: string; // Optional chat ID prop
 }
+
+interface AgentConvo {
+  agent: string
+  messages: Message[]
+  timestamp: Date
+  type: 'start' | 'token' | 'complete' | 'error'
+  status?: string
+  task?: string
+  context?: string
+}
+
+
+// Removed getUniqueCitations function - no longer needed
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => {
   const [chatId] = useState(() => propChatId || crypto.randomUUID()) // Use prop or generate unique chat ID
@@ -25,7 +65,67 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
       timestamp: new Date()
     }
   ])
+
+  // Remove the separate agentConvos state - we'll embed them in messages instead
+
+  // Function to collect and deduplicate links from a message and its agent conversations
+  const collectLinksFromMessage = (message: Message): CollectedLink[] => {
+    const links: CollectedLink[] = []
+    const seenUrls = new Set<string>()
+
+    // Collect links from main message citations
+    if (message.citations) {
+      message.citations.forEach((citation, index) => {
+        if (citation.url && !seenUrls.has(citation.url)) {
+          seenUrls.add(citation.url)
+          links.push({
+            id: `citation-${message.id}-${index}`,
+            url: citation.url,
+            title: citation.source,
+            source: citation.source,
+            snippet: citation.snippet,
+            agent: 'main',
+            type: 'citation'
+          })
+        }
+      })
+    }
+
+    // Collect links from agent conversations
+    if (message.agentConversations) {
+      message.agentConversations.forEach(agentConvo => {
+        if (agentConvo.messages) {
+          agentConvo.messages.forEach(agentMsg => {
+            // Parse citations from agent message content
+            if (agentMsg.content) {
+              const { citations } = extractCitationsAndCleanText(agentMsg.content)
+              citations.forEach((citation, index) => {
+                if (citation.url && !seenUrls.has(citation.url)) {
+                  seenUrls.add(citation.url)
+                  links.push({
+                    id: `agent-${agentConvo.agent}-${index}`,
+                    url: citation.url,
+                    title: citation.source,
+                    source: citation.source,
+                    snippet: citation.snippet,
+                    agent: agentConvo.agent,
+                    type: 'citation'
+                  })
+                }
+              })
+            }
+          })
+        }
+      })
+    }
+
+    return links
+  }
+  
+
+
   const [isLoading, setIsLoading] = useState(false)
+  const [isActivityPanelVisible, setIsActivityPanelVisible] = useState(false)
 
   // Function to create embedding for a message
   const createMessageEmbedding = async (message: Message) => {
@@ -105,13 +205,124 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
               : msg
           ));
         },
+
+        ({agent, token, isStreaming, task, context}: {agent: string, token: string, isStreaming?: boolean, task?: string, context?: string}) => {
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMessageId) {
+              // Get or create agent conversations for this message
+              const agentConvos = msg.agentConversations || [];
+              
+              // Find existing agent conversation
+              const existingIdx = agentConvos.findIndex(convo => convo.agent === agent);
+              
+              let updatedAgentConvos;
+              if (existingIdx !== -1) {
+                // Update existing agent conversation
+                updatedAgentConvos = agentConvos.map((convo, idx) =>
+                  idx === existingIdx
+                    ? { 
+                        ...convo, 
+                        messages: convo.messages.length > 0
+                          ? [
+                              { 
+                                ...convo.messages[0],
+                                isStreaming,
+                                content: convo.messages[0].content + token 
+                              }, 
+                              ...convo.messages.slice(1)
+                            ]
+                          : [{ id: token, content: token, role: 'assistant' as const, timestamp: new Date(), isStreaming }]
+                      }
+                    : convo
+                );
+              } else {
+                // Create new agent conversation
+                updatedAgentConvos = [
+                  ...agentConvos,
+                  {
+                    timestamp: new Date(),
+                    type: 'token' as const,
+                    agent,
+                    task,
+                    context,
+                    messages: [{ id: token, content: token, role: 'assistant' as const, timestamp: new Date(), isStreaming: true }]
+                  }
+                ];
+              }
+              
+              return { ...msg, agentConversations: updatedAgentConvos };
+            }
+            return msg;
+          }));
+        },
+        // onToolCallEvent callback
+        ({type, toolName, arguments: args, result, error}: {type: string, toolName: string, arguments?: any, result?: any, error?: string}) => {
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMessageId) {
+              const toolCallEvents = msg.toolCallEvents || [];
+              const eventId = `${toolName}-${Date.now()}-${Math.random()}`;
+              
+              if (type === 'start') {
+                // Add new tool call event
+                const newEvent: ToolCallEvent = {
+                  id: eventId,
+                  type: 'start',
+                  toolName,
+                  arguments: args,
+                  timestamp: new Date(),
+                  status: 'active'
+                };
+                return { ...msg, toolCallEvents: [...toolCallEvents, newEvent] };
+              } else if (type === 'complete' || type === 'error') {
+                // Update existing tool call event
+                const updatedEvents: ToolCallEvent[] = toolCallEvents.map(event => {
+                  if (event.toolName === toolName && event.status === 'active') {
+                      return {
+                        ...event,
+                        type: type as 'complete' | 'error',
+                        result,
+                        error,
+                        status: (type === 'complete' ? 'completed' : 'error') as 'completed' | 'error'
+                      };
+                  }
+                  return event;
+                });
+                return { ...msg, toolCallEvents: updatedEvents };
+              }
+            }
+            return msg;
+          }));
+        },
         // onComplete callback
         () => {
-          setMessages(prev => prev.map(msg => 
-            msg.id === assistantMessageId 
-              ? { ...msg, isStreaming: false }
-              : msg
-          ));
+          setMessages(prev => prev.map(msg => {
+            if (msg.id === assistantMessageId) {
+              // Parse citations from the final message content
+              console.log("Raw message content before parsing:", msg.content);
+              const { cleanedText, citations } = extractCitationsAndCleanText(msg.content);
+              console.log("Parsed citations from final message:", citations);
+              console.log("Cleaned text:", cleanedText);
+              console.log("Number of citations found:", citations.length);
+              
+              // Create updated message with citations
+              const updatedMessage = { 
+                ...msg, 
+                content: cleanedText,
+                citations: citations,
+                isStreaming: false 
+              };
+              
+              // Collect all links from this message and its agent conversations
+              const collectedLinks = collectLinksFromMessage(updatedMessage);
+              console.log("Collected links:", collectedLinks);
+              
+              return {
+                ...updatedMessage,
+                collectedLinks: collectedLinks
+              };
+            }
+            return msg;
+          }));
           setIsLoading(false);
           
           // Create embedding for completed assistant message
@@ -170,6 +381,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
     }
   }
 
+  // Get current tool call events and agent conversations for the activity panel
+  const currentToolCallEvents = messages.length > 0 ? messages[messages.length - 1].toolCallEvents || [] : []
+  const currentAgentConversations = messages.length > 0 ? messages[messages.length - 1].agentConversations || [] : []
+
   return (
     <div style={{
       display: 'flex',
@@ -177,8 +392,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
       height: '100%',
       backgroundColor: 'white'
     }}>
+
+      {/* Agent conversations are now embedded within messages */}
+
+      
       <MessageList messages={messages} isLoading={isLoading} />
       <MessageInput onSendMessage={handleSendMessage} disabled={isLoading} />
+      
+      {/* Activity Panel */}
+      <ActivityPanel
+        toolCallEvents={currentToolCallEvents}
+        agentConversations={currentAgentConversations}
+        isVisible={isActivityPanelVisible}
+        onToggle={() => setIsActivityPanelVisible(!isActivityPanelVisible)}
+      />
     </div>
   )
 }

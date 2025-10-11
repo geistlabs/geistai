@@ -191,6 +191,7 @@ class SimpleMCPClient:
         Returns:
             HTTP response
         """
+        print(f"Sending request to {gateway_url}: {request}")
         headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json"

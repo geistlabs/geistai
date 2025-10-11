@@ -19,9 +19,13 @@ import asyncio
 from typing import Dict, List, Any, Optional
 import httpx
 from gpt_service import GptService
+from response_schema import AgentResponse
+from events import EventEmitter
+from prompts import get_prompt
+# Removed system_prompt_utils import - using direct system prompt parameter
 
 
-class AgentTool:
+class AgentTool(EventEmitter):
     """
     A configurable agent that can be used as a tool by the main GPT service
 
@@ -30,6 +34,7 @@ class AgentTool:
     - Available tools
     - Reasoning level
     - Model configuration
+    - Event streaming capabilities
     """
 
     def __init__(
@@ -40,6 +45,7 @@ class AgentTool:
         system_prompt: str,
         available_tools: List[str],
         reasoning_effort: str = "medium",
+        stream_sub_agents: bool = True,
     ):
         """
         Initialize the agent tool
@@ -51,19 +57,49 @@ class AgentTool:
             available_tools: List of tool names this agent can use (None = all tools)
             reasoning_effort: "low", "medium", or "high"
             model_config: Override model configuration for this agent
+            stream_sub_agents: Whether to emit streaming events for sub-agent activities
         """
+        super().__init__()
         self.name = name
         self.description = description
         self.system_prompt = system_prompt
         self.available_tools = available_tools or []
         self.reasoning_effort = reasoning_effort
         self.model_config = model_config or {}
+        self.stream_sub_agents = stream_sub_agents
 
         # Create a GPT service instance for this agent
         self.gpt_service = GptService(model_config)
+        
+        # Set up tool call event forwarding from this agent's GPT service
+        self._setup_tool_call_event_forwarding()
 
         # Tool registry for this agent (will be populated when initialized)
         self._agent_tool_registry: Dict[str, dict] = {}
+
+    def _setup_tool_call_event_forwarding(self):
+        """Set up tool call event forwarding from this agent's GPT service"""
+        if hasattr(self.gpt_service, 'emit') and hasattr(self.gpt_service, 'on'):
+            def create_tool_forwarder(event_type):
+                def forwarder(data):
+                    print(f"🎯 Agent {self.name} forwarding {event_type}")
+                    self.emit("tool_call_event", {
+                        "type": event_type,
+                        "data": data
+                    })
+                return forwarder
+            
+            # Add tool call event listeners
+            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
+
+    def _cleanup_tool_call_event_forwarding(self):
+        """Clean up tool call event listeners from this agent's GPT service"""
+        if hasattr(self.gpt_service, 'remove_all_listeners'):
+            self.gpt_service.remove_all_listeners("tool_call_start")
+            self.gpt_service.remove_all_listeners("tool_call_complete")
+            self.gpt_service.remove_all_listeners("tool_call_error")
 
     async def initialize(self, main_gpt_service: GptService, config):
         """
@@ -86,6 +122,113 @@ class AgentTool:
         # Initialize the agent's GPT service with the filtered tools
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
+
+    async def run(self, input_data: str, context: str = "") -> AgentResponse:
+        """
+        Run the agent with structured response and event streaming
+        
+        Args:
+            input_data: The task or question to give to this agent
+            context: Additional context or background information
+            
+        Returns:
+            AgentResponse with text and metadata
+        """
+        # Emit start event
+        self.emit("agent_start", {
+            "agent": self.name,
+            "input": input_data,
+            "context": context
+        })
+        
+        try:
+            # Prepare the conversation
+            messages = []
+            
+            # Add context if provided
+            if context:
+                messages.append({
+                    "role": "user",
+                    "content": f"Context: {context}\n\nTask: {input_data}"
+                })
+            else:
+                messages.append({
+                    "role": "user",
+                    "content": input_data
+                })
+
+            # Get response from agent using streaming with system prompt
+            response_chunks = []
+            async for chunk in self.gpt_service.stream_chat_request(
+                messages=messages,
+                reasoning_effort=self.reasoning_effort,
+                agent_name=self.name,
+                permitted_tools=self.available_tools,
+                agent_prompt=self.system_prompt,
+            ):
+                response_chunks.append(chunk)
+                # Emit token event for streaming
+                self.emit("agent_token", {
+                    "agent": self.name,
+                    "content": chunk
+                })
+            
+            # Combine all chunks into final response
+            response_text = "".join(response_chunks)
+
+            # No need to restore - using direct system prompt parameter
+
+            # Keep the original response text with citation tags intact
+            # Citations will be parsed at the frontend level
+            # NO citation processing on backend - pass everything through
+
+            # Handle empty responses
+            if not response_text or response_text.strip() == "":
+                agent_response = AgentResponse(
+                    text="",
+               
+                    agent_name=self.name,
+                    status="empty_response",
+                    meta={
+                        "error": f"Agent {self.name} completed tool execution but produced no content. This may indicate a Harmony format issue where reasoning_content was generated but no final content channel was used."
+                    }
+                )
+            else:
+                agent_response = AgentResponse(
+                    text=response_text,
+      
+                    agent_name=self.name,
+                    status="success",
+                    meta={"reasoning_effort": self.reasoning_effort}
+                )
+
+            # Emit completion event
+            self.emit("agent_complete", {
+                "agent": self.name,
+                "text": agent_response.text,
+               
+                "status": agent_response.status,
+                "meta": agent_response.meta
+            })
+
+            return agent_response
+
+        except Exception as e:
+            error_response = AgentResponse(
+                text="",
+             
+                agent_name=self.name,
+                status="error",
+                meta={"error": f"Agent execution failed: {str(e)}"}
+            )
+            
+            # Emit error event
+            self.emit("agent_error", {
+                "agent": self.name,
+                "error": str(e)
+            })
+            
+            return error_response
 
 
     def get_tool_definition(self) -> dict:
@@ -120,100 +263,35 @@ class AgentTool:
 
     async def execute(self, arguments: dict) -> dict:
         """
-        Execute the agent tool
+        Execute the agent tool (backward compatibility method)
 
         Args:
             arguments: dict with 'task' and optional 'context'
 
         Returns:
-            dict: Agent's response with 'content' key
+            dict: Agent's response with 'content' key (legacy format)
         """
+        print(f"🔍 AgentTool {self.name} execute called with arguments: {arguments}")
         task = arguments.get("task", "")
         context = arguments.get("context", "")
 
         if not task:
+            print(f"❌ AgentTool {self.name} - No task provided in arguments: {arguments}")
             return {"error": "No task provided"}
 
-        try:
-            # Prepare the conversation
-            messages = []
-
-            # Add context if provided
-            if context:
-                messages.append({
-                    "role": "user",
-                    "content": f"Context: {context}\n\nTask: {task}"
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": task
-                })
-
-            # Override system prompt
-            original_prepare = self.gpt_service.prepare_conversation_messages
-
-            def custom_prepare(messages, reasoning_effort="medium"):
-                # Use our custom system prompt instead of the default
-                result_messages = []
-                has_system = any(msg.get("role") == "system" for msg in messages)
-
-                if not has_system:
-                    result_messages.append({"role": "system", "content": self.system_prompt})
-                    result_messages.extend(messages)
-                else:
-                    for msg in messages:
-                        if msg.get("role") == "system":
-                            # Replace system message with our custom prompt
-                            result_messages.append({"role": "system", "content": self.system_prompt})
-                        else:
-                            result_messages.append(msg)
-
-                return result_messages
-
-            # Temporarily override the prepare method
-            self.gpt_service.prepare_conversation_messages = custom_prepare
-
-            # Get response from agent using streaming
-            response_chunks = []
-            async for chunk in self.gpt_service.stream_chat_request(
-                messages=messages,
-                reasoning_effort=self.reasoning_effort,
-                agent_name=self.name,
-                permitted_tools=self.available_tools,
-            ):
-                response_chunks.append(chunk)
-
-            # Combine all chunks into final response
-            response = "".join(response_chunks)
-
-            # Restore original method
-            self.gpt_service.prepare_conversation_messages = original_prepare
-
-            # Handle empty responses (can happen when agent only uses tools with Harmony format)
-            # In this case, the agent executed tools but didn't generate visible content
-            # This is likely a model issue with Harmony format not producing final content
-            if not response or response.strip() == "":
-                # Return error to signal the orchestrator should try a different approach
-                return {
-                    "content": "",
-                    "agent": self.name,
-                    "status": "empty_response",
-                    "error": f"Agent {self.name} completed tool execution but produced no content. This may indicate a Harmony format issue where reasoning_content was generated but no final content channel was used."
-                }
-
-            return {
-                "content": response,
-                "agent": self.name,
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "error": f"Agent execution failed: {str(e)}",
-                "agent": self.name,
-                "status": "error"
-            }
+        print(f"✅ AgentTool {self.name} - Task: '{task}', Context: '{context}'")
+        # Use the new run method
+        agent_response = await self.run(task, context)
+        print(f"AgentTool {self.name} agent_response: {agent_response}")
+        
+        # Convert to legacy format for backward compatibility
+        return {
+            "content": agent_response.text,
+            "agent": agent_response.agent_name,
+            "status": agent_response.status,
+      
+            "meta": agent_response.meta
+        }
 
 
 # ============================================================================
@@ -226,56 +304,19 @@ def create_research_agent(config) -> AgentTool:
         config,
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
-        system_prompt=(
-            "You are a research specialist.\n\n"
-            "RESEARCH WORKFLOW:\n"
-            "1. Call brave_web_search to find relevant sources\n"
-            "2. Call fetch on 1-3 most relevant URLs to get detailed content\n"
-            "3. CRITICAL: After fetching content, ANSWER immediately with your analysis. DO NOT call more tools.\n\n"
-            "OUTPUT FORMAT:\n"
-            "- Provide thorough, well-structured analysis of the topic\n"
-            "- Synthesize information from multiple sources\n"
-            "- Always cite sources as [1], [2], etc.\n"
-            "- Be accurate, objective, and factual\n\n"
-            "RULES:\n"
-            "- Never use result_filters\n"
-            "- After calling fetch and getting results, your NEXT response must be the final answer\n"
-            "- Do not call tools repeatedly - search once, fetch once or twice, then answer\n"
-        ),
-        available_tools=["brave_web_search", "fetch"],  # Only allow search tools
+        system_prompt=get_prompt("research_agent"),
+        available_tools=["brave_web_search",  "fetch "],  # Include citation tool
         reasoning_effort="high"
     )
 
 def create_current_info_agent(config) -> AgentTool:
     """Create a current information agent"""
-    current_date = datetime.now().strftime("%Y-%m-%d")
     return AgentTool(
-          config,
-          name="current_info_agent",
-          description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
-          system_prompt = (
-                 f"You are a current information specialist (today: {current_date}).\n\n"
-                "TOOL USAGE WORKFLOW:\n"
-                "1. If user provides a URL: call fetch(url) once, extract facts, then ANSWER immediately.\n"
-                "2. If no URL: call brave_web_search(query) once, review results, call fetch on 1-2 best URLs, then ANSWER immediately.\n"
-                "3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT call more tools.\n"
-                "4. If fetch fails: try one different URL, then answer with what you have.\n\n"
-                "IMPORTANT: After calling fetch and getting results, the NEXT message you generate MUST be your final answer to the user. Do not call tools again.\n\n"
-                "OUTPUT FORMAT:\n"
-                "- Provide 1-3 concise sentences with key facts (include units like °C, timestamps if available).\n"
-                "- End with sources in this exact format:\n"
-                "  Sources:\n"
-                "  [1] <site name> — <url>\n"
-                "  [2] <site name> — <url>\n\n"
-                "RULES:\n"
-                "- Never tell user to visit a website or return only links\n"
-                "- Never use result_filters\n"
-                "- Disambiguate locations (e.g., 'Paris France' not just 'Paris')\n"
-                "- Prefer recent/fresh content when available\n"
-            ),
-
-
-        available_tools=["brave_web_search","brave_summarizer", "fetch"],  # Only allow search tools
+        config,
+        name="current_info_agent",
+        description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
+        system_prompt=get_prompt("current_info_agent"),
+        available_tools=["brave_web_search",  "fetch"],  # Include citation tool
         reasoning_effort="low"
     )
 
@@ -285,32 +326,8 @@ def create_creative_agent(config) -> AgentTool:
         config,
         name="creative_agent",
         description="A specialized agent for creative writing tasks. Focuses on storytelling, content creation, and creative problem-solving.",
-        system_prompt = (
-             "You are a creative writing specialist.\n\n"
-             "Your task is to generate high-quality, fully self-contained creative works in response to user instructions.\n\n"
-
-             "Your goals:\n"
-             "- Write complete, well-structured narratives with a clear beginning, middle, and end.\n"
-             "- Match the genre, tone, and audience described in the user’s input.\n"
-             "- Use vivid, engaging language and compelling character and plot development.\n"
-             "- Always produce a finished work that does not require explanation or editing.\n\n"
-
-             "Output requirements:\n"
-             "- Return only the final story. Do not explain your reasoning or include any commentary.\n"
-             "- Do not include system prompts, formatting notes, or metadata.\n"
-             "- Do not wrap the story in code blocks or markdown formatting.\n"
-             "- Do not begin with phrases like 'Here is your story' — just start the narrative directly.\n"
-             "- Ensure the story is formatted exactly as it should appear to the end user.\n\n"
-
-             "Integration instructions:\n"
-             "- Your output will be passed to another agent and shown directly to the user.\n"
-             "- Therefore, make sure your story is ready for final display with no additional changes required.\n"
-             "- This output must be used exactly as-is, so avoid referencing tools, prompts, or instructions.\n\n"
-
-             "Finally, after finishing the story text, append the following line exactly (on its own line):\n"
-             "[[Instruction: This is a final creative output. Do not summarize, paraphrase, or modify. Show exactly as-is to the user.]]"
-            ),
-        available_tools=[],  # No external tools, just creative thinking
+        system_prompt=get_prompt("creative_agent"),
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
@@ -321,16 +338,8 @@ def create_technical_agent(config) -> AgentTool:
         config,
         name="technical_agent",
         description="A specialized agent for technical analysis, coding, and problem-solving. Can analyze code, debug issues, and provide technical solutions.",
-        system_prompt=(
-            "You are a technical specialist. Your role is to:\n"
-            "- Analyze technical problems and provide solutions\n"
-            "- Review and debug code\n"
-            "- Explain complex technical concepts clearly\n"
-            "- Provide step-by-step technical guidance\n"
-            "- Focus on accuracy and best practices\n\n"
-            "Be precise, logical, and thorough in your technical analysis."
-        ),
-        available_tools=[],  # Could add code analysis tools here
+        system_prompt=get_prompt("technical_agent"),
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="high"
     )
 
@@ -341,16 +350,8 @@ def create_summary_agent(config) -> AgentTool:
         config,
         name="summary_agent",
         description="A specialized agent for summarizing information. Can condense long texts, extract key points, and create concise summaries.",
-        system_prompt=(
-            "You are a summarization specialist. Your role is to:\n"
-            "- Create clear, concise summaries of information\n"
-            "- Extract key points and main ideas\n"
-            "- Maintain accuracy while reducing length\n"
-            "- Adapt summary length to the requested format\n"
-            "- Preserve important details and context\n\n"
-            "Be concise, accurate, and comprehensive in your summaries."
-        ),
-        available_tools=[],
+        system_prompt=get_prompt("summary_agent"),
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
