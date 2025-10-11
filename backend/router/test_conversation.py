@@ -72,7 +72,7 @@ async def test_parallel_conversation():
 
 async def test_conversation(conversation_turns):
     """Test a multi-turn conversation with evaluation and adaptive questioning"""
-    url = f"http://localhost:8000/api/chat/stream"
+    url = f"http://localhost:8000/api/stream"
     
     # Define conversation turns with next questions
    
@@ -91,7 +91,7 @@ async def test_conversation(conversation_turns):
         # Build payload with conversation history
         payload = {
             "message": user_message,
-            "messages": conversation_history
+            "conversation_history": conversation_history
         }
         print(f"Calling with Payload: {payload}")
         try:
@@ -119,15 +119,29 @@ async def test_conversation(conversation_turns):
                             try:
                                 data = json.loads(data_str)
                                 
-                                if "token" in data:
-                                
-                                    token = data["token"]
-                                    full_response += token
-                                    chunk_count += 1
-                                elif "finished" in data:
+                                # Handle different event types from the new streaming endpoint
+                                if data.get("type") == "orchestrator_token":
+                                    token = data.get("data", {}).get("content", "")
+                                    if token:
+                                        full_response += token
+                                        chunk_count += 1
+                                elif data.get("type") == "sub_agent_event":
+                                    # Log sub-agent activity for debugging
+                                    sub_agent_data = data.get("data", {})
+                                    if sub_agent_data.get("type") == "agent_start":
+                                        print(f"   🤖 Agent {sub_agent_data.get('data', {}).get('agent', 'unknown')} started")
+                                    elif sub_agent_data.get("type") == "agent_complete":
+                                        print(f"   ✅ Agent {sub_agent_data.get('data', {}).get('agent', 'unknown')} completed")
+                                elif data.get("type") == "final_response":
+                                    # Final response contains the complete text
+                                    final_text = data.get("text", "")
+                                    if final_text and not full_response:
+                                        full_response = final_text
                                     break
-                                elif "error" in data:
-                                    print(f"\n❌ Error: {data['error']}")
+                                elif data.get("type") == "error":
+                                    print(f"\n❌ Error: {data.get('message', 'Unknown error')}")
+                                    break
+                                elif "finished" in data:
                                     break
                                     
                             except json.JSONDecodeError as e:

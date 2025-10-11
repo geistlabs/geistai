@@ -70,9 +70,36 @@ class AgentTool(EventEmitter):
 
         # Create a GPT service instance for this agent
         self.gpt_service = GptService(model_config)
+        
+        # Set up tool call event forwarding from this agent's GPT service
+        self._setup_tool_call_event_forwarding()
 
         # Tool registry for this agent (will be populated when initialized)
         self._agent_tool_registry: Dict[str, dict] = {}
+
+    def _setup_tool_call_event_forwarding(self):
+        """Set up tool call event forwarding from this agent's GPT service"""
+        if hasattr(self.gpt_service, 'emit') and hasattr(self.gpt_service, 'on'):
+            def create_tool_forwarder(event_type):
+                def forwarder(data):
+                    print(f"🎯 Agent {self.name} forwarding {event_type}")
+                    self.emit("tool_call_event", {
+                        "type": event_type,
+                        "data": data
+                    })
+                return forwarder
+            
+            # Add tool call event listeners
+            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
+
+    def _cleanup_tool_call_event_forwarding(self):
+        """Clean up tool call event listeners from this agent's GPT service"""
+        if hasattr(self.gpt_service, 'remove_all_listeners'):
+            self.gpt_service.remove_all_listeners("tool_call_start")
+            self.gpt_service.remove_all_listeners("tool_call_complete")
+            self.gpt_service.remove_all_listeners("tool_call_error")
 
     async def initialize(self, main_gpt_service: GptService, config):
         """
@@ -244,12 +271,15 @@ class AgentTool(EventEmitter):
         Returns:
             dict: Agent's response with 'content' key (legacy format)
         """
+        print(f"🔍 AgentTool {self.name} execute called with arguments: {arguments}")
         task = arguments.get("task", "")
         context = arguments.get("context", "")
 
         if not task:
+            print(f"❌ AgentTool {self.name} - No task provided in arguments: {arguments}")
             return {"error": "No task provided"}
 
+        print(f"✅ AgentTool {self.name} - Task: '{task}', Context: '{context}'")
         # Use the new run method
         agent_response = await self.run(task, context)
         print(f"AgentTool {self.name} agent_response: {agent_response}")
@@ -275,7 +305,7 @@ def create_research_agent(config) -> AgentTool:
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
         system_prompt=get_prompt("research_agent"),
-        available_tools=["brave_web_search", "brave_summarizer", "fetch "],  # Include citation tool
+        available_tools=["brave_web_search",  "fetch "],  # Include citation tool
         reasoning_effort="high"
     )
 
@@ -286,7 +316,7 @@ def create_current_info_agent(config) -> AgentTool:
         name="current_info_agent",
         description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
         system_prompt=get_prompt("current_info_agent"),
-        available_tools=["brave_web_search", "brave_summarizer", "fetch"],  # Include citation tool
+        available_tools=["brave_web_search",  "fetch"],  # Include citation tool
         reasoning_effort="low"
     )
 
@@ -297,7 +327,7 @@ def create_creative_agent(config) -> AgentTool:
         name="creative_agent",
         description="A specialized agent for creative writing tasks. Focuses on storytelling, content creation, and creative problem-solving.",
         system_prompt=get_prompt("creative_agent"),
-        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
@@ -309,7 +339,7 @@ def create_technical_agent(config) -> AgentTool:
         name="technical_agent",
         description="A specialized agent for technical analysis, coding, and problem-solving. Can analyze code, debug issues, and provide technical solutions.",
         system_prompt=get_prompt("technical_agent"),
-        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="high"
     )
 
@@ -321,7 +351,7 @@ def create_summary_agent(config) -> AgentTool:
         name="summary_agent",
         description="A specialized agent for summarizing information. Can condense long texts, extract key points, and create concise summaries.",
         system_prompt=get_prompt("summary_agent"),
-        available_tools=["brave_web_search", "brave_summarizer"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 

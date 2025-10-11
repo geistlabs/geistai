@@ -18,6 +18,7 @@ from typing import Dict, List,  Callable, Optional
 import httpx
 from process_llm_response import process_llm_response_with_tools
 from response_schema import AgentResponse
+from events import EventEmitter
 
 
 # MCP imports
@@ -30,10 +31,11 @@ from simple_mcp_client import SimpleMCPClient
 MAX_TOOL_CALLS = 3
 
 
-class GptService:
+class GptService(EventEmitter):
     """Main service for handling GPT requests with tool support"""
 
     def __init__(self, config, can_log: bool = False):
+        super().__init__()
         # Tool registry: name -> {description, input_schema, executor, type}
         self._tool_registry: Dict[str, dict] = {}
         self.config = config
@@ -197,14 +199,37 @@ class GptService:
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
 
+        # Emit tool call start event
+        self.emit("tool_call_start", {
+            "tool_name": tool_name,
+            "arguments": arguments
+        })
+
         try:
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
             result = await executor(arguments)
+            
+            # Emit tool call complete event
+            self.emit("tool_call_complete", {
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "result": result
+            })
+            
             return result
 
         except Exception as e:
-            return {"error": f"Tool execution failed: {str(e)}"}
+            error_result = {"error": f"Tool execution failed: {str(e)}"}
+            
+            # Emit tool call error event
+            self.emit("tool_call_error", {
+                "tool_name": tool_name,
+                "arguments": arguments,
+                "error": str(e)
+            })
+            
+            return error_result
 
 
 
@@ -305,7 +330,7 @@ class GptService:
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, system_prompt)
 
         headers, model, url = self.get_chat_completion_params()
-
+        print(f"🔍 agent_name:  conversation: {conversation}")
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{url}/v1/chat/completions",
@@ -377,6 +402,7 @@ class GptService:
                 "stream": True,
                 "model": model
             }
+            
 
             # Add tools if available
             if tools_for_llm:
@@ -384,6 +410,7 @@ class GptService:
                 request_data["tool_choice"] = "auto"
           
             try:
+                print(f"🔍 agent_name: {agent_name} request data: {request_data}")
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(
                         "POST",

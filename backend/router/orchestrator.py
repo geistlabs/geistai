@@ -82,7 +82,6 @@ class Orchestrator(AgentTool):
     
     def _setup_sub_agent_event_forwarding(self):
         """Set up event forwarding for all registered sub-agents"""
-        print(f"🎯 Setting up event forwarding for {len(self.gpt_service._tool_registry)} tools")
         
         for tool_name, tool_info in self.gpt_service._tool_registry.items():
             executor = tool_info.get('executor')
@@ -90,7 +89,6 @@ class Orchestrator(AgentTool):
                 agent_instance = executor.__self__
                 # Check if it's an EventEmitter (AgentTool)
                 if hasattr(agent_instance, 'emit') and hasattr(agent_instance, 'on'):
-                    print(f"🎯 Setting up event forwarding for sub-agent: {tool_name}")
                     
                     # Create event handlers that forward to orchestrator
                     def create_forwarder(event_type, agent_name):
@@ -108,10 +106,26 @@ class Orchestrator(AgentTool):
                     agent_instance.on("agent_token", create_forwarder("agent_token", tool_name))
                     agent_instance.on("agent_complete", create_forwarder("agent_complete", tool_name))
                     agent_instance.on("agent_error", create_forwarder("agent_error", tool_name))
+                    agent_instance.on("tool_call_event", create_forwarder("tool_call_event", tool_name))
+        
+        # Also forward tool call events from the orchestrator's own GPT service
+        if hasattr(self.gpt_service, 'emit') and hasattr(self.gpt_service, 'on'):
+            def create_tool_forwarder(event_type):
+                def forwarder(data):
+                    print(f"🎯 Forwarding {event_type} from orchestrator GPT service")
+                    self.emit("tool_call_event", {
+                        "type": event_type,
+                        "data": data
+                    })
+                return forwarder
+            
+            # Add tool call event listeners
+            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
     
     def _cleanup_sub_agent_event_forwarding(self):
         """Clean up event listeners from all registered sub-agents"""
-        print(f"🎯 Cleaning up event forwarding for {len(self.gpt_service._tool_registry)} tools")
         
         for tool_name, tool_info in self.gpt_service._tool_registry.items():
             executor = tool_info.get('executor')
@@ -119,13 +133,19 @@ class Orchestrator(AgentTool):
                 agent_instance = executor.__self__
                 # Check if it's an EventEmitter (AgentTool)
                 if hasattr(agent_instance, 'emit') and hasattr(agent_instance, 'on'):
-                    print(f"🎯 Cleaning up event listeners for sub-agent: {tool_name}")
                     
                     # Remove all event listeners
                     agent_instance.remove_all_listeners("agent_start")
                     agent_instance.remove_all_listeners("agent_token")
                     agent_instance.remove_all_listeners("agent_complete")
                     agent_instance.remove_all_listeners("agent_error")
+                    agent_instance.remove_all_listeners("tool_call_event")
+        
+        # Also remove tool call event listeners from the orchestrator's GPT service
+        if hasattr(self.gpt_service, 'remove_all_listeners'):
+            self.gpt_service.remove_all_listeners("tool_call_start")
+            self.gpt_service.remove_all_listeners("tool_call_complete")
+            self.gpt_service.remove_all_listeners("tool_call_error")
     
     async def run(self, input_data: str, context: str = "") -> AgentResponse:
         """
@@ -169,9 +189,6 @@ class Orchestrator(AgentTool):
             # Use the orchestrator's GPT service to handle the request
             # This will automatically coordinate with sub-agents via tool calls
             response_chunks = []
-            
-            print(f"🎯 Orchestrator starting with {len(self.available_tools)} available tools")
-            print(f"🎯 Available tools: {self.available_tools}")
             
             try:
                 async for chunk in self.gpt_service.stream_chat_request(
