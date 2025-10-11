@@ -1,9 +1,7 @@
 import EventSource from 'react-native-sse';
 
 import { ApiClient } from './client';
-
-// API configuration
-const API_BASE_URL = 'http://10.0.2.2:8000';
+import { ENV } from '../config/environment';
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
@@ -45,8 +43,8 @@ export async function sendMessage(
   };
 
   try {
-    console.log(`${API_BASE_URL}/api/chat`);
-    const response = await fetch(`${API_BASE_URL}/api/chat`, {
+    console.log(`${ENV.API_URL}/api/chat`);
+    const response = await fetch(`${ENV.API_URL}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -268,10 +266,10 @@ export async function sendStreamingMessage(
   const eventProcessor = new StreamEventProcessor(handlers);
 
   return new Promise<void>((resolve, reject) => {
-    console.log(`${API_BASE_URL}/api/stream`);
-    
+    console.log(`${ENV.API_URL}/api/stream`);
+
     // Create EventSource with POST data
-    const es = new EventSource(`${API_BASE_URL}/api/stream`, {
+    const es = new EventSource(`${ENV.API_URL}/api/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -427,7 +425,7 @@ export async function checkHealth(): Promise<{
   ssl_status: string;
 }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`);
+    const response = await fetch(`${ENV.API_URL}/health`);
 
     if (!response.ok) {
       throw new Error(`Health check failed: ${response.status}`);
