@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
+import ActivityPanel from './ActivityPanel'
 import {  sendStreamingMessage, ChatMessage } from '../api/chat'
 import { extractCitationsAndCleanText } from '../utils/citationParser'
 
@@ -124,6 +125,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
 
 
   const [isLoading, setIsLoading] = useState(false)
+  const [isActivityPanelVisible, setIsActivityPanelVisible] = useState(false)
 
   // Function to create embedding for a message
   const createMessageEmbedding = async (message: Message) => {
@@ -379,6 +381,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
     }
   }
 
+  // Get current tool call events and agent conversations for the activity panel
+  const currentToolCallEvents = messages.length > 0 ? messages[messages.length - 1].toolCallEvents || [] : []
+  const currentAgentConversations = messages.length > 0 ? messages[messages.length - 1].agentConversations || [] : []
+
   return (
     <div style={{
       display: 'flex',
@@ -392,6 +398,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatId: propChatId }) => 
       
       <MessageList messages={messages} isLoading={isLoading} />
       <MessageInput onSendMessage={handleSendMessage} disabled={isLoading} />
+      
+      {/* Activity Panel */}
+      <ActivityPanel
+        toolCallEvents={currentToolCallEvents}
+        agentConversations={currentAgentConversations}
+        isVisible={isActivityPanelVisible}
+        onToggle={() => setIsActivityPanelVisible(!isActivityPanelVisible)}
+      />
     </div>
   )
 }

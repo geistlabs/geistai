@@ -97,7 +97,7 @@ export async function sendStreamingMessage(
       },
       body: JSON.stringify(requestBody),
     })
-
+    console.log(response.status, "response.status")
     if (!response.ok) {
       const errorText = await response.text()
       throw new Error(`HTTP ${response.status}: ${errorText}`)
