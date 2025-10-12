@@ -134,34 +134,49 @@ export default function ChatScreenDebug() {
 
   const handleVoiceMessage = async () => {
     if (isRecording) {
-      setIsTranscribing(true);
-      console.log('🎤 [ChatScreen] Stopping recording and transcribing...');
+      console.log('🎤 [ChatScreen] Stopping recording...');
 
       try {
-        const result = await recording.stopRecording();
-        console.log('🎤 [ChatScreen] Transcription result:', result);
+        // Stop recording and get URI
+        const uri = await recording.stopRecording();
+        setIsRecording(false);
+        console.log('🎤 [ChatScreen] Recording stopped, URI:', uri);
 
-        if (result.success && result.text) {
-          setInput(result.text);
-          console.log('🎤 [ChatScreen] Text set to input:', result.text);
+        if (uri) {
+          setIsTranscribing(true);
+          console.log('🎤 [ChatScreen] Starting transcription...');
+
+          // Transcribe the audio file
+          const result = await chatApi.transcribeAudio(uri);
+          console.log('🎤 [ChatScreen] Transcription result:', result);
+
+          if (result.success && result.text && result.text.trim()) {
+            setInput(result.text.trim());
+            console.log(
+              '🎤 [ChatScreen] Text set to input:',
+              result.text.trim(),
+            );
+          } else {
+            Alert.alert(
+              'Transcription Error',
+              result.error || 'No speech detected',
+            );
+          }
         } else {
-          Alert.alert(
-            'Transcription Error',
-            result.error || 'Failed to transcribe audio',
-          );
+          Alert.alert('Recording Error', 'No audio file created');
         }
       } catch (error) {
-        console.error('❌ [ChatScreen] Transcription error:', error);
-        Alert.alert('Error', 'Failed to transcribe audio');
+        console.error('❌ [ChatScreen] Recording/Transcription error:', error);
+        Alert.alert('Error', 'Failed to process recording');
       } finally {
+        setIsRecording(false);
         setIsTranscribing(false);
       }
     } else {
       console.log('🎤 [ChatScreen] Starting recording...');
+      setIsRecording(true);
       await recording.startRecording();
     }
-
-    setIsRecording(!isRecording);
   };
 
   const handleClearChat = () => {
