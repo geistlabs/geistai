@@ -135,7 +135,7 @@ export default function ChatScreenDebug() {
   const handleVoiceMessage = async () => {
     if (isRecording) {
       console.log('🎤 [ChatScreen] Stopping recording...');
-      
+
       try {
         // Stop recording and get URI
         const uri = await recording.stopRecording();
@@ -145,14 +145,17 @@ export default function ChatScreenDebug() {
         if (uri) {
           setIsTranscribing(true);
           console.log('🎤 [ChatScreen] Starting transcription...');
-          
+
           // Transcribe the audio file
           const result = await chatApi.transcribeAudio(uri);
           console.log('🎤 [ChatScreen] Transcription result:', result);
 
           if (result.success && result.text && result.text.trim()) {
             setInput(result.text.trim());
-            console.log('🎤 [ChatScreen] Text set to input:', result.text.trim());
+            console.log(
+              '🎤 [ChatScreen] Text set to input:',
+              result.text.trim(),
+            );
           } else {
             Alert.alert(
               'Transcription Error',
