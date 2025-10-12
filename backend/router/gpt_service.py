@@ -17,6 +17,8 @@ import json
 from typing import Dict, List,  Callable, Optional
 import httpx
 from process_llm_response import process_llm_response_with_tools
+from answer_mode import answer_mode_stream
+from query_router import route_query
 
 
 # MCP imports
@@ -43,6 +45,10 @@ PERMITTED_TOOLS = [
 # Maximum number of tool calls in a single conversation turn
 MAX_TOOL_CALLS = 10
 
+# Force response after N tool iterations (industry standard pattern)
+# After this many tool calls, remove tools and force LLM to generate final answer
+FORCE_RESPONSE_AFTER = 1  # Trigger answer mode immediately after first tool call
+
 
 class GptService:
     """Main service for handling GPT requests with tool support"""
@@ -52,6 +58,14 @@ class GptService:
         self._tool_registry: Dict[str, dict] = {}
         self.config = config
         self.can_log = can_log
+
+        # Multi-model inference URLs
+        self.qwen_url = config.INFERENCE_URL_QWEN
+        self.gpt_oss_url = config.INFERENCE_URL_GPT_OSS
+
+        print(f"📍 Inference URLs configured:")
+        print(f"   Qwen (tools/complex): {self.qwen_url}")
+        print(f"   GPT-OSS (creative/simple): {self.gpt_oss_url}")
 
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
@@ -404,6 +418,99 @@ class GptService:
         return content
 
     # ------------------------------------------------------------------------
+    # Tool Findings Extraction
+    # ------------------------------------------------------------------------
+
+    def _extract_tool_findings(self, conversation: List[dict]) -> str:
+        """
+        Extract tool results from conversation history
+
+        Args:
+            conversation: Message history with tool results
+
+        Returns:
+            Text summary of tool findings (optimized for speed)
+        """
+        import re
+
+        findings = []
+
+        for msg in conversation:
+            if msg.get("role") == "tool":
+                content = msg.get("content", "")
+
+                # Strip HTML tags for cleaner content
+                content = re.sub(r'<[^>]+>', '', content)
+
+                # Remove extra whitespace
+                content = ' '.join(content.split())
+
+                # Truncate to 200 chars (optimized from 500)
+                if len(content) > 200:
+                    content = content[:200] + "..."
+
+                findings.append(content)
+
+        if not findings:
+            return "No tool results available."
+
+        # Return max 3 findings, joined
+        return "\n".join(findings[:3])
+
+    # ------------------------------------------------------------------------
+    # Direct Query (No Tools)
+    # ------------------------------------------------------------------------
+
+    async def direct_query(self, inference_url: str, messages: List[dict]):
+        """
+        Direct query to model without tools (simple queries)
+
+        Args:
+            inference_url: Which model to use (Qwen or GPT-OSS)
+            messages: Conversation history
+
+        Yields:
+            Content chunks to stream to user
+        """
+        print(f"📨 Direct query to {inference_url}")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream(
+                "POST",
+                f"{inference_url}/v1/chat/completions",
+                json={
+                    "messages": messages,
+                    "stream": True,
+                    "max_tokens": 512,
+                    "temperature": 0.7
+                }
+            ) as response:
+
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        if line.strip() == "data: [DONE]":
+                            break
+
+                        try:
+                            data = json.loads(line[6:])
+
+                            if "choices" in data and len(data["choices"]) > 0:
+                                choice = data["choices"][0]
+                                delta = choice.get("delta", {})
+
+                                # Stream content
+                                if "content" in delta and delta["content"]:
+                                    yield delta["content"]
+
+                                # Stop on finish
+                                finish_reason = choice.get("finish_reason")
+                                if finish_reason in ["stop", "length"]:
+                                    break
+
+                        except json.JSONDecodeError:
+                            continue
+
+    # ------------------------------------------------------------------------
     # Streaming Chat with Tool Calling
     # ------------------------------------------------------------------------
 
@@ -416,7 +523,7 @@ class GptService:
 
     ):
         """
-        Stream chat request with tool calling support
+        Stream chat request with multi-model routing and tool calling support
 
         Yields:
             str: Content chunks to stream to client
@@ -425,6 +532,35 @@ class GptService:
         if not self._tool_registry:
             await self.init_tools()
 
+        # ROUTING: Determine which model/flow to use
+        query = messages[-1]["content"] if messages else ""
+        route = route_query(query)
+        print(f"🎯 Query routed to: {route}")
+        print(f"   Query: '{query[:80]}...'")
+
+        # Route 1: Creative/Simple → GPT-OSS direct (no tools)
+        if route == "gpt_oss":
+            print(f"📝 Using GPT-OSS for creative/simple query")
+            async for chunk in self.direct_query(self.gpt_oss_url, messages):
+                yield chunk
+            return
+
+        # Route 2: Code/Complex → Qwen direct (no tools)
+        elif route == "qwen_direct":
+            print(f"🧠 Using Qwen for complex query (no tools)")
+            async for chunk in self.direct_query(self.qwen_url, messages):
+                yield chunk
+            return
+
+        # Route 3: Tool queries → Use MCP tools directly (bypass orchestrator)
+        print(f"🔧 Using tool flow for query (route: {route})")
+
+        # Override agent_name and permitted_tools for direct MCP usage
+        if route == "qwen_tools":
+            agent_name = "assistant"  # Direct assistant, not orchestrator
+            # Use MCP tools directly (brave_web_search, fetch)
+            permitted_tools = ["brave_web_search", "brave_summarizer", "fetch"]
+            print(f"   Using MCP tools directly: {permitted_tools}")
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort)
         headers, model, url = self.get_chat_completion_params()
@@ -449,7 +585,7 @@ class GptService:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
 
-
+            print(f"🌐 llm_stream_once: Sending request to {url}")
             try:
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(
@@ -459,18 +595,25 @@ class GptService:
                         json=request_data,
                         timeout=self.config.INFERENCE_TIMEOUT
                     ) as resp:
-
+                        print(f"   ✅ Response status: {resp.status_code}")
+                        line_count = 0
                         async for line in resp.aiter_lines():
+                            line_count += 1
+                            if line_count <= 3:
+                                print(f"   📝 Line {line_count}: {line[:100]}")
+
                             if not line or not line.startswith("data: "):
                                 continue
 
                             if "[DONE]" in line:
+                                print(f"   🏁 Stream completed ({line_count} lines total)")
                                 break
 
                             try:
                                 payload = json.loads(line[6:])  # Remove "data: " prefix
                                 yield payload
-                            except json.JSONDecodeError:
+                            except json.JSONDecodeError as je:
+                                print(f"   ⚠️  JSON decode error: {je}")
                                 continue
             except Exception as e:
                 print(f"❌ DEBUG: Exception in llm_stream_once: {e}")
@@ -482,6 +625,27 @@ class GptService:
 
         while tool_call_count < MAX_TOOL_CALLS:
             print(f"🔄 Tool calling loop iteration {tool_call_count + 1}/{MAX_TOOL_CALLS} for agent: {agent_name}")
+
+            # ANSWER MODE: After N tool calls, switch to answer-only mode
+            # This prevents infinite loops by forcing content generation
+            force_response = tool_call_count >= FORCE_RESPONSE_AFTER
+            if force_response:
+                print(f"🛑 Switching to ANSWER MODE after {tool_call_count} tool calls")
+
+                # Extract tool results from conversation as findings
+                findings = self._extract_tool_findings(conversation)
+
+                # OPTIMIZATION: Use GPT-OSS for answer generation (15x faster than Qwen)
+                # GPT-OSS: 2-3s for summaries vs Qwen: 30-40s
+                answer_url = self.gpt_oss_url  # Use GPT-OSS instead of Qwen
+                print(f"📝 Calling answer_mode with GPT-OSS (faster) - findings ({len(findings)} chars)")
+
+                # Use answer mode (tools disabled, firewall active)
+                async for chunk in answer_mode_stream(query, findings, answer_url):
+                    yield chunk
+
+                print(f"✅ Answer mode completed")
+                return  # Done - no more loops
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
