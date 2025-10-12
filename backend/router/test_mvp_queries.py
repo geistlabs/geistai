@@ -137,36 +137,36 @@ class MVPTester:
                 "max_time": 45
             },
 
-            # Creative queries (gpt_oss route)
+            # Creative queries (llama route)
             {
                 "query": "Write a haiku about coding",
-                "expected_route": "gpt_oss",
+                "expected_route": "llama",
                 "should_use_tools": False,
                 "max_time": 30
             },
             {
                 "query": "Tell me a joke",
-                "expected_route": "gpt_oss",
+                "expected_route": "llama",
                 "should_use_tools": False,
                 "max_time": 30
             },
             {
                 "query": "Create a short poem about the ocean",
-                "expected_route": "gpt_oss",
+                "expected_route": "llama",
                 "should_use_tools": False,
                 "max_time": 30
             },
 
-            # Simple explanations (gpt_oss route)
+            # Simple explanations (llama route)
             {
                 "query": "What is Docker?",
-                "expected_route": "gpt_oss",
+                "expected_route": "llama",
                 "should_use_tools": False,
                 "max_time": 30
             },
             {
                 "query": "Explain what an API is",
-                "expected_route": "gpt_oss",
+                "expected_route": "llama",
                 "should_use_tools": False,
                 "max_time": 30
             },

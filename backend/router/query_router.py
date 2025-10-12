@@ -5,7 +5,7 @@ Query Router - Determines which model to use for each query
 import re
 from typing import Literal
 
-ModelChoice = Literal["qwen_tools", "qwen_direct", "gpt_oss"]
+ModelChoice = Literal["qwen_tools", "qwen_direct", "llama"]
 
 
 class QueryRouter:
@@ -15,9 +15,17 @@ class QueryRouter:
         # Tool-required keywords (need web search/current info)
         self.tool_keywords = [
             r"\bweather\b", r"\btemperature\b", r"\bforecast\b",
-            r"\bnews\b", r"\btoday\b", r"\blatest\b", r"\bcurrent\b",
+            r"\bnews\b", r"\blatest\b", r"\bcurrent\b",
             r"\bsearch for\b", r"\bfind out\b", r"\blookup\b",
-            r"\bwhat'?s happening\b", r"\bright now\b"
+            r"\bwhat'?s happening\b", r"\bright now\b",
+            # Specific "today" patterns that need tools
+            r"\btoday'?s\s+(weather|news|events)\b",
+            r"\bwhat'?s\s+(the\s+)?weather\s+today\b",
+            r"\bnews\s+today\b",
+            # Sports/events that need current info
+            r"\b(yesterday|today|last night)'?s?\s+(game|match|result|score)\b",
+            r"\bresult\s+(of|from)\s+.*\s+(yesterday|today|last night)\b",
+            r"\bwho\s+won\s+.*\s+(yesterday|today|last night)\b"
         ]
 
         # Creative/conversational keywords
@@ -41,7 +49,7 @@ class QueryRouter:
         Returns:
             "qwen_tools": Two-pass flow with web search/fetch
             "qwen_direct": Qwen for complex tasks, no tools
-            "gpt_oss": GPT-OSS for simple/creative
+            "llama": Llama for simple/creative
         """
         query_lower = query.lower()
 
@@ -58,7 +66,7 @@ class QueryRouter:
         # Priority 3: Creative/simple queries
         for pattern in self.creative_keywords:
             if re.search(pattern, query_lower):
-                return "gpt_oss"
+                return "llama"
 
         # Priority 4: Simple explanations
         if any(kw in query_lower for kw in ["what is", "define", "explain", "how does"]):
@@ -66,13 +74,13 @@ class QueryRouter:
             if any(kw in query_lower for kw in ["latest", "current", "today", "now"]):
                 return "qwen_tools"
             else:
-                return "gpt_oss"  # Historical/general knowledge
+                return "llama"  # Historical/general knowledge
 
         # Default: Use Qwen (more capable)
         if len(query.split()) > 30:  # Long query → complex
             return "qwen_direct"
         else:
-            return "gpt_oss"  # Short query → probably simple
+            return "llama"  # Short query → probably simple
 
 
 # Singleton instance

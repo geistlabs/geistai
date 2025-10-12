@@ -22,24 +22,24 @@ ROUTER_DIR="$BACKEND_DIR/router"
 
 # Model paths
 QWEN_MODEL="$BACKEND_DIR/inference/models/qwen2.5-32b-instruct-q4_k_m.gguf"
-GPT_OSS_MODEL="$BACKEND_DIR/inference/models/openai_gpt-oss-20b-Q4_K_S.gguf"
+LLAMA_MODEL="$BACKEND_DIR/inference/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
 
 # Ports
 QWEN_PORT=8080      # Tool queries, complex reasoning
-GPT_OSS_PORT=8082   # Creative, simple queries
+LLAMA_PORT=8082     # Answer generation, creative, simple queries
 ROUTER_PORT=8000
 WHISPER_PORT=8004
 
 # GPU settings for Apple Silicon (M4 Pro)
 GPU_LAYERS_QWEN=33         # Qwen has 33 layers
-GPU_LAYERS_GPT_OSS=32      # GPT-OSS has 32 layers
+GPU_LAYERS_LLAMA=32        # Llama has 32 layers
 CONTEXT_SIZE_QWEN=32768    # Qwen supports 128K, using 32K
-CONTEXT_SIZE_GPT_OSS=8192  # GPT-OSS smaller context
+CONTEXT_SIZE_LLAMA=8192    # Llama context
 THREADS=0  # Auto-detect CPU threads
 
 echo -e "${BLUE}🚀 Starting GeistAI Multi-Model Backend${NC}"
 echo -e "${BLUE}📱 Optimized for Apple Silicon MacBook with Metal GPU${NC}"
-echo -e "${BLUE}🧠 Running: Qwen 32B Instruct + GPT-OSS 20B${NC}"
+echo -e "${BLUE}🧠 Running: Qwen 32B Instruct + Llama 3.1 8B${NC}"
 echo ""
 
 # Function to check if port is in use
@@ -67,7 +67,7 @@ kill_port() {
 cleanup() {
     echo -e "\n${YELLOW}🛑 Shutting down services...${NC}"
     kill_port $QWEN_PORT
-    kill_port $GPT_OSS_PORT
+    kill_port $LLAMA_PORT
     kill_port $ROUTER_PORT
     kill_port $WHISPER_PORT
     echo -e "${GREEN}✅ Cleanup complete${NC}"
@@ -170,16 +170,15 @@ if [[ ! -f "$QWEN_MODEL" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$GPT_OSS_MODEL" ]]; then
-    echo -e "${RED}❌ GPT-OSS model not found: $GPT_OSS_MODEL${NC}"
-    echo -e "${YELLOW}   This model should already be present from previous setup${NC}"
-    echo -e "${YELLOW}   If missing, download: cd inference/models && wget https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_S.gguf${NC}"
+if [[ ! -f "$LLAMA_MODEL" ]]; then
+    echo -e "${RED}❌ Llama model not found: $LLAMA_MODEL${NC}"
+    echo -e "${YELLOW}   Download: cd inference/models && wget https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf${NC}"
     exit 1
 fi
 
 echo -e "${GREEN}✅ Both models found:${NC}"
 echo -e "   Qwen: $(du -h "$QWEN_MODEL" | cut -f1)"
-echo -e "   GPT-OSS: $(du -h "$GPT_OSS_MODEL" | cut -f1)"
+echo -e "   Llama: $(du -h "$LLAMA_MODEL" | cut -f1)"
 
 if [[ ! -d "$ROUTER_DIR" ]]; then
     echo -e "${RED}❌ Router directory not found: $ROUTER_DIR${NC}"
@@ -195,7 +194,7 @@ docker-compose down 2>/dev/null || true
 
 # Kill any processes on our ports
 kill_port $QWEN_PORT
-kill_port $GPT_OSS_PORT
+kill_port $LLAMA_PORT
 kill_port $ROUTER_PORT
 
 # Start inference server
@@ -226,35 +225,35 @@ echo -e "${GREEN}✅ Qwen server starting (PID: $QWEN_PID)${NC}"
 
 sleep 3
 
-# Start GPT-OSS if available
-if [[ -n "$GPT_OSS_MODEL" && -f "$GPT_OSS_MODEL" ]]; then
+# Start Llama 3.1 8B if available
+if [[ -n "$LLAMA_MODEL" && -f "$LLAMA_MODEL" ]]; then
     echo ""
-    echo -e "${BLUE}📝 Starting GPT-OSS 20B (creative, simple queries)...${NC}"
-    echo -e "${YELLOW}   Model: GPT-OSS 20B (Q4_K_S)${NC}"
-    echo -e "${YELLOW}   GPU Layers: $GPU_LAYERS_GPT_OSS (Metal acceleration)${NC}"
-    echo -e "${YELLOW}   Context: $CONTEXT_SIZE_GPT_OSS tokens${NC}"
-    echo -e "${YELLOW}   Port: $GPT_OSS_PORT${NC}"
+    echo -e "${BLUE}📝 Starting Llama 3.1 8B (answer generation, creative, simple queries)...${NC}"
+    echo -e "${YELLOW}   Model: Llama 3.1 8B Instruct (Q4_K_M)${NC}"
+    echo -e "${YELLOW}   GPU Layers: $GPU_LAYERS_LLAMA (Metal acceleration)${NC}"
+    echo -e "${YELLOW}   Context: $CONTEXT_SIZE_LLAMA tokens${NC}"
+    echo -e "${YELLOW}   Port: $LLAMA_PORT${NC}"
 
     ./build/bin/llama-server \
-        -m "$GPT_OSS_MODEL" \
+        -m "$LLAMA_MODEL" \
         --host 0.0.0.0 \
-        --port $GPT_OSS_PORT \
-        --ctx-size $CONTEXT_SIZE_GPT_OSS \
-        --n-gpu-layers $GPU_LAYERS_GPT_OSS \
+        --port $LLAMA_PORT \
+        --ctx-size $CONTEXT_SIZE_LLAMA \
+        --n-gpu-layers $GPU_LAYERS_LLAMA \
         --threads $THREADS \
         --cont-batching \
         --parallel 2 \
         --batch-size 256 \
         --ubatch-size 128 \
         --mlock \
-        > /tmp/geist-gpt-oss.log 2>&1 &
+        > /tmp/geist-llama.log 2>&1 &
 
-    GPT_OSS_PID=$!
-    echo -e "${GREEN}✅ GPT-OSS server starting (PID: $GPT_OSS_PID)${NC}"
+    LLAMA_PID=$!
+    echo -e "${GREEN}✅ Llama server starting (PID: $LLAMA_PID)${NC}"
 else
     echo ""
-    echo -e "${YELLOW}⚠️  Skipping GPT-OSS (model not found)${NC}"
-    GPT_OSS_PID=""
+    echo -e "${YELLOW}⚠️  Skipping Llama (model not found)${NC}"
+    LLAMA_PID=""
 fi
 
 # Wait for both inference servers to be ready
@@ -291,29 +290,29 @@ if [[ $attempt -eq $max_attempts ]]; then
     exit 1
 fi
 
-# Check GPT-OSS (if enabled)
-if [[ -n "$GPT_OSS_PID" ]]; then
-    echo -e "${BLUE}⏳ Checking GPT-OSS server health...${NC}"
+# Check Llama (if enabled)
+if [[ -n "$LLAMA_PID" ]]; then
+    echo -e "${BLUE}⏳ Checking Llama server health...${NC}"
     attempt=0
     while [[ $attempt -lt $max_attempts ]]; do
-        if curl -s http://localhost:$GPT_OSS_PORT/health >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ GPT-OSS server is ready!${NC}"
+        if curl -s http://localhost:$LLAMA_PORT/health >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Llama server is ready!${NC}"
             break
         fi
 
-        if ! kill -0 $GPT_OSS_PID 2>/dev/null; then
-            echo -e "${RED}❌ GPT-OSS server failed to start. Check logs: tail -f /tmp/geist-gpt-oss.log${NC}"
+        if ! kill -0 $LLAMA_PID 2>/dev/null; then
+            echo -e "${RED}❌ Llama server failed to start. Check logs: tail -f /tmp/geist-llama.log${NC}"
             exit 1
         fi
 
-        echo -e "${YELLOW}   ... still loading GPT-OSS (attempt $((attempt+1))/$max_attempts)${NC}"
+        echo -e "${YELLOW}   ... still loading Llama (attempt $((attempt+1))/$max_attempts)${NC}"
         sleep 2
         ((attempt++))
     done
 
     if [[ $attempt -eq $max_attempts ]]; then
-        echo -e "${RED}❌ GPT-OSS server failed to respond after $max_attempts attempts${NC}"
-        echo -e "${YELLOW}Check logs: tail -f /tmp/geist-gpt-oss.log${NC}"
+        echo -e "${RED}❌ Llama server failed to respond after $max_attempts attempts${NC}"
+        echo -e "${YELLOW}Check logs: tail -f /tmp/geist-llama.log${NC}"
         exit 1
     fi
 fi
@@ -388,7 +387,7 @@ echo -e "${GREEN}🎉 Multi-Model GPU Services Ready!${NC}"
 echo ""
 echo -e "${BLUE}📊 GPU Service Status:${NC}"
 echo -e "   🧠 Qwen 32B Instruct:  ${GREEN}http://localhost:$QWEN_PORT${NC} (Tool queries + Metal GPU)"
-echo -e "   📝 GPT-OSS 20B:        ${GREEN}http://localhost:$GPT_OSS_PORT${NC} (Creative/Simple + Metal GPU)"
+echo -e "   📝 Llama 3.1 8B:       ${GREEN}http://localhost:$LLAMA_PORT${NC} (Answer/Creative/Simple + Metal GPU)"
 echo -e "   🗣️  Whisper STT:       ${GREEN}http://localhost:$WHISPER_PORT${NC} (FastAPI + whisper.cpp)"
 echo ""
 echo -e "${BLUE}🐳 Next Step - Start Docker Services:${NC}"
@@ -397,12 +396,12 @@ echo -e "   This will start: Router, Embeddings, MCP Brave, MCP Fetch"
 echo ""
 echo -e "${BLUE}🧪 Test GPU Services:${NC}"
 echo -e "   Qwen:      ${YELLOW}curl http://localhost:$QWEN_PORT/health${NC}"
-echo -e "   GPT-OSS:   ${YELLOW}curl http://localhost:$GPT_OSS_PORT/health${NC}"
+echo -e "   Llama:     ${YELLOW}curl http://localhost:$LLAMA_PORT/health${NC}"
 echo -e "   Whisper:   ${YELLOW}curl http://localhost:$WHISPER_PORT/health${NC}"
 echo ""
 echo -e "${BLUE}📝 Log Files:${NC}"
 echo -e "   Qwen:      ${YELLOW}tail -f /tmp/geist-qwen.log${NC}"
-echo -e "   GPT-OSS:   ${YELLOW}tail -f /tmp/geist-gpt-oss.log${NC}"
+echo -e "   Llama:     ${YELLOW}tail -f /tmp/geist-llama.log${NC}"
 echo -e "   Whisper:   ${YELLOW}tail -f /tmp/geist-whisper.log${NC}"
 echo -e "   Router:    ${YELLOW}tail -f /tmp/geist-router.log${NC}"
 echo ""
@@ -415,13 +414,13 @@ echo -e "${BLUE}💡 Performance Notes:${NC}"
 echo -e "   • ${GREEN}~15x faster${NC} than Docker (native Metal GPU)"
 echo -e "   • Full Apple M4 Pro GPU acceleration"
 echo -e "   • Qwen: All 33 layers on GPU (18GB)"
-echo -e "   • GPT-OSS: All 32 layers on GPU (12GB)"
-echo -e "   • Total GPU usage: ~30GB"
+echo -e "   • Llama 3.1 8B: All 32 layers on GPU (5GB)"
+echo -e "   • Total GPU usage: ~25GB"
 echo -e "   • Streaming responses for real-time feel"
 echo ""
 echo -e "${BLUE}🎯 Model Routing:${NC}"
 echo -e "   • Weather/News/Search → Qwen (8-15s)"
-echo -e "   • Creative/Simple → GPT-OSS (1-3s)"
+echo -e "   • Creative/Simple → Llama 3.1 8B (1-3s)"
 echo -e "   • Code/Complex → Qwen (5-10s)"
 echo ""
 echo -e "${GREEN}✨ Ready for development! Press Ctrl+C to stop all services.${NC}"
@@ -435,8 +434,8 @@ while true; do
         exit 1
     fi
 
-    if [[ -n "$GPT_OSS_PID" ]] && ! kill -0 $GPT_OSS_PID 2>/dev/null; then
-        echo -e "${RED}❌ GPT-OSS server died unexpectedly${NC}"
+    if [[ -n "$LLAMA_PID" ]] && ! kill -0 $LLAMA_PID 2>/dev/null; then
+        echo -e "${RED}❌ Llama server died unexpectedly${NC}"
         exit 1
     fi
 

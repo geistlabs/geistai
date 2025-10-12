@@ -35,7 +35,11 @@ export function InputBar({
   onStopRecording,
   onCancelRecording,
 }: InputBarProps) {
-  const isDisabled = disabled || (!value.trim() && !isStreaming);
+  // Button is disabled if:
+  // 1. Explicitly disabled via prop
+  // 2. No text entered AND not currently streaming (can't send empty, but can stop stream)
+  const hasText = (value || '').trim().length > 0;
+  const isDisabled = disabled || (!hasText && !isStreaming);
   const audioLevels = useAudioLevels();
 
   // Start/stop audio analysis based on recording state
@@ -165,7 +169,7 @@ export function InputBar({
         <TouchableOpacity
           className='justify-center items-center ml-2'
           onPress={isStreaming ? onInterrupt : onSend}
-          disabled={isDisabled && !isStreaming}
+          disabled={isDisabled}
         >
           {isStreaming ? (
             // Pause icon - white rectangle on black rounded background
@@ -173,7 +177,10 @@ export function InputBar({
               <View className='w-4 h-4 rounded-sm bg-white' />
             </View>
           ) : (
-            <View className='w-11 h-11 rounded-full bg-black items-center justify-center'>
+            <View
+              className='w-11 h-11 rounded-full items-center justify-center'
+              style={{ backgroundColor: isDisabled ? '#D1D5DB' : '#000000' }}
+            >
               <Svg
                 width={22}
                 height={22}

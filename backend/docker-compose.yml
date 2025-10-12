@@ -135,6 +135,8 @@ services:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://host.docker.internal:8080  # Connect to host inference
+      - INFERENCE_URL_QWEN=http://host.docker.internal:8080  # Connect to Qwen
+      - INFERENCE_URL_LLAMA=http://host.docker.internal:8082 # Connect to Llama
       - EMBEDDINGS_URL=http://embeddings:8001
       - SSL_ENABLED=false
       # Development-specific Python settings

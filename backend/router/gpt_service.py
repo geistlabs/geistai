@@ -61,11 +61,11 @@ class GptService:
 
         # Multi-model inference URLs
         self.qwen_url = config.INFERENCE_URL_QWEN
-        self.gpt_oss_url = config.INFERENCE_URL_GPT_OSS
+        self.llama_url = config.INFERENCE_URL_LLAMA
 
         print(f"📍 Inference URLs configured:")
         print(f"   Qwen (tools/complex): {self.qwen_url}")
-        print(f"   GPT-OSS (creative/simple): {self.gpt_oss_url}")
+        print(f"   Llama (creative/simple): {self.llama_url}")
 
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
@@ -429,7 +429,7 @@ class GptService:
             conversation: Message history with tool results
 
         Returns:
-            Text summary of tool findings (optimized for speed)
+            Text summary of tool findings (balanced for context vs speed)
         """
         import re
 
@@ -445,17 +445,18 @@ class GptService:
                 # Remove extra whitespace
                 content = ' '.join(content.split())
 
-                # Truncate to 200 chars (optimized from 500)
-                if len(content) > 200:
-                    content = content[:200] + "..."
+                # Truncate to 1000 chars (increased from 200 for better context)
+                # This gives Llama more information to work with
+                if len(content) > 1000:
+                    content = content[:1000] + "..."
 
                 findings.append(content)
 
         if not findings:
             return "No tool results available."
 
-        # Return max 3 findings, joined
-        return "\n".join(findings[:3])
+        # Return max 5 findings (increased from 3), joined
+        return "\n\n---\n\n".join(findings[:5])
 
     # ------------------------------------------------------------------------
     # Direct Query (No Tools)
@@ -466,7 +467,7 @@ class GptService:
         Direct query to model without tools (simple queries)
 
         Args:
-            inference_url: Which model to use (Qwen or GPT-OSS)
+            inference_url: Which model to use (Qwen or Llama)
             messages: Conversation history
 
         Yields:
@@ -538,10 +539,10 @@ class GptService:
         print(f"🎯 Query routed to: {route}")
         print(f"   Query: '{query[:80]}...'")
 
-        # Route 1: Creative/Simple → GPT-OSS direct (no tools)
-        if route == "gpt_oss":
-            print(f"📝 Using GPT-OSS for creative/simple query")
-            async for chunk in self.direct_query(self.gpt_oss_url, messages):
+        # Route 1: Creative/Simple → Llama direct (no tools)
+        if route == "llama":
+            print(f"📝 Using Llama for creative/simple query")
+            async for chunk in self.direct_query(self.llama_url, messages):
                 yield chunk
             return
 
@@ -635,10 +636,10 @@ class GptService:
                 # Extract tool results from conversation as findings
                 findings = self._extract_tool_findings(conversation)
 
-                # OPTIMIZATION: Use GPT-OSS for answer generation (15x faster than Qwen)
-                # GPT-OSS: 2-3s for summaries vs Qwen: 30-40s
-                answer_url = self.gpt_oss_url  # Use GPT-OSS instead of Qwen
-                print(f"📝 Calling answer_mode with GPT-OSS (faster) - findings ({len(findings)} chars)")
+                # OPTIMIZATION: Use Llama for answer generation (15x faster than Qwen)
+                # Llama: 2-3s for summaries vs Qwen: 30-40s
+                answer_url = self.llama_url  # Use Llama instead of Qwen
+                print(f"📝 Calling answer_mode with Llama (faster) - findings ({len(findings)} chars)")
 
                 # Use answer mode (tools disabled, firewall active)
                 async for chunk in answer_mode_stream(query, findings, answer_url):

@@ -8,6 +8,7 @@ agent system and adds a firewall to prevent infinite tool loops.
 import httpx
 from typing import AsyncIterator, List, Dict
 import json
+import asyncio # Added for async sleep
 
 
 async def answer_mode_stream(
@@ -87,43 +88,52 @@ async def answer_mode_stream(
                     except json.JSONDecodeError:
                         continue
 
-            # Post-process: Clean up response
-            # GPT-OSS may use Harmony format or plain text - handle both
+            # Post-process: Clean up response and stream it token by token
+            # Llama should produce clean output, but let's clean just in case
 
             import re
 
-            # Try to extract final channel if present
-            if "<|channel|>final<|message|>" in full_response:
-                parts = full_response.split("<|channel|>final<|message|>")
-                if len(parts) > 1:
-                    final_content = parts[1].split("<|end|>")[0] if "<|end|>" in parts[1] else parts[1]
-                    yield final_content.strip()
-                    return
+            # Clean the response
+            cleaned_response = full_response
 
-            # If no final channel, clean up Harmony markers from analysis
-            if "<|channel|>" in full_response:
-                cleaned = full_response
-
-                # Remove all Harmony control markers
-                cleaned = re.sub(r'<\|[^|]+\|>', '', cleaned)
-                cleaned = re.sub(r'\{[^}]*"cursor"[^}]*\}', '', cleaned)  # Remove JSON tool calls
-
-                # Remove meta-commentary patterns
-                cleaned = re.sub(r'We need to (answer|check|provide|browse)[^.]*\.', '', cleaned)
-                cleaned = re.sub(r'The user (asks|wants|needs|provided)[^.]*\.', '', cleaned)
-                cleaned = re.sub(r'Let\'s (open|browse|check)[^.]*\.', '', cleaned)
-
-                # Clean up whitespace
-                cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-
-                if len(cleaned) > 20:
-                    yield cleaned
+            # Remove any potential Harmony markers (shouldn't be present with Llama)
+            if "<|channel|>" in cleaned_response:
+                # Extract final channel if present
+                if "<|channel|>final<|message|>" in cleaned_response:
+                    parts = cleaned_response.split("<|channel|>final<|message|>")
+                    if len(parts) > 1:
+                        cleaned_response = parts[1].split("<|end|>")[0] if "<|end|>" in parts[1] else parts[1]
                 else:
-                    # Fallback: provide simple answer from findings
-                    yield f"Based on the search results, please visit the sources for details.\n\nSources:\n{findings[:100]}"
+                    # Remove all Harmony markers
+                    cleaned_response = re.sub(r'<\|[^|]+\|>', '', cleaned_response)
+
+            # Clean up any meta-commentary (shouldn't be present with Llama)
+            cleaned_response = re.sub(r'We need to (answer|check|provide|browse)[^.]*\.', '', cleaned_response)
+            cleaned_response = re.sub(r'The user (asks|wants|needs|provided)[^.]*\.', '', cleaned_response)
+            cleaned_response = re.sub(r'Let\'s (open|browse|check)[^.]*\.', '', cleaned_response)
+            cleaned_response = re.sub(r'\s+', ' ', cleaned_response).strip()
+
+            # Stream the cleaned response token by token for better UX
+            if cleaned_response:
+                # Split into words and stream them
+                words = cleaned_response.split()
+                for i, word in enumerate(words):
+                    if i == 0:
+                        yield word
+                    else:
+                        yield " " + word
+                    # Small delay to simulate streaming
+                    await asyncio.sleep(0.05)
             else:
-                # No Harmony format - yield clean response
-                yield full_response
+                # Fallback: provide simple answer from findings
+                fallback = f"Based on the search results: {findings[:200]}..."
+                words = fallback.split()
+                for i, word in enumerate(words):
+                    if i == 0:
+                        yield word
+                    else:
+                        yield " " + word
+                    await asyncio.sleep(0.05)
 
             # Fallback if no content generated
             if not content_seen:

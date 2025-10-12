@@ -17,15 +17,15 @@ test_cases = {
     "Current temperature in London": "qwen_tools",
 
     # Creative queries
-    "Write a haiku about coding": "gpt_oss",
-    "Tell me a joke": "gpt_oss",
-    "Create a poem about the ocean": "gpt_oss",
-    "Imagine a world without technology": "gpt_oss",
+    "Write a haiku about coding": "llama",
+    "Tell me a joke": "llama",
+    "Create a poem about the ocean": "llama",
+    "Imagine a world without technology": "llama",
 
     # Simple explanations
-    "What is Docker?": "gpt_oss",
-    "Explain quantum physics": "gpt_oss",
-    "Define artificial intelligence": "gpt_oss",
+    "What is Docker?": "llama",
+    "Explain quantum physics": "llama",
+    "Define artificial intelligence": "llama",
 
     # Code queries
     "Fix this Python code": "qwen_direct",
@@ -34,7 +34,7 @@ test_cases = {
 
     # Edge cases
     "What is the latest weather?": "qwen_tools",  # Latest → tools
-    "Hello": "gpt_oss",  # Short/simple → GPT-OSS
+    "Hello": "llama",  # Short/simple → Llama
 }
 
 def main():
