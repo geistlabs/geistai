@@ -17,6 +17,8 @@ import uvicorn
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler - runs once on startup"""
+    print("🚀 Lifespan startup event triggered")
+    
     # Startup: Log system info and initialization status
     if stt_service:
         print("=" * 60)
@@ -25,7 +27,7 @@ async def lifespan(app: FastAPI):
         print(f"Platform: {platform.system()} {platform.release()}")
         print(f"Architecture: {platform.machine()}")
         print(f"Python: {platform.python_version()}")
-        
+
         # Check for NVIDIA GPU
         try:
             result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'],
@@ -40,16 +42,16 @@ async def lifespan(app: FastAPI):
                 print("GPU: No NVIDIA GPU detected (CPU-only mode)")
         except Exception:
             print("GPU: No NVIDIA GPU detected (CPU-only mode)")
-        
+
         print(f"Whisper Binary: {stt_service.whisper_path}")
         print(f"Whisper Model: {stt_service.model_path}")
         print("=" * 60)
         print(f"✅ Whisper STT service ready")
     else:
         print(f"❌ Whisper STT service not available")
-    
+
     yield
-    
+
     # Shutdown: cleanup if needed
     pass
 
