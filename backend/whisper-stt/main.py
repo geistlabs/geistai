@@ -24,6 +24,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Track if we've logged startup info to avoid duplicates
+_logged_startup = False
+
 class WhisperSTTService:
     def __init__(self, whisper_path: str, model_path: str):
         self.whisper_path = whisper_path
@@ -32,6 +35,13 @@ class WhisperSTTService:
 
     def _log_system_info(self):
         """Log system and GPU information on startup"""
+        global _logged_startup
+        
+        # Only log once to avoid duplicate output from uvicorn workers
+        if _logged_startup:
+            return
+        _logged_startup = True
+        
         print("=" * 60)
         print("WHISPER STT SERVICE - SYSTEM INFO")
         print("=" * 60)
