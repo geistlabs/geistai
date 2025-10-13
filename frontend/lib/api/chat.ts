@@ -1,12 +1,22 @@
 import EventSource from 'react-native-sse';
 
 import { ApiClient } from './client';
-
+import { ENV } from '../config/environment';
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: number;
+}
+
+export interface AgentMessage {
+  agent: string;
+  content: string;
+  timestamp: number;
+  type: 'start' | 'token' | 'complete' | 'error';
+  status?: string;
+  citations?: any[];
+  meta?: any;
 }
 
 export interface ChatRequest {
@@ -18,20 +28,417 @@ export interface ChatResponse {
   response: string;
 }
 
+export interface ChatError {
+  error: string;
+}
+
+// Send a message to the chat API (non-streaming)
+export async function sendMessage(
+  message: string,
+  conversationHistory?: ChatMessage[],
+): Promise<{ content: string }> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  try {
+    console.log(`${ENV.API_URL}/api/chat`);
+    const response = await fetch(`${ENV.API_URL}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const data: ChatResponse = await response.json();
+    return { content: data.response };
+  } catch (error) {
+    console.error('Error sending message:', error);
+    throw error;
+  }
+}
+
+// Streaming chat interface
 export interface StreamChunk {
-  token?: string;
-  sequence?: number;
-  finished?: boolean;
-  error?: string;
+  token: string;
+  sequence: number;
 }
 
-export interface STTResponse {
-  success: boolean;
-  text: string;
-  language?: string;
-  error?: string;
+export interface StreamEnd {
+  finished: boolean;
 }
 
+export interface StreamError {
+  error: string;
+}
+
+export type StreamEvent = StreamChunk | StreamEnd | StreamError;
+
+// Event handler interfaces for cleaner code organization
+export interface StreamEventHandlers {
+  onToken: (token: string) => void;
+  onSubAgentEvent: (agentEvent: {
+    agent: string;
+    token: string;
+    isStreaming?: boolean;
+    task?: string;
+    context?: string;
+  }) => void;
+  onToolCallEvent: (toolCallEvent: {
+    type: string;
+    toolName: string;
+    arguments?: any;
+    result?: any;
+    error?: string;
+  }) => void;
+  onComplete: () => void;
+  onError: (error: string) => void;
+}
+
+// Event processor class for handling different event types
+class StreamEventProcessor {
+  private handlers: StreamEventHandlers;
+
+  constructor(handlers: StreamEventHandlers) {
+    this.handlers = handlers;
+  }
+
+  processEvent(data: any): void {
+    try {
+      switch (data.type) {
+        case 'orchestrator_token':
+          this.handleOrchestratorToken(data);
+          break;
+        case 'sub_agent_event':
+          this.handleSubAgentEvent(data);
+          break;
+        case 'tool_call_event':
+          this.handleToolCallEvent(data);
+          break;
+        case 'orchestrator_start':
+          this.handleOrchestratorStart(data);
+          break;
+        case 'orchestrator_complete':
+          this.handleOrchestratorComplete(data);
+          break;
+        case 'final_response':
+          this.handleFinalResponse(data);
+          break;
+        case 'error':
+          this.handleError(data);
+          break;
+        default:
+          console.warn('Unknown event type:', data.type);
+      }
+    } catch (error) {
+      console.error('Error processing event:', error);
+    }
+  }
+
+  private handleOrchestratorToken(data: any): void {
+    if (data.data?.content) {
+      this.handlers.onToken(data.data.content);
+    }
+  }
+
+  private handleSubAgentEvent(data: any): void {
+    const { type, data: eventData } = data.data;
+
+    switch (type) {
+      case 'agent_token':
+        if (eventData?.content) {
+          this.handlers.onSubAgentEvent({
+            agent: eventData.agent,
+            token: eventData.content,
+          });
+        }
+        break;
+      case 'agent_start':
+        this.handlers.onSubAgentEvent({
+          agent: eventData.agent,
+          token: 'Starting...',
+          isStreaming: true,
+          task: eventData.input,
+          context: eventData.context,
+        });
+        break;
+      case 'agent_complete':
+        this.handlers.onSubAgentEvent({
+          agent: eventData.agent,
+          token: eventData.content,
+          isStreaming: false,
+        });
+        break;
+      case 'tool_call_event':
+        this.handleSubAgentToolCall(data);
+        break;
+    }
+  }
+
+  private handleSubAgentToolCall(data: any): void {
+    const toolCallEventData = data.data.data;
+    const toolCallData = toolCallEventData.data;
+    const eventType = toolCallEventData.type;
+    const agentName = data.data.agent;
+
+    if (!toolCallData?.tool_name) {
+      console.warn('Invalid tool call event data:', {
+        eventType,
+        toolCallData,
+        data,
+      });
+      return;
+    }
+
+    const toolCallEvent = {
+      type: eventType.replace('tool_call_', ''),
+      toolName: toolCallData.tool_name,
+      arguments: toolCallData.arguments,
+      result: toolCallData.result,
+      error: toolCallData.error,
+    };
+
+    console.log(
+      `🔧 Sub-agent ${agentName} tool call ${eventType}:`,
+      toolCallData.tool_name,
+    );
+    this.handlers.onToolCallEvent(toolCallEvent);
+  }
+
+  private handleToolCallEvent(data: any): void {
+    const { type, data: eventData } = data.data;
+
+    if (!eventData?.tool_name) {
+      console.warn('Invalid tool call event data:', data);
+      return;
+    }
+
+    const toolCallEvent = {
+      type: type.replace('tool_call_', ''),
+      toolName: eventData.tool_name,
+      arguments: eventData.arguments,
+      result: eventData.result,
+      error: eventData.error,
+    };
+
+    console.log(`🔧 Tool call ${type}:`, eventData.tool_name);
+    this.handlers.onToolCallEvent(toolCallEvent);
+  }
+
+  private handleOrchestratorStart(data: any): void {
+    console.log('🎯 Orchestrator started:', data.data?.agent);
+  }
+
+  private handleOrchestratorComplete(data: any): void {
+    console.log('✅ Orchestrator completed:', data.data?.agent);
+  }
+
+  private handleFinalResponse(data: any): void {
+    console.log('📄 Final response received');
+    console.log('Citations:', data.citations?.length || 0);
+  }
+
+  private handleError(data: any): void {
+    console.error('❌ Stream error:', data.message);
+    this.handlers.onError(data.message || 'Unknown error');
+  }
+}
+
+// Send a streaming message to the chat API
+export async function sendStreamingMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  // Create event processor
+  const eventProcessor = new StreamEventProcessor(handlers);
+
+  return new Promise<void>((resolve, reject) => {
+    console.log(`${ENV.API_URL}/api/stream`);
+
+    // Create EventSource with POST data
+    const es = new EventSource(`${ENV.API_URL}/api/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestBody),
+      withCredentials: false,
+    });
+
+    // Handle different event types
+    es.addEventListener('orchestrator_token', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse orchestrator_token:', parseError);
+      }
+    });
+
+    es.addEventListener('sub_agent_event', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse sub_agent_event:', parseError);
+      }
+    });
+
+    es.addEventListener('tool_call_event', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse tool_call_event:', parseError);
+      }
+    });
+
+    es.addEventListener('orchestrator_start', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse orchestrator_start:', parseError);
+      }
+    });
+
+    es.addEventListener('orchestrator_complete', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse orchestrator_complete:', parseError);
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse final_response:', parseError);
+      }
+    });
+
+    es.addEventListener('error', (event: any) => {
+      try {
+        const data = JSON.parse(event.data);
+        eventProcessor.processEvent(data);
+      } catch (parseError) {
+        console.warn('Failed to parse error event:', parseError);
+      }
+    });
+
+    es.addEventListener('end', (event: any) => {
+      handlers.onComplete();
+      es.close();
+      resolve();
+    });
+
+    es.addEventListener('open', (event: any) => {
+      console.log('SSE connection established');
+    });
+
+    // Handle connection errors
+    es.onerror = (error) => {
+      console.error('EventSource error:', error);
+      handlers.onError('Connection failed');
+      es.close();
+      reject(new Error('Connection failed'));
+    };
+
+    // Handle general errors
+    es.onopen = () => {
+      console.log('EventSource opened');
+    };
+  });
+}
+
+// Agent message utilities
+export function createAgentMessage(
+  agent: string,
+  content: string,
+  type: 'start' | 'token' | 'complete' | 'error',
+  status?: string,
+  citations?: any[],
+  meta?: any,
+): AgentMessage {
+  return {
+    agent,
+    content,
+    timestamp: Date.now(),
+    type,
+    status,
+    citations,
+    meta,
+  };
+}
+
+export function groupAgentMessagesByAgent(
+  messages: AgentMessage[],
+): Record<string, AgentMessage[]> {
+  return messages.reduce(
+    (groups, message) => {
+      if (!groups[message.agent]) {
+        groups[message.agent] = [];
+      }
+      groups[message.agent].push(message);
+      return groups;
+    },
+    {} as Record<string, AgentMessage[]>,
+  );
+}
+
+export function getAgentDisplayName(agentName: string): string {
+  const displayNames: Record<string, string> = {
+    main_orchestrator: 'Main Orchestrator',
+    research_agent: 'Research Agent',
+    current_info_agent: 'Current Info Agent',
+    creative_agent: 'Creative Agent',
+    technical_agent: 'Technical Agent',
+    summary_agent: 'Summary Agent',
+  };
+  return (
+    displayNames[agentName] ||
+    agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  );
+}
+
+// Health check function
+export async function checkHealth(): Promise<{
+  status: string;
+  ssl_enabled: boolean;
+  ssl_status: string;
+}> {
+  try {
+    const response = await fetch(`${ENV.API_URL}/health`);
+
+    if (!response.ok) {
+      throw new Error(`Health check failed: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Health check error:', error);
+    throw error;
+  }
+}
+
+// Legacy ChatAPI class for backward compatibility
 export class ChatAPI {
   constructor(private apiClient: ApiClient) {}
 
@@ -54,11 +461,9 @@ export class ChatAPI {
 
     return new Promise(resolve => {
       const baseUrl = this.apiClient.getBaseUrl();
-      const url = `${baseUrl}/api/chat/stream`;
+      const url = `${baseUrl}/api/stream`;
 
       // Starting SSE connection
-      const connectionStartTime = Date.now();
-
       const requestBody = { message, messages: messages || [] };
       // Sending request to backend
 
@@ -83,18 +488,16 @@ export class ChatAPI {
           if (data.token !== undefined && data.token !== '') {
             onChunk(data.token);
           }
-        } catch (e) {
-          console.error('[Chat] Failed to parse chunk:', e);
+        } catch {
+          // console.error('[Chat] Failed to parse chunk:', e);
         }
       });
 
       es.addEventListener('open', (event: any) => {
-        const connectionTime = Date.now() - connectionStartTime;
         // SSE connection established
       });
 
       es.addEventListener('end', (event: any) => {
-        const totalTime = Date.now() - connectionStartTime;
         // Stream completed
         onComplete?.();
         es.close();
@@ -102,14 +505,22 @@ export class ChatAPI {
       });
 
       es.addEventListener('error', (event: any) => {
-        const errorTime = Date.now() - connectionStartTime;
-        const errorMessage =
-          event.message || event.type || 'Stream connection failed';
-        console.error(
-          '[Chat] Stream connection error after',
-          errorTime + 'ms:',
-          errorMessage,
-        );
+        let errorMessage = 'Stream connection failed';
+
+        try {
+          // Try to parse as structured error event
+          const errorData = JSON.parse(event.data || '{}');
+          if (errorData.type === 'error') {
+            errorMessage = errorData.message || errorMessage;
+          } else {
+            errorMessage = event.message || event.type || errorMessage;
+          }
+        } catch {
+          // Fallback to legacy error handling
+          errorMessage = event.message || event.type || errorMessage;
+        }
+
+        // console.error('[Chat] Stream connection error:', errorMessage);
         onError?.(new Error(errorMessage));
         es.close();
         resolve(controller);
@@ -141,7 +552,12 @@ export class ChatAPI {
   async transcribeAudio(
     audioUri: string,
     language?: string,
-  ): Promise<STTResponse> {
+  ): Promise<{
+    success: boolean;
+    text: string;
+    language?: string;
+    error?: string;
+  }> {
     // Create FormData for file upload
     const formData = new FormData();
 
@@ -173,7 +589,7 @@ export class ChatAPI {
 
       return await response.json();
     } catch (error) {
-      console.error('[STT] Transcription failed:', error);
+      // console.error('[STT] Transcription failed:', error);
       return {
         success: false,
         text: '',

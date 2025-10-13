@@ -120,20 +120,13 @@ class WhisperSTTService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
-# Initialize STT service
+# Initialize STT service (logging happens in lifespan event to avoid duplicates)
 whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
 model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
 
 stt_service = None
 if os.path.exists(whisper_path) and os.path.exists(model_path):
     stt_service = WhisperSTTService(whisper_path, model_path)
-    print(f"✅ Whisper STT service initialized")
-    print(f"   Binary: {whisper_path}")
-    print(f"   Model: {model_path}")
-else:
-    print(f"❌ Whisper STT service not available")
-    print(f"   Binary exists: {os.path.exists(whisper_path)}")
-    print(f"   Model exists: {os.path.exists(model_path)}")
 
 @app.get("/health")
 async def health_check():
