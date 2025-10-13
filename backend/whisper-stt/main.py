@@ -17,7 +17,7 @@ import uvicorn
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler - runs once on startup"""
-    # Startup: Log system info when service starts
+    # Startup: Log system info and initialization status
     if stt_service:
         print("=" * 60)
         print("WHISPER STT SERVICE - SYSTEM INFO")
@@ -44,6 +44,9 @@ async def lifespan(app: FastAPI):
         print(f"Whisper Binary: {stt_service.whisper_path}")
         print(f"Whisper Model: {stt_service.model_path}")
         print("=" * 60)
+        print(f"✅ Whisper STT service ready")
+    else:
+        print(f"❌ Whisper STT service not available")
     
     yield
     
@@ -158,20 +161,13 @@ class WhisperSTTService:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
-# Initialize STT service
+# Initialize STT service (logging happens in lifespan event to avoid duplicates)
 whisper_path = os.getenv("WHISPER_BINARY_PATH", "/usr/local/bin/whisper-cli")
 model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
 
 stt_service = None
 if os.path.exists(whisper_path) and os.path.exists(model_path):
     stt_service = WhisperSTTService(whisper_path, model_path)
-    print(f"✅ Whisper STT service initialized")
-    print(f"   Binary: {whisper_path}")
-    print(f"   Model: {model_path}")
-else:
-    print(f"❌ Whisper STT service not available")
-    print(f"   Binary exists: {os.path.exists(whisper_path)}")
-    print(f"   Model exists: {os.path.exists(model_path)}")
 
 @app.get("/health")
 async def health_check():
