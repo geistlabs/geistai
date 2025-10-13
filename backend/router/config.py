@@ -34,11 +34,10 @@ REASONING_EFFORT = os.getenv(
     "REASONING_EFFORT", "low"
 )  # "low", "medium", "high"
 
-# Orchestrator configuration
-# Note: Always using nested orchestrator (can handle single-layer or multi-layer scenarios)
-
-# External service settings
-INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
+# External service settings - Multi-Model Support
+INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")  # Default/Qwen
+INFERENCE_URL_QWEN = os.getenv("INFERENCE_URL_QWEN", os.getenv("INFERENCE_URL", "http://host.docker.internal:8080"))
+INFERENCE_URL_LLAMA = os.getenv("INFERENCE_URL_LLAMA", "http://host.docker.internal:8082")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"

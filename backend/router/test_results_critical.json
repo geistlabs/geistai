@@ -1,0 +1,94 @@
+{
+  "model": "current",
+  "timestamp": "2025-10-13T16:59:32.141053",
+  "results": {
+    "weather_simple": {
+      "test_name": "weather_simple",
+      "query": "What's the weather in Paris, France?",
+      "priority": "critical",
+      "timestamp": "2025-10-13T16:55:58.367218",
+      "response_content": "According to AccuWeather and The Weather Channel, the current weather in Paris, France is mostly cloudy with a high of 57F (14\u00b0C) and a chance of rain, with winds blowing at 10-15 mph from the WSW. Here are the source URLs: * AccuWeather: https://www.accuweather.com/en/fr/paris/623/weather-forecast/623 * The Weather Channel (10-day forecast): https://weather.com/weather/tenday/l/1a8af5b9d8971c46dd5a52547f922",
+      "content_length": 411,
+      "chunks_received": 51,
+      "elapsed_time": 156.52316093444824,
+      "checks": {
+        "response_generated": true,
+        "within_time_limit": false,
+        "has_required_keywords": true,
+        "keyword_coverage": 0.6666666666666666,
+        "not_error_message": true,
+        "reasonable_length": true
+      },
+      "passed": false
+    },
+    "news_current": {
+      "test_name": "news_current",
+      "query": "What's the latest news about artificial intelligence?",
+      "priority": "critical",
+      "timestamp": "2025-10-13T16:58:36.891729",
+      "response_content": "The latest news in artificial intelligence includes advancements in areas such as language models, like ChatGPT, and AI-generated content, which have sparked discussions on their potential applications and societal implications. Additionally, there is growing focus on the development of more sophisticated and specialized AI systems, as well as increased scrutiny of AI's impact on jobs and ethics. Researchers and companies are also exploring the potential of AI in fields like healthcare and education. Here are the source URLs: 1. https://www.artificialintelligence-news.com/ 2. https://www.reuters.com/technology/artificial-intelligence/ 3. https",
+      "content_length": 651,
+      "chunks_received": 84,
+      "elapsed_time": 47.99705982208252,
+      "checks": {
+        "response_generated": true,
+        "within_time_limit": false,
+        "has_required_keywords": true,
+        "keyword_coverage": 1.0,
+        "not_error_message": true,
+        "reasonable_length": true
+      },
+      "passed": false
+    },
+    "creative_haiku": {
+      "test_name": "creative_haiku",
+      "query": "Write a haiku about coding",
+      "priority": "critical",
+      "timestamp": "2025-10-13T16:59:26.890004",
+      "response_content": "Here is a haiku about coding:\n\nLines of code flow free\n Errors dance in digital space\nLogic's gentle art",
+      "content_length": 104,
+      "chunks_received": 24,
+      "elapsed_time": 0.9167070388793945,
+      "checks": {
+        "response_generated": true,
+        "within_time_limit": true,
+        "has_required_keywords": true,
+        "keyword_coverage": 1.0,
+        "not_error_message": false,
+        "reasonable_length": true
+      },
+      "passed": false
+    },
+    "simple_math": {
+      "test_name": "simple_math",
+      "query": "What is 2+2?",
+      "priority": "critical",
+      "timestamp": "2025-10-13T16:59:29.807906",
+      "response_content": "The answer is 4.",
+      "content_length": 16,
+      "chunks_received": 6,
+      "elapsed_time": 0.33180999755859375,
+      "checks": {
+        "response_generated": true,
+        "within_time_limit": true,
+        "has_required_keywords": true,
+        "keyword_coverage": 1.0,
+        "not_error_message": true,
+        "reasonable_length": false
+      },
+      "passed": false
+    }
+  },
+  "summary": {
+    "total_tests": 4,
+    "passed": 0,
+    "failed": 4,
+    "pass_rate": 0.0,
+    "critical_pass_rate": 0.0,
+    "avg_latency": 51.44218444824219,
+    "p95_latency": 156.52316093444824,
+    "tool_query_success_rate": 0.0,
+    "simple_query_success_rate": 0.0,
+    "timestamp": "2025-10-13T16:59:32.140948"
+  }
+}

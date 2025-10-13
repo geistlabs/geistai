@@ -171,7 +171,13 @@ async def process_llm_response_with_tools(
     saw_tool_call = False
 
     # Stream one LLM response
+    print(f"📞 Starting to stream LLM response for agent: {agent_name}")
+    chunk_count = 0
     async for delta in llm_stream_once(conversation):
+        chunk_count += 1
+        if chunk_count <= 3 or chunk_count % 10 == 0:
+            print(f"   📦 Chunk {chunk_count}: {list(delta.keys())}")
+
         if "choices" not in delta or not delta["choices"]:
             # Print reasoning content as it happens
             continue
@@ -182,6 +188,7 @@ async def process_llm_response_with_tools(
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
             saw_tool_call = True
+            print(f"   🔧 Tool call chunk received (total tools: {len(current_tool_calls)})")
 
             for tc_delta in delta_obj["tool_calls"]:
                 tc_index = tc_delta.get("index", 0)
