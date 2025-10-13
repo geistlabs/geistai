@@ -31,6 +31,9 @@ COPY . .
 # Install dependencies
 RUN pip install fastapi uvicorn python-multipart
 
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
+
 # Create non-root user
 RUN useradd -m -u 1000 whisper && chown -R whisper:whisper /app
 USER whisper
@@ -38,5 +41,5 @@ USER whisper
 # Expose port
 EXPOSE 8004
 
-# Start command
-CMD ["python", "main.py"]
+# Use entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]

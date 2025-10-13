@@ -7,55 +7,12 @@ import os
 import tempfile
 import subprocess
 import json
-import platform
 from typing import Optional, Dict, Any
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan event handler - runs once on startup"""
-    print("🚀 Lifespan startup event triggered")
-    
-    # Startup: Log system info and initialization status
-    if stt_service:
-        print("=" * 60)
-        print("WHISPER STT SERVICE - SYSTEM INFO")
-        print("=" * 60)
-        print(f"Platform: {platform.system()} {platform.release()}")
-        print(f"Architecture: {platform.machine()}")
-        print(f"Python: {platform.python_version()}")
-
-        # Check for NVIDIA GPU
-        try:
-            result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'],
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0 and result.stdout.strip():
-                print("GPU: NVIDIA GPU DETECTED")
-                for line in result.stdout.strip().split('\n'):
-                    parts = line.split(', ')
-                    if len(parts) >= 2:
-                        print(f"  - {parts[0]} (Driver: {parts[1]})")
-            else:
-                print("GPU: No NVIDIA GPU detected (CPU-only mode)")
-        except Exception:
-            print("GPU: No NVIDIA GPU detected (CPU-only mode)")
-
-        print(f"Whisper Binary: {stt_service.whisper_path}")
-        print(f"Whisper Model: {stt_service.model_path}")
-        print("=" * 60)
-        print(f"✅ Whisper STT service ready")
-    else:
-        print(f"❌ Whisper STT service not available")
-
-    yield
-
-    # Shutdown: cleanup if needed
-    pass
-
-app = FastAPI(title="Whisper STT Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Whisper STT Service", version="1.0.0")
 
 # Add CORS middleware
 app.add_middleware(
@@ -236,9 +193,8 @@ async def get_info():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8004))
-    # Pass app object directly instead of string to ensure lifespan runs immediately
     uvicorn.run(
-        app,
+        "main:app",
         host="0.0.0.0",
         port=port,
         reload=False
