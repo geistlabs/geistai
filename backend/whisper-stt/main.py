@@ -7,15 +7,11 @@ import os
 import tempfile
 import subprocess
 import json
-import logging
+import platform
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Whisper STT Service", version="1.0.0")
 
@@ -28,121 +24,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def detect_gpu_info():
-    """Detect GPU information and capabilities"""
-    gpu_info = {
-        "cuda_available": False,
-        "gpu_count": 0,
-        "gpu_devices": [],
-        "cuda_version": None,
-        "compute_capability": []
-    }
-
-    try:
-        # Check if nvidia-smi is available
-        result = subprocess.run(['nvidia-smi', '--query-gpu=name,compute_cap,driver_version', '--format=csv,noheader,nounits'],
-                              capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            gpu_info["cuda_available"] = True
-            lines = result.stdout.strip().split('\n')
-            gpu_info["gpu_count"] = len(lines)
-
-            for i, line in enumerate(lines):
-                parts = line.split(', ')
-                if len(parts) >= 3:
-                    name, compute_cap, driver = parts[0], parts[1], parts[2]
-                    gpu_info["gpu_devices"].append({
-                        "index": i,
-                        "name": name,
-                        "compute_capability": compute_cap,
-                        "driver_version": driver
-                    })
-                    gpu_info["compute_capability"].append(compute_cap)
-
-        # Try to get CUDA version
-        try:
-            result = subprocess.run(['nvcc', '--version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                for line in result.stdout.split('\n'):
-                    if 'release' in line.lower():
-                        gpu_info["cuda_version"] = line.strip()
-                        break
-        except:
-            pass
-
-    except Exception as e:
-        logger.warning(f"GPU detection failed: {e}")
-
-    return gpu_info
-
-def get_system_info():
-    """Get system information"""
-    import platform
-    import multiprocessing
-
-    return {
-        "platform": platform.platform(),
-        "python_version": platform.python_version(),
-        "cpu_count": multiprocessing.cpu_count(),
-        "architecture": platform.machine(),
-        "processor": platform.processor()
-    }
-
 class WhisperSTTService:
     def __init__(self, whisper_path: str, model_path: str):
         self.whisper_path = whisper_path
         self.model_path = model_path
-        self.gpu_info = detect_gpu_info()
-        self.system_info = get_system_info()
+        self._log_system_info()
 
-        # Log system information
-        self._log_startup_info()
-
-    def _log_startup_info(self):
-        """Log detailed startup information"""
-        logger.info("=" * 60)
-        logger.info("WHISPER STT SERVICE STARTUP")
-        logger.info("=" * 60)
-
-        # System info
-        logger.info(f"Platform: {self.system_info['platform']}")
-        logger.info(f"Python: {self.system_info['python_version']}")
-        logger.info(f"CPU Cores: {self.system_info['cpu_count']}")
-        logger.info(f"Architecture: {self.system_info['architecture']}")
-
-        # GPU info
-        if self.gpu_info["cuda_available"]:
-            logger.info("🎯 GPU DETECTION SUCCESSFUL")
-            logger.info(f"CUDA Available: {self.gpu_info['cuda_available']}")
-            logger.info(f"GPU Count: {self.gpu_info['gpu_count']}")
-
-            for i, gpu in enumerate(self.gpu_info["gpu_devices"]):
-                logger.info(f"  Device {gpu['index']}: {gpu['name']}")
-                logger.info(f"    Compute Capability: {gpu['compute_capability']}")
-                logger.info(f"    Driver Version: {gpu['driver_version']}")
-
-            if self.gpu_info["cuda_version"]:
-                logger.info(f"CUDA Version: {self.gpu_info['cuda_version']}")
-        else:
-            logger.warning("⚠️  GPU DETECTION FAILED - Running on CPU only")
-            logger.warning("   This may result in slower transcription performance")
-
-        # Whisper binary info
-        logger.info(f"Whisper Binary: {self.whisper_path}")
-        logger.info(f"Model Path: {self.model_path}")
-
-        # Test whisper binary
+    def _log_system_info(self):
+        """Log system and GPU information on startup"""
+        print("=" * 60)
+        print("WHISPER STT SERVICE - SYSTEM INFO")
+        print("=" * 60)
+        print(f"Platform: {platform.system()} {platform.release()}")
+        print(f"Architecture: {platform.machine()}")
+        print(f"Python: {platform.python_version()}")
+        
+        # Check for NVIDIA GPU
         try:
-            result = subprocess.run([self.whisper_path, '--help'],
-                                  capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                logger.info("✅ Whisper binary is functional")
+            result = subprocess.run(['nvidia-smi', '--query-gpu=name,driver_version', '--format=csv,noheader'],
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                print("GPU: NVIDIA GPU DETECTED")
+                for line in result.stdout.strip().split('\n'):
+                    parts = line.split(', ')
+                    if len(parts) >= 2:
+                        print(f"  - {parts[0]} (Driver: {parts[1]})")
             else:
-                logger.error(f"❌ Whisper binary test failed: {result.stderr}")
-        except Exception as e:
-            logger.error(f"❌ Whisper binary test error: {e}")
-
-        logger.info("=" * 60)
+                print("GPU: No NVIDIA GPU detected (CPU-only mode)")
+        except Exception:
+            print("GPU: No NVIDIA GPU detected (CPU-only mode)")
+        
+        print(f"Whisper Binary: {self.whisper_path}")
+        print(f"Whisper Model: {self.model_path}")
+        print("=" * 60)
 
     def transcribe_audio(self, audio_data: bytes, language: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -172,13 +86,6 @@ class WhisperSTTService:
                     "-nt",  # no timestamps in output
                 ]
 
-                # Add GPU acceleration if available
-                if self.gpu_info["cuda_available"]:
-                    cmd.extend(["--gpu-layers", "32"])  # Use GPU for acceleration
-                    logger.info("🚀 Using GPU acceleration for transcription")
-                else:
-                    logger.info("💻 Using CPU-only transcription")
-
                 # Add language if specified
                 if language:
                     cmd.extend(["-l", language])
@@ -186,16 +93,8 @@ class WhisperSTTService:
                 # Add output format (JSON)
                 cmd.extend(["-oj"])
 
-                # Log the command being executed
-                logger.info(f"Executing whisper command: {' '.join(cmd[:4])}...")
-
                 # Run whisper
-                import time
-                start_time = time.time()
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-                end_time = time.time()
-
-                logger.info(f"Transcription completed in {end_time - start_time:.2f} seconds")
 
                 if result.returncode != 0:
                     raise Exception(f"Whisper failed: {result.stderr}")
@@ -258,13 +157,13 @@ model_path = os.getenv("WHISPER_MODEL_PATH", "/models/ggml-base.bin")
 stt_service = None
 if os.path.exists(whisper_path) and os.path.exists(model_path):
     stt_service = WhisperSTTService(whisper_path, model_path)
-    logger.info("✅ Whisper STT service initialized successfully")
+    print(f"✅ Whisper STT service initialized")
+    print(f"   Binary: {whisper_path}")
+    print(f"   Model: {model_path}")
 else:
-    logger.error("❌ Whisper STT service not available")
-    logger.error(f"   Binary exists: {os.path.exists(whisper_path)}")
-    logger.error(f"   Model exists: {os.path.exists(model_path)}")
-    logger.error(f"   Binary path: {whisper_path}")
-    logger.error(f"   Model path: {model_path}")
+    print(f"❌ Whisper STT service not available")
+    print(f"   Binary exists: {os.path.exists(whisper_path)}")
+    print(f"   Model exists: {os.path.exists(model_path)}")
 
 @app.get("/health")
 async def health_check():
@@ -316,7 +215,7 @@ async def transcribe_audio(
 @app.get("/info")
 async def get_info():
     """Get service information"""
-    info = {
+    return {
         "service": "whisper-stt",
         "version": "1.0.0",
         "whisper_path": whisper_path,
@@ -328,13 +227,6 @@ async def get_info():
             "info": "/info"
         }
     }
-
-    # Add GPU and system info if service is available
-    if stt_service:
-        info["gpu_info"] = stt_service.gpu_info
-        info["system_info"] = stt_service.system_info
-
-    return info
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8004))
