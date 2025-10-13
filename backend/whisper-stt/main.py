@@ -9,39 +9,16 @@ import subprocess
 import json
 import platform
 from typing import Optional, Dict, Any
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-app = FastAPI(title="Whisper STT Service", version="1.0.0")
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Track if we've logged startup info to avoid duplicates
-_logged_startup = False
-
-class WhisperSTTService:
-    def __init__(self, whisper_path: str, model_path: str):
-        self.whisper_path = whisper_path
-        self.model_path = model_path
-        self._log_system_info()
-
-    def _log_system_info(self):
-        """Log system and GPU information on startup"""
-        global _logged_startup
-        
-        # Only log once to avoid duplicate output from uvicorn workers
-        if _logged_startup:
-            return
-        _logged_startup = True
-        
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler - runs once on startup"""
+    # Startup: Log system info when service starts
+    if stt_service:
         print("=" * 60)
         print("WHISPER STT SERVICE - SYSTEM INFO")
         print("=" * 60)
@@ -64,9 +41,30 @@ class WhisperSTTService:
         except Exception:
             print("GPU: No NVIDIA GPU detected (CPU-only mode)")
         
-        print(f"Whisper Binary: {self.whisper_path}")
-        print(f"Whisper Model: {self.model_path}")
+        print(f"Whisper Binary: {stt_service.whisper_path}")
+        print(f"Whisper Model: {stt_service.model_path}")
         print("=" * 60)
+    
+    yield
+    
+    # Shutdown: cleanup if needed
+    pass
+
+app = FastAPI(title="Whisper STT Service", version="1.0.0", lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class WhisperSTTService:
+    def __init__(self, whisper_path: str, model_path: str):
+        self.whisper_path = whisper_path
+        self.model_path = model_path
 
     def transcribe_audio(self, audio_data: bytes, language: Optional[str] = None) -> Dict[str, Any]:
         """
