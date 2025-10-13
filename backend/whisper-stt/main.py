@@ -236,8 +236,9 @@ async def get_info():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8004))
+    # Pass app object directly instead of string to ensure lifespan runs immediately
     uvicorn.run(
-        "main:app",
+        app,
         host="0.0.0.0",
         port=port,
         reload=False
