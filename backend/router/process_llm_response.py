@@ -31,10 +31,10 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     tool_name = tool_call["function"]["name"]
     tool_args_str = tool_call["function"]["arguments"]
     local_conversation = []
-  
+
 
     if not tool_name or not tool_args_str:
-        
+
         return ToolCallResponse(
         success=False,
         new_conversation_entries=[]
@@ -63,15 +63,15 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         result = await execute_tool(tool_name, tool_args)
         if "agent" in tool_name:
             print(f"Result of tool call: {result} agent tool call tool name: {tool_name}")
-    
-      
+
+
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
             result
         )
         local_conversation.append(
             tool_call_result
-        )   
+        )
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation
@@ -172,17 +172,11 @@ async def process_llm_response_with_tools(
 
     # Stream one LLM response
     async for delta in llm_stream_once(conversation):
-        # DEBUG: Log all deltas to understand what GPT-OSS is sending
-        print(f"🔍 DEBUG: Received delta: {delta}")
-        
         if "choices" not in delta or not delta["choices"]:
-            # Print reasoning content as it happens
-            print(f"🔍 DEBUG: No choices in delta, skipping")
             continue
 
         choice = delta["choices"][0]
         delta_obj = choice.get("delta", {})
-        print(f"🔍 DEBUG: delta_obj = {delta_obj}")
 
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
@@ -211,8 +205,13 @@ async def process_llm_response_with_tools(
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
 
         # Stream content to client and print reasoning as it happens
+        # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
+        # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
             yield (delta_obj["content"], None)  # Content with no status change
+        elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
+            # For Harmony format: treat reasoning_content as final content after tool execution
+            yield (delta_obj["reasoning_content"], None)
 
         # Check finish reason
         finish_reason = choice.get("finish_reason")
