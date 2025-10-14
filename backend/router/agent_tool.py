@@ -182,7 +182,12 @@ class AgentTool(EventEmitter):
             response_text = "".join(response_chunks)
             print(f"🔍 Agent {self.name} received {chunk_count} total chunks, response_text length: {len(response_text)}")
 
-            # No need to restore - using direct system prompt parameter
+            # GPT-OSS Harmony Format Fix: Detect reasoning-only responses
+            # and generate a final answer
+            if self._is_reasoning_only(response_text):
+                print(f"⚠️  Agent {self.name} returned reasoning-only response, generating final answer...")
+                response_text = await self._generate_final_answer(input_data, response_text, messages)
+                print(f"✅ Generated final answer, length: {len(response_text)}")
 
             # Keep the original response text with citation tags intact
             # Citations will be parsed at the frontend level
@@ -236,6 +241,81 @@ class AgentTool(EventEmitter):
 
             return error_response
 
+    def _is_reasoning_only(self, text: str) -> bool:
+        """
+        Detect if the response is reasoning-only (GPT-OSS Harmony format issue)
+        
+        Reasoning-only indicators:
+        - Contains planning language like "We need", "Let's", "Should", "I'll"
+        - Short responses (< 100 chars) with no actual data
+        - Doesn't contain concrete facts, numbers, or citations
+        """
+        if not text or len(text.strip()) < 20:
+            return False
+            
+        text_lower = text.lower()
+        
+        # Strong indicators of reasoning-only content
+        reasoning_phrases = [
+            "we need to", "let's", "i need to", "i should", "we should",
+            "i'll", "we'll", "must use", "need to browse", "need to fetch",
+            "should fetch", "should search", "need to search",
+            "must fetch", "must search", "must browse"
+        ]
+        
+        phrase_count = sum(1 for phrase in reasoning_phrases if phrase in text_lower)
+        
+        # If contains 2+ reasoning phrases and is short, it's likely reasoning-only
+        if phrase_count >= 2 and len(text) < 300:
+            return True
+            
+        # If contains reasoning phrases and NO citations, likely reasoning-only  
+        if phrase_count >= 1 and "<citation" not in text and len(text) < 200:
+            return True
+            
+        return False
+
+    async def _generate_final_answer(self, original_question: str, reasoning: str, conversation_history: list) -> str:
+        """
+        Generate a final answer when GPT-OSS only provided reasoning
+        
+        This makes a second LLM call with a forceful prompt to get the actual answer
+        """
+        # Build a finalization prompt
+        finalization_prompt = f"""You are answering: "{original_question}"
+
+Your research and reasoning was: {reasoning}
+
+Based on the tool results in the conversation above, provide the FINAL ANSWER to the user's question.
+
+CRITICAL RULES:
+- Do NOT say "I need to" or "Let's" or "We should" - just answer
+- Use the data you already fetched
+- Include citations if you have URLs: <citation source="..." url="..." snippet="..." />
+- Be direct and factual
+- If you have specific data (temps, facts, etc.), include it
+
+ANSWER NOW:"""
+
+        # Add finalization to messages
+        final_messages = conversation_history.copy()
+        final_messages.append({
+            "role": "user",
+            "content": finalization_prompt
+        })
+
+        # Make a non-streaming call for the final answer
+        try:
+            final_answer = await self.gpt_service.process_chat_request(
+                messages=final_messages,
+                reasoning_effort="low",  # Low effort for quick finalization
+                system_prompt=""  # No system prompt, we have everything in the user message
+            )
+            return final_answer
+        except Exception as e:
+            print(f"❌ Error generating final answer: {e}")
+            # Return the reasoning as fallback
+            return reasoning
 
     def get_tool_definition(self) -> dict:
         """
