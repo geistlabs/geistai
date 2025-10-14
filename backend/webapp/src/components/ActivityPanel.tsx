@@ -119,21 +119,21 @@ const ActivityPanel: React.FC<ActivityPanelProps> = ({
     return '🔧';
   };
 
-  const getToolDescription = (toolName: string, arguments?: any): string => {
-    if (!arguments) return 'Processing...';
+  const getToolDescription = (toolName: string, toolArguments?: any): string => {
+    if (!toolArguments) return 'Processing...';
     
     if (toolName.includes('search')) {
-      const query = arguments.query || arguments.q || arguments.search_term;
+      const query = toolArguments.query || toolArguments.q || toolArguments.search_term;
       return query ? `Searching for: "${query}"` : 'Performing search...';
     }
     
     if (toolName === 'fetch') {
-      const url = arguments.url;
+      const url = toolArguments.url;
       return url ? `Fetching content from: ${new URL(url).hostname}` : 'Fetching content...';
     }
     
     if (toolName.includes('agent')) {
-      const task = arguments.task;
+      const task = toolArguments.task;
       return task ? `Working on: "${task.substring(0, 50)}${task.length > 50 ? '...' : ''}"` : 'Processing request...';
     }
     

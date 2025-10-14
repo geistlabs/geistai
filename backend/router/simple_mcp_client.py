@@ -209,6 +209,7 @@ class SimpleMCPClient:
             headers=headers,
             json=request
         )
+        print(f"MCP Response: {response.text}")
         
         if response.status_code not in [200, 202]:
             raise Exception(f"MCP request failed: {response.status_code} - {response.text}")
@@ -234,6 +235,7 @@ class SimpleMCPClient:
                 if line.startswith('data: '):
                     json_str = line[6:]  # Remove 'data: ' prefix
                     try:
+                        print(f"JSON MCP Response: {json_str}")
                         return json.loads(json_str)
                     except json.JSONDecodeError:
                         continue

@@ -209,16 +209,16 @@ def create_nested_research_system(config):
     from agent_tool import get_predefined_agents
 
     # Get your existing agents
-    existing_agents = get_predefined_agents(config)
-
+    #existing_agents = get_predefined_agents(config)
+    existing_agents = []
     # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetch"]
+    mcp_tools = ["brave_web_search",  "fetcher"]
 
-    for agent in existing_agents:
-        # Update each agent to only use MCP tools
-        agent.available_tools = mcp_tools
-        print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
-
+   # for agent in existing_agents:
+   #     # Update each agent to only use MCP tools
+   #     agent.available_tools = mcp_tools
+   #     print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
+#
     # Create main orchestrator with all agents at the top level
     main_orchestrator = NestedOrchestrator(
         model_config=config,
@@ -226,7 +226,7 @@ def create_nested_research_system(config):
         description="Main coordination hub with all agents at top level",
         system_prompt=get_prompt("main_orchestrator"),
         sub_agents=existing_agents,  # All agents at top level
-        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
+        available_tools=mcp_tools  # Set specific tools here
     )
 
     return main_orchestrator
@@ -265,7 +265,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             # Configure available tools (only sub-agents, not MCP tools)
             all_tools = list(gpt_service._tool_registry.keys())
             # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
-            sub_agent_names = ['research_agent', 'current_info_agent', 'creative_agent']#, 'brave_web_search', 'fetch']
+            sub_agent_names = ['brave_web_search', 'brave_summarizer']
             available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
             print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
 

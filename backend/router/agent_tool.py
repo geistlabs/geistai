@@ -311,7 +311,7 @@ def create_research_agent(config) -> AgentTool:
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
         system_prompt=get_prompt("research_agent"),
-        available_tools=["brave_web_search",  "fetch "],  # Include citation tool
+        available_tools=["brave_web_search",  "fetcher"],  # Include citation tool
         reasoning_effort="high"
     )
 
@@ -322,7 +322,7 @@ def create_current_info_agent(config) -> AgentTool:
         name="current_info_agent",
         description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
         system_prompt=get_prompt("current_info_agent"),
-        available_tools=["brave_web_search",  "fetch"],  # Include citation tool
+        available_tools=["brave_web_search",  "fetcher"],  # Include citation tool
         reasoning_effort="low"
     )
 
@@ -333,7 +333,7 @@ def create_creative_agent(config) -> AgentTool:
         name="creative_agent",
         description="A specialized agent for creative writing tasks. Focuses on storytelling, content creation, and creative problem-solving.",
         system_prompt=get_prompt("creative_agent"),
-        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetcher"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 
@@ -345,7 +345,7 @@ def create_technical_agent(config) -> AgentTool:
         name="technical_agent",
         description="A specialized agent for technical analysis, coding, and problem-solving. Can analyze code, debug issues, and provide technical solutions.",
         system_prompt=get_prompt("technical_agent"),
-        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetcher"],  # Include research and citation tools
         reasoning_effort="high"
     )
 
@@ -357,7 +357,7 @@ def create_summary_agent(config) -> AgentTool:
         name="summary_agent",
         description="A specialized agent for summarizing information. Can condense long texts, extract key points, and create concise summaries.",
         system_prompt=get_prompt("summary_agent"),
-        available_tools=["brave_web_search", "fetch"],  # Include research and citation tools
+        available_tools=["brave_web_search", "fetcher"],  # Include research and citation tools
         reasoning_effort="medium"
     )
 

@@ -99,11 +99,13 @@ export async function sendStreamingMessage(
     })
     console.log(response.status, "response.status")
     if (!response.ok) {
+      console.log(response.status, "response.status")
       const errorText = await response.text()
       throw new Error(`HTTP ${response.status}: ${errorText}`)
     }
 
     if (!response.body) {
+      console.log(response.status, "response.status")
       throw new Error('No response body received')
     }
 
@@ -113,12 +115,14 @@ export async function sendStreamingMessage(
     try {
       while (true) {
         const { done, value } = await reader.read()
-        
+
+        console.log(done, "done") 
         if (done) {
           break
         }
 
         const chunk = decoder.decode(value, { stream: true })
+        console.log(chunk, "chunk")
         const lines = chunk.split('\n')
 
         for (const line of lines) {
@@ -126,6 +130,7 @@ export async function sendStreamingMessage(
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6))
+              console.log("data", data)
               if (data.type === "final_response") {
                console.log("final_response", data)
                console.log("Citations in final_response:", data.citations)
@@ -147,7 +152,7 @@ export async function sendStreamingMessage(
                 if (data.data.type === "agent_start") {
                   onSubAgentEvent({
                     agent: data.data.data.agent,
-                    token: "Starting...",
+                    token: "Sub Agent tokens: ",
                     isStreaming: true,
                     task: data.data.data.input,
                     context: data.data.data.context
@@ -227,6 +232,7 @@ export async function sendStreamingMessage(
                 // Handle orchestrator start event
               
               } else if (data.type === "orchestrator_complete") {
+                console.log("orchestrator_complete", data)
                 // Handle orchestrator completion
           
               } else if (data.type === "final_response") {

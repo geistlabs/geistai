@@ -173,6 +173,7 @@ async def process_llm_response_with_tools(
     # Stream one LLM response
     async for delta in llm_stream_once(conversation):
         if "choices" not in delta or not delta["choices"]:
+            print(f"No choices in delta: {delta}")
             continue
 
         choice = delta["choices"][0]
@@ -200,20 +201,23 @@ async def process_llm_response_with_tools(
                 if "function" in tc_delta:
                     func = tc_delta["function"]
                     if "name" in func:
+                        print(f"Name: {func['name']}")
                         current_tool_calls[tc_index]["function"]["name"] += func["name"]
                     if "arguments" in func:
+                        print(f"Arguments: {func['arguments']}")
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
 
         # Stream content to client and print reasoning as it happens
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
+            print(f"Content: {delta_obj['content']}")
             yield (delta_obj["content"], None)  # Content with no status change
         elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
             # For Harmony format: treat reasoning_content as final content after tool execution
-            yield (delta_obj["reasoning_content"], None)
-
-        # Check finish reason
+            print ("Reasoning content: ", delta_obj["reasoning_content"])
+#
+        ## Check finish reason
         finish_reason = choice.get("finish_reason")
         if finish_reason:
             if finish_reason == "tool_calls" and current_tool_calls:
@@ -237,21 +241,25 @@ async def process_llm_response_with_tools(
                         conversation.extend(result["new_conversation_entries"])
 
                         await asyncio.sleep(0.01)
+                        print("Tool calls executed, continue loop")
                         yield (None, "continue")  # Continue with updated citations
                         return
                     else:  # Tool calls executed, continue loop
-                        yield (None, "stop")
+                        print("Tool calls executed, continue loop", result)
+                        yield (None, "continue")
                         return
 
             elif finish_reason == "stop":
+                print("Normal completion, we're done")
                 # Normal completion, we're done
                 yield (None, "stop")
                 return
 
     # If no tools were called, we're done
     if not saw_tool_call:
-        yield (None, "stop")
+        yield (None, "continue")
         return
 
     # This shouldn't happen, but just in case
+    print("This shouldn't happen, but just in case")
     yield (None, "stop")

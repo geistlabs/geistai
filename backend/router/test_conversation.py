@@ -91,7 +91,7 @@ async def test_conversation(conversation_turns):
         # Build payload with conversation history
         payload = {
             "message": user_message,
-            "conversation_history": conversation_history
+            "messages": conversation_history
         }
         print(f"Calling with Payload: {payload}")
         try:
@@ -118,6 +118,7 @@ async def test_conversation(conversation_turns):
                             
                             try:
                                 data = json.loads(data_str)
+                                print(f"Data: {data}")
                                 
                                 # Handle different event types from the new streaming endpoint
                                 if data.get("type") == "orchestrator_token":

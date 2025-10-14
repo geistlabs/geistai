@@ -28,7 +28,7 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 3
+MAX_TOOL_CALLS = 100
 
 
 class GptService(EventEmitter):
@@ -441,6 +441,7 @@ class GptService(EventEmitter):
         tool_call_count = 0
 
         while tool_call_count < MAX_TOOL_CALLS:
+            
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -457,4 +458,7 @@ class GptService(EventEmitter):
                     return
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
+                    if tool_call_count >= MAX_TOOL_CALLS:
+                        print("Tool call count reached max, exiting tool call count: ", tool_call_count)
                     break  # Exit the inner loop to continue the outer loop
+
