@@ -324,15 +324,49 @@ class AgentTool(EventEmitter):
                             sources.append(url)
                     else:
                         text = str(res)
+                    
+                    # Skip fetch failures (error messages)
+                    if text and ("Failed to fetch" in text or "robots.txt" in text or "connection issue" in text.lower()):
+                        print(f"⚠️  Skipping failed fetch result: {text[:100]}")
+                        continue
+                    
                     if text and len(text) > 50:
                         answer_candidates.append(text.strip())
 
-            # If no summarizer/fetch text, try any string content
+            # If no summarizer/fetch text, try brave_web_search descriptions (they often contain useful snippets)
+            if not answer_candidates:
+                for tr in tool_results:
+                    tool_name = tr.get('tool_name', '')
+                    if 'brave' in tool_name.lower() and 'search' in tool_name.lower():
+                        res = tr.get('result')
+                        # Parse JSON search results
+                        if isinstance(res, str):
+                            try:
+                                import json
+                                # Results are newline-separated JSON objects
+                                for line in res.strip().split('\n'):
+                                    if line.strip():
+                                        result_obj = json.loads(line)
+                                        desc = result_obj.get('description', '')
+                                        if desc and len(desc) > 30:
+                                            # Clean HTML tags from description
+                                            import re
+                                            clean_desc = re.sub(r'<[^>]+>', '', desc)
+                                            answer_candidates.append(clean_desc)
+                                            url = result_obj.get('url')
+                                            if url:
+                                                sources.append(url)
+                            except:
+                                pass
+            
+            # If still no candidates, try any string content
             if not answer_candidates:
                 for tr in tool_results:
                     res = tr.get('result')
                     if isinstance(res, str) and len(res) > 50:
-                        answer_candidates.append(res.strip())
+                        # Skip error messages
+                        if "Failed to fetch" not in res and "robots.txt" not in res:
+                            answer_candidates.append(res.strip())
 
             if answer_candidates:
                 # Take the first candidate and keep it concise
@@ -356,6 +390,12 @@ class AgentTool(EventEmitter):
                     text = result.get('content') or result.get('text') or ''
                 else:
                     text = str(result)
+                
+                # Skip fetch failures
+                if text and ("Failed to fetch" in text or "robots.txt" in text or "connection issue" in text.lower()):
+                    print(f"⚠️  Fallback fetch failed for {url}: {text[:80]}")
+                    continue
+                
                 if text and len(text) > 60:
                     # Build concise response
                     sentences = [s.strip() for s in text.split('.') if s.strip()]
