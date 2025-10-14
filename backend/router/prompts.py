@@ -203,7 +203,7 @@ CRITICAL CITATION REQUIREMENT:
 - Use the actual source name, URL, and relevant snippet from the content
 - ALWAYS use the citation tag format embedded within your response text
 
-EXAMPLES: 
+EXAMPLES:
 - Normal response: "The weather is nice <citation source="Weather API" url="https://weather.com" snippet="Current conditions" />."
 - When user asks for links: "The weather is nice <citation source="Weather API" url="https://weather.com" snippet="Current conditions" />. Here are the direct links: https://weather.com"
 
@@ -226,18 +226,18 @@ PROMPTS = {
 def get_prompt(agent_name: str) -> str:
     """
     Get a system prompt by agent name
-    
+
     Args:
         agent_name: Name of the agent (e.g., 'research_agent', 'main_orchestrator')
-        
+
     Returns:
         System prompt string for the agent
-        
+
     Raises:
         KeyError: If agent_name is not found in the prompts registry
     """
     if agent_name not in PROMPTS:
         available_prompts = list(PROMPTS.keys())
         raise KeyError(f"Unknown agent '{agent_name}'. Available prompts: {available_prompts}")
-    
+
     return PROMPTS[agent_name]()

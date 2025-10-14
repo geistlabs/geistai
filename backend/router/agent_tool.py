@@ -197,7 +197,6 @@ class AgentTool(EventEmitter):
             if not response_text or response_text.strip() == "":
                 agent_response = AgentResponse(
                     text="",
-
                     agent_name=self.name,
                     status="empty_response",
                     meta={
@@ -207,7 +206,6 @@ class AgentTool(EventEmitter):
             else:
                 agent_response = AgentResponse(
                     text=response_text,
-
                     agent_name=self.name,
                     status="success",
                     meta={"reasoning_effort": self.reasoning_effort}
@@ -217,7 +215,6 @@ class AgentTool(EventEmitter):
             self.emit("agent_complete", {
                 "agent": self.name,
                 "text": agent_response.text,
-
                 "status": agent_response.status,
                 "meta": agent_response.meta
             })
@@ -244,17 +241,17 @@ class AgentTool(EventEmitter):
     def _is_reasoning_only(self, text: str) -> bool:
         """
         Detect if the response is reasoning-only (GPT-OSS Harmony format issue)
-        
+
         Reasoning-only indicators:
         - Contains planning language like "We need", "Let's", "Should", "I'll"
         - Short responses (< 100 chars) with no actual data
         - Doesn't contain concrete facts, numbers, or citations
         """
-        if not text or len(text.strip()) < 20:
+        if not text:
             return False
-            
+
         text_lower = text.lower()
-        
+
         # Strong indicators of reasoning-only content
         reasoning_phrases = [
             "we need to", "let's", "i need to", "i should", "we should",
@@ -262,60 +259,94 @@ class AgentTool(EventEmitter):
             "should fetch", "should search", "need to search",
             "must fetch", "must search", "must browse"
         ]
-        
+
         phrase_count = sum(1 for phrase in reasoning_phrases if phrase in text_lower)
-        
-        # If contains 2+ reasoning phrases and is short, it's likely reasoning-only
-        if phrase_count >= 2 and len(text) < 300:
+
+        # If contains any reasoning phrases and lacks citations or numbers, likely reasoning-only
+        has_citation = "<citation" in text
+        has_number = any(ch.isdigit() for ch in text)
+        if phrase_count >= 1 and not has_citation and not has_number:
             return True
-            
-        # If contains reasoning phrases and NO citations, likely reasoning-only  
-        if phrase_count >= 1 and "<citation" not in text and len(text) < 200:
-            return True
-            
+
         return False
 
     async def _generate_final_answer(self, original_question: str, reasoning: str, conversation_history: list) -> str:
         """
         Generate a final answer when GPT-OSS only provided reasoning
-        
-        This makes a second LLM call with a forceful prompt to get the actual answer
+
+        WORKAROUND: Instead of making another LLM call (which will also fail with Harmony format),
+        we extract tool results and format them into a basic answer.
         """
-        # Build a finalization prompt
-        finalization_prompt = f"""You are answering: "{original_question}"
+        # Extract search/fetch/summarizer results from GPT service's tool results
+        tool_results = []
 
-Your research and reasoning was: {reasoning}
+        if hasattr(self.gpt_service, '_last_tool_results'):
+            tool_results = self.gpt_service._last_tool_results
+            print(f"🔍 Found {len(tool_results)} tool results from GPT service")
 
-Based on the tool results in the conversation above, provide the FINAL ANSWER to the user's question.
+        # If no tool results from service, try to extract from conversation
+        if not tool_results:
+            for msg in conversation_history:
+                if msg.get('role') == 'tool':
+                    tool_results.append({
+                        'tool_name': 'fetch' if 'url' in msg.get('content', '') else 'search',
+                        'result': msg.get('content', '')
+                    })
 
-CRITICAL RULES:
-- Do NOT say "I need to" or "Let's" or "We should" - just answer
-- Use the data you already fetched
-- Include citations if you have URLs: <citation source="..." url="..." snippet="..." />
-- Be direct and factual
-- If you have specific data (temps, facts, etc.), include it
+        # Build a simple factual answer from tool results
+        if tool_results:
+            answer_candidates = []
+            sources = []
 
-ANSWER NOW:"""
+            for tr in tool_results:
+                tool_name = tr.get('tool_name')
+                res = tr.get('result')
 
-        # Add finalization to messages
-        final_messages = conversation_history.copy()
-        final_messages.append({
-            "role": "user",
-            "content": finalization_prompt
-        })
+                # Prefer summarizer output if available
+                if tool_name and 'summarizer' in tool_name.lower():
+                    if isinstance(res, dict):
+                        text = res.get('text') or res.get('content') or ''
+                    else:
+                        text = str(res)
+                    if text and len(text) > 30:
+                        answer_candidates.append(text.strip())
+                        url = tr.get('arguments', {}).get('url')
+                        if url:
+                            sources.append(url)
+                    continue
 
-        # Make a non-streaming call for the final answer
-        try:
-            final_answer = await self.gpt_service.process_chat_request(
-                messages=final_messages,
-                reasoning_effort="low",  # Low effort for quick finalization
-                system_prompt=""  # No system prompt, we have everything in the user message
-            )
-            return final_answer
-        except Exception as e:
-            print(f"❌ Error generating final answer: {e}")
-            # Return the reasoning as fallback
-            return reasoning
+                # Use fetch content as fallback
+                if tool_name and tool_name.lower() == 'fetch':
+                    if isinstance(res, dict):
+                        text = res.get('content') or res.get('text') or ''
+                        url = res.get('url') or tr.get('arguments', {}).get('url')
+                        if url:
+                            sources.append(url)
+                    else:
+                        text = str(res)
+                    if text and len(text) > 50:
+                        answer_candidates.append(text.strip())
+
+            # If no summarizer/fetch text, try any string content
+            if not answer_candidates:
+                for tr in tool_results:
+                    res = tr.get('result')
+                    if isinstance(res, str) and len(res) > 50:
+                        answer_candidates.append(res.strip())
+
+            if answer_candidates:
+                # Take the first candidate and keep it concise
+                base = answer_candidates[0]
+                sentences = [s.strip() for s in base.split('.') if s.strip()]
+                final_answer = '. '.join(sentences[:2])
+                if sources:
+                    final_answer += f" [Sources: {', '.join(sources[:2])}]"
+                print(f"✅ Built answer from tool results: {len(final_answer)} chars")
+                return final_answer
+
+        # Fallback: Return the reasoning as-is
+        print(f"⚠️  No tool results found, returning reasoning as-is")
+        return reasoning
 
     def get_tool_definition(self) -> dict:
         """
@@ -391,7 +422,7 @@ def create_research_agent(config) -> AgentTool:
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
         system_prompt=get_prompt("research_agent"),
-        available_tools=["brave_web_search",  "fetch "],  # Include citation tool
+        available_tools=["brave_web_search", "brave_summarizer", "fetch"],
         reasoning_effort="high"
     )
 
@@ -402,7 +433,7 @@ def create_current_info_agent(config) -> AgentTool:
         name="current_info_agent",
         description="Use this tool to get up-to-date information from the web. Searches for current news, events, and real-time data.",
         system_prompt=get_prompt("current_info_agent"),
-        available_tools=["brave_web_search",  "fetch"],  # Include citation tool
+        available_tools=["brave_web_search", "brave_summarizer", "fetch"],
         reasoning_effort="low"
     )
 

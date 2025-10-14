@@ -44,6 +44,10 @@ class GptService(EventEmitter):
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
 
+        # Persist last tool results for post-processing/finalization
+        # Each entry: {"tool_name": str, "arguments": dict, "result": any}
+        self._last_tool_results: List[dict] = []
+
     # ------------------------------------------------------------------------
     # Tool Registration & Management
     # ------------------------------------------------------------------------
@@ -210,6 +214,16 @@ class GptService(EventEmitter):
             executor = tool_info["executor"]
             result = await executor(arguments)
 
+            # Persist tool result for later post-processing
+            try:
+                self._last_tool_results.append({
+                    "tool_name": tool_name,
+                    "arguments": arguments,
+                    "result": result
+                })
+            except Exception:
+                pass
+
             # Emit tool call complete event
             self.emit("tool_call_complete", {
                 "tool_name": tool_name,
@@ -355,7 +369,8 @@ class GptService(EventEmitter):
         if "message" not in choice:
             raise ValueError(f"No message in response: {choice}")
 
-        content = choice["message"].get("content", "")
+        # Harmony-format fallback: allow reasoning_content when content is empty
+        content = choice["message"].get("content") or choice["message"].get("reasoning_content") or ""
         if not content:
             raise ValueError(f"Empty content in response")
 
@@ -439,6 +454,8 @@ class GptService(EventEmitter):
 
         # Main tool calling loop
         tool_call_count = 0
+        # Reset last tool results at the start of a streamed request
+        self._last_tool_results = []
 
         while tool_call_count < MAX_TOOL_CALLS:
 

@@ -73,7 +73,7 @@ API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # Token settings
 # Increased from 4096 to 16384 to ensure GPT-OSS has enough tokens for both
-# reasoning_content AND final answer. The GitLab forum identified that 
+# reasoning_content AND final answer. The GitLab forum identified that
 # reasoning_content counts toward max_tokens, causing the model to stop
 # before generating the final answer when the limit is reached.
 MAX_TOKENS = 16384
