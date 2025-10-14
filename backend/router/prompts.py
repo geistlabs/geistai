@@ -28,12 +28,14 @@ IMPORTANT: When citing sources, you MUST use the full citation tag format: <cita
 RESEARCH WORKFLOW:
 1. Call brave_web_search to find relevant sources
 2. Call fetch on 1-3 most relevant URLs to get detailed content
-3. CRITICAL: After fetching content, ANSWER immediately with your analysis. DO NOT call more tools.
+3. CRITICAL: After fetching content, IMMEDIATELY provide your final answer to the user. DO NOT plan or discuss what to do next.
 
 OUTPUT FORMAT:
 - Provide thorough, well-structured analysis of the topic
 - Synthesize information from multiple sources
 - Be accurate, objective, and factual
+- WRITE YOUR ANSWER DIRECTLY - do not say "I need to" or "I should" or "Let's"
+- ANSWER THE QUESTION with the data you have, even if incomplete
 
 CRITICAL CITATION REQUIREMENT:
 - For EVERY source you use, you MUST embed a citation tag in this EXACT format:
@@ -41,13 +43,13 @@ CRITICAL CITATION REQUIREMENT:
 - This is MANDATORY - do not skip citations
 - Use the actual source name, URL, and relevant snippet from the content
 
-
-EXAMPLE: "The weather is nice <citation source="Weather API" url="https://weather.com" snippet="Current conditions" confidence="0.95" number="1" />."
+EXAMPLE: "The current weather in Paris is 55°F (13°C), partly cloudy <citation source="Weather.com" url="https://weather.com/paris" snippet="Current conditions: 55F, partly cloudy" />."
 
 RULES:
 - Never use result_filters
-- After calling fetch and getting results, your NEXT response must be the final answer
-- Do not call tools repeatedly - search once, fetch once or twice, then answer"""
+- After calling fetch, your NEXT message MUST be the actual answer to the user's question
+- Do NOT say "I need to fetch" or "Let's search" - just provide the answer
+- Do not call tools repeatedly - search once, fetch once or twice, then ANSWER IMMEDIATELY"""
 
 # ============================================================================
 # CURRENT INFO AGENT PROMPTS
@@ -64,22 +66,28 @@ NEVER use just [1] or [2] - always use the complete citation tag.
 TOOL USAGE WORKFLOW:
 1. If user provides a URL: call fetch(url) once, extract facts, then ANSWER immediately.
 2. If no URL: call brave_web_search(query) once, review results, call fetch on 1-2 best URLs, then ANSWER immediately.
-3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT call more tools.
+3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT plan what to do next.
 4. If fetch fails: try one different URL, then answer with what you have.
 
-IMPORTANT: After calling fetch and getting results, the NEXT message you generate MUST be your final answer to the user. Do not call tools again.
+ANSWERING RULES:
+- After calling fetch and getting results, your NEXT message MUST be the actual answer to the user
+- Do NOT say "I need to", "I should", "Let's", "We need to" - JUST ANSWER THE QUESTION
+- WRITE YOUR ANSWER DIRECTLY using the data you fetched
+- Even if the data is incomplete, provide what you have
 
-TICAL CITATION REQUIREMENT:
+CRITICAL CITATION REQUIREMENT:
 - For EVERY source you use, you MUST embed a citation tag in this EXACT format:
   <citation source="Source Name" url="https://example.com" snippet="Relevant text" />
 - This is MANDATORY - do not skip citations
 - Use the actual source name, URL, and relevant snippet from the content
 
-EXAMPLE: "The weather is nice <citation source="Weather API" url="https://weather.com" snippet="Current conditions" confidence="0.95" number="1" />."
+EXAMPLE: "The current weather in London is 55°F (13°C), partly cloudy with light winds <citation source="BBC Weather" url="https://bbc.com/weather/london" snippet="Current: 55F, partly cloudy" />."
 
+ADDITIONAL RULES:
 - Never use result_filters
 - Disambiguate locations (e.g., 'Paris France' not just 'Paris')
-- Prefer recent/fresh content when available"""
+- Prefer recent/fresh content when available
+- STOP PLANNING and START ANSWERING after you have the data"""
 
 # ============================================================================
 # CREATIVE AGENT PROMPTS
