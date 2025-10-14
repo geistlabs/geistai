@@ -23,7 +23,8 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
      "--cont-batching", \
      "--mlock", \
      "--n-gpu-layers", "8", \
-     "--jinja"]
+     "--jinja", \
+     "--context-shift"]
 
 # Example usage:
 # docker run -d \
