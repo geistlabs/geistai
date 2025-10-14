@@ -205,10 +205,13 @@ def create_nested_research_system(config):
     from agent_tool import get_predefined_agents
 
     # Get your existing agents
-    #existing_agents = get_predefined_agents(config)
-    existing_agents = []
+    existing_agents = get_predefined_agents(config)
+    permitted_agents = []
+    permitted_mcp_tools = ["brave_web_search",  "fetch"]
+    # INSERT_YOUR_CODE
+    # Filter existing_agents to only include agents whose names are in permitted_agents
+    existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
     # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetch"]
 
    # for agent in existing_agents:
    #     # Update each agent to only use MCP tools
@@ -221,7 +224,7 @@ def create_nested_research_system(config):
         description="Main coordination hub with all agents at top level",
         system_prompt=get_prompt("main_orchestrator"),
         sub_agents=existing_agents,  # All agents at top level
-        available_tools=mcp_tools  # Set specific tools here
+        available_tools=permitted_mcp_tools  # Set specific tools here
     )
 
     return main_orchestrator
