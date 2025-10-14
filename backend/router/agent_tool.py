@@ -70,7 +70,7 @@ class AgentTool(EventEmitter):
 
         # Create a GPT service instance for this agent
         self.gpt_service = GptService(model_config)
-        
+
         # Set up tool call event forwarding from this agent's GPT service
         self._setup_tool_call_event_forwarding()
 
@@ -88,7 +88,7 @@ class AgentTool(EventEmitter):
                         "data": data
                     })
                 return forwarder
-            
+
             # Add tool call event listeners
             self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
             self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
@@ -126,11 +126,11 @@ class AgentTool(EventEmitter):
     async def run(self, input_data: str, context: str = "") -> AgentResponse:
         """
         Run the agent with structured response and event streaming
-        
+
         Args:
             input_data: The task or question to give to this agent
             context: Additional context or background information
-            
+
         Returns:
             AgentResponse with text and metadata
         """
@@ -140,11 +140,11 @@ class AgentTool(EventEmitter):
             "input": input_data,
             "context": context
         })
-        
+
         try:
             # Prepare the conversation
             messages = []
-            
+
             # Add context if provided
             if context:
                 messages.append({
@@ -159,6 +159,7 @@ class AgentTool(EventEmitter):
 
             # Get response from agent using streaming with system prompt
             response_chunks = []
+            chunk_count = 0
             async for chunk in self.gpt_service.stream_chat_request(
                 messages=messages,
                 reasoning_effort=self.reasoning_effort,
@@ -167,14 +168,19 @@ class AgentTool(EventEmitter):
                 agent_prompt=self.system_prompt,
             ):
                 response_chunks.append(chunk)
+                chunk_count += 1
+                # Debug: Log first few chunks
+                if chunk_count <= 5:
+                    print(f"🔍 Agent {self.name} chunk {chunk_count}: '{chunk}'")
                 # Emit token event for streaming
                 self.emit("agent_token", {
                     "agent": self.name,
                     "content": chunk
                 })
-            
+
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
+            print(f"🔍 Agent {self.name} received {chunk_count} total chunks, response_text length: {len(response_text)}")
 
             # No need to restore - using direct system prompt parameter
 
@@ -186,7 +192,7 @@ class AgentTool(EventEmitter):
             if not response_text or response_text.strip() == "":
                 agent_response = AgentResponse(
                     text="",
-               
+
                     agent_name=self.name,
                     status="empty_response",
                     meta={
@@ -196,7 +202,7 @@ class AgentTool(EventEmitter):
             else:
                 agent_response = AgentResponse(
                     text=response_text,
-      
+
                     agent_name=self.name,
                     status="success",
                     meta={"reasoning_effort": self.reasoning_effort}
@@ -206,7 +212,7 @@ class AgentTool(EventEmitter):
             self.emit("agent_complete", {
                 "agent": self.name,
                 "text": agent_response.text,
-               
+
                 "status": agent_response.status,
                 "meta": agent_response.meta
             })
@@ -216,18 +222,18 @@ class AgentTool(EventEmitter):
         except Exception as e:
             error_response = AgentResponse(
                 text="",
-             
+
                 agent_name=self.name,
                 status="error",
                 meta={"error": f"Agent execution failed: {str(e)}"}
             )
-            
+
             # Emit error event
             self.emit("agent_error", {
                 "agent": self.name,
                 "error": str(e)
             })
-            
+
             return error_response
 
 
@@ -283,13 +289,13 @@ class AgentTool(EventEmitter):
         # Use the new run method
         agent_response = await self.run(task, context)
         print(f"AgentTool {self.name} agent_response: {agent_response}")
-        
+
         # Convert to legacy format for backward compatibility
         return {
             "content": agent_response.text,
             "agent": agent_response.agent_name,
             "status": agent_response.status,
-      
+
             "meta": agent_response.meta
         }
 
