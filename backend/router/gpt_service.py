@@ -86,19 +86,19 @@ class GptService(EventEmitter):
 
            """Simple calculator tool"""
            print("Citation handler called with arguments:", arguments)
-           try:               
+           try:
                 print(f"Citation handler returning arguments: {arguments.get('text')}")
                 return arguments
            except Exception as e:
                 print(f"Error in citation handler: {e}")
                 mock_result = {
                     "text": arguments.get("text"),
-                    "sources": [                       
+                    "sources": [
                     ]
                 }
                 return mock_result
 
-       
+
 
 
         from agent_registry import register_predefined_agents
@@ -209,26 +209,26 @@ class GptService(EventEmitter):
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
             result = await executor(arguments)
-            
+
             # Emit tool call complete event
             self.emit("tool_call_complete", {
                 "tool_name": tool_name,
                 "arguments": arguments,
                 "result": result
             })
-            
+
             return result
 
         except Exception as e:
             error_result = {"error": f"Tool execution failed: {str(e)}"}
-            
+
             # Emit tool call error event
             self.emit("tool_call_error", {
                 "tool_name": tool_name,
                 "arguments": arguments,
                 "error": str(e)
             })
-            
+
             return error_result
 
 
@@ -279,25 +279,25 @@ class GptService(EventEmitter):
     # ------------------------------------------------------------------------
     # Message Preparation
     # ------------------------------------------------------------------------
-    
+
     def prepare_conversation_messages(self, messages: List[dict], reasoning_effort: str = "low", system_prompt: str = "") -> List[dict]:
         """
         Prepare messages for the LLM with optional system prompt injection.
-        
+
         Args:
             messages: Raw conversation history
             reasoning_effort: "low", "medium", or "high" (unused but kept for compatibility)
             system_prompt: Optional system prompt to inject
-            
+
         Returns:
             Messages with system prompt injected if provided
         """
         if not system_prompt:
             return messages
-            
+
         # Check if there's already a system message
         has_system = any(msg.get("role") == "system" for msg in messages)
-        
+
         if not has_system:
             # Add system prompt at the beginning
             return [{"role": "system", "content": system_prompt}] + messages
@@ -386,12 +386,12 @@ class GptService(EventEmitter):
 
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, agent_prompt)
-       
+
         headers, model, url = self.get_chat_completion_params()
 
         # Get permitted tools for this request
         tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
-        
+
 
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""
@@ -402,13 +402,13 @@ class GptService(EventEmitter):
                 "stream": True,
                 "model": model
             }
-            
+
 
             # Add tools if available
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-          
+
             try:
                 print(f"🔍 agent_name: {agent_name} request data: {request_data}")
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
@@ -458,5 +458,3 @@ class GptService(EventEmitter):
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
                     break  # Exit the inner loop to continue the outer loop
-
-  
