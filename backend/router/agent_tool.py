@@ -324,12 +324,12 @@ class AgentTool(EventEmitter):
                             sources.append(url)
                     else:
                         text = str(res)
-                    
+
                     # Skip fetch failures (error messages)
                     if text and ("Failed to fetch" in text or "robots.txt" in text or "connection issue" in text.lower()):
                         print(f"⚠️  Skipping failed fetch result: {text[:100]}")
                         continue
-                    
+
                     if text and len(text) > 50:
                         answer_candidates.append(text.strip())
 
@@ -358,7 +358,7 @@ class AgentTool(EventEmitter):
                                                 sources.append(url)
                             except:
                                 pass
-            
+
             # If still no candidates, try any string content
             if not answer_candidates:
                 for tr in tool_results:
@@ -390,12 +390,12 @@ class AgentTool(EventEmitter):
                     text = result.get('content') or result.get('text') or ''
                 else:
                     text = str(result)
-                
-                # Skip fetch failures
-                if text and ("Failed to fetch" in text or "robots.txt" in text or "connection issue" in text.lower()):
-                    print(f"⚠️  Fallback fetch failed for {url}: {text[:80]}")
+
+                # Skip fetch failures and garbage responses
+                if text and ("Failed to fetch" in text or "robots.txt" in text or "connection issue" in text.lower() or text.startswith("Contents of https")):
+                    print(f"⚠️  Fallback fetch failed or returned garbage for {url}: {text[:80]}")
                     continue
-                
+
                 if text and len(text) > 60:
                     # Build concise response
                     sentences = [s.strip() for s in text.split('.') if s.strip()]
