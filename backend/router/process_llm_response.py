@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Callable, Union
+from typing import Dict, List, Callable, Union
 import json
 
 
@@ -13,6 +13,7 @@ from typing import TypedDict, List, Any
 class ToolCallResponse(TypedDict):
     success: bool
     new_conversation_entries: List[Any]
+    tool_call_result: Dict[str, Any] | None
 
 
 
@@ -37,7 +38,9 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
         return ToolCallResponse(
         success=False,
-        new_conversation_entries=[]
+        new_conversation_entries=[],
+        tool_call_result=None
+
     )  # Skip invalid tool calls
 
     try:
@@ -61,9 +64,6 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         }
         # Execute tool
         result = await execute_tool(tool_name, tool_args)
-        if "agent" in tool_name:
-            print(f"Result of tool call: {result} agent tool call tool name: {tool_name}")
-
 
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
@@ -74,8 +74,10 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
         return ToolCallResponse(
             success=True,
-            new_conversation_entries=local_conversation
+            new_conversation_entries=local_conversation,
+            tool_call_result=tool_call_result
         )
+
 
     except json.JSONDecodeError as e:
         error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
@@ -87,7 +89,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
         return ToolCallResponse(
             success=False,
-            new_conversation_entries=local_conversation
+            new_conversation_entries=local_conversation,
+            tool_call_result=None
         )
 
     except Exception as e:
@@ -102,7 +105,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
         return ToolCallResponse(
             success=False,
-            new_conversation_entries=local_conversation
+            new_conversation_entries=local_conversation,
+            tool_call_result=None
         )
 
 
@@ -173,7 +177,6 @@ async def process_llm_response_with_tools(
     # Stream one LLM response
     async for delta in llm_stream_once(conversation):
         if "choices" not in delta or not delta["choices"]:
-            print(f"No choices in delta: {delta}")
             continue
 
         choice = delta["choices"][0]
@@ -201,22 +204,16 @@ async def process_llm_response_with_tools(
                 if "function" in tc_delta:
                     func = tc_delta["function"]
                     if "name" in func:
-                        print(f"Name: {func['name']}")
                         current_tool_calls[tc_index]["function"]["name"] += func["name"]
                     if "arguments" in func:
-                        print(f"Arguments: {func['arguments']}")
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
 
         # Stream content to client and print reasoning as it happens
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
-            print(f"Content: {delta_obj['content']}")
             yield (delta_obj["content"], None)  # Content with no status change
-        elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
-            # For Harmony format: treat reasoning_content as final content after tool execution
-            print ("Reasoning content: ", delta_obj["reasoning_content"])
-#
+ 
         ## Check finish reason
         finish_reason = choice.get("finish_reason")
         if finish_reason:
@@ -226,6 +223,7 @@ async def process_llm_response_with_tools(
                 # Create tasks for concurrent execution
                 tasks = []
                 for tool_call in current_tool_calls:
+                    print(f"🔍 agent_name: {agent_name} calling tool: {tool_call['function']['name']} with arguments: {tool_call['function']['arguments']}")
                     task = execute_single_tool_call(tool_call, execute_tool)
                     tasks.append(task)
 
@@ -234,23 +232,23 @@ async def process_llm_response_with_tools(
 
                 for result in results:
                     if isinstance(result, BaseException):
-                        print("Stop on error")
                         yield (None, "stop")  # Stop on error
                         return
                     elif isinstance(result, dict) and "success" in result:
+                        if result['tool_call_result'] is not None:
+                            print(f"🔍 agent_name: {agent_name} tool call result: {str(result['tool_call_result']['content'])[:100]}")
+                        else:
+                            print(f"🔍 agent_name: {agent_name} tool call result: None")
                         conversation.extend(result["new_conversation_entries"])
 
                         await asyncio.sleep(0.01)
-                        print("Tool calls executed, continue loop")
                         yield (None, "continue")  # Continue with updated citations
                         return
                     else:  # Tool calls executed, continue loop
-                        print("Tool calls executed, continue loop", result)
                         yield (None, "continue")
                         return
 
             elif finish_reason == "stop":
-                print("Normal completion, we're done")
                 # Normal completion, we're done
                 yield (None, "stop")
                 return
@@ -261,5 +259,4 @@ async def process_llm_response_with_tools(
         return
 
     # This shouldn't happen, but just in case
-    print("This shouldn't happen, but just in case")
     yield (None, "stop")

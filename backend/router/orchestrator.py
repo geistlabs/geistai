@@ -93,7 +93,6 @@ class Orchestrator(AgentTool):
                     # Create event handlers that forward to orchestrator
                     def create_forwarder(event_type, agent_name):
                         def forwarder(data):
-                            print(f"🎯 Forwarding {event_type} from {agent_name}")
                             self.emit("sub_agent_event", {
                                 "type": event_type,
                                 "agent": agent_name,
@@ -112,7 +111,6 @@ class Orchestrator(AgentTool):
         if hasattr(self.gpt_service, 'emit') and hasattr(self.gpt_service, 'on'):
             def create_tool_forwarder(event_type):
                 def forwarder(data):
-                    print(f"🎯 Forwarding {event_type} from orchestrator GPT service")
                     self.emit("tool_call_event", {
                         "type": event_type,
                         "data": data
@@ -208,8 +206,6 @@ class Orchestrator(AgentTool):
                 
                 # Combine all chunks into final response
                 response_text = "".join(response_chunks)
-                print(f"🎯 Orchestrator completed with {len(response_chunks)} chunks")
-                print(f"🔍 Raw orchestrator response text: {response_text[:200]}...")
                 
             finally:
                 # No need to restore - using direct system prompt parameter

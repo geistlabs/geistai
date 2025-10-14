@@ -20,11 +20,8 @@ def _load_openai_key_from_env():
 
         if env_file.exists():
             load_dotenv(env_file)
-            print(f"Loaded OpenAI key from: {env_file}")
     except ImportError:
         pass  # python-dotenv not installed, silently continue
-    except Exception as e:
-        print(f"Error loading .env file: {e}")
 
 # Load OpenAI key from .env if needed
 _load_openai_key_from_env()
@@ -43,14 +40,6 @@ INFERENCE_URL ="https://inference.geist.im"# os.getenv("INFERENCE_URL", "https:/
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"
 USE_REMOTE_INFERENCE = False#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
-if USE_REMOTE_INFERENCE:
-    {
-        print("Using remote inference")
-    }
-else:
-    {
-        print("Using local inference")
-    }
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")

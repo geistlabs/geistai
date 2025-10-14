@@ -75,10 +75,6 @@ async def startup_event():
     # Register sub-agents as tools
     from agent_registry import register_predefined_agents
     registered_agents = await register_predefined_agents(gpt_service, config)
-    print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
-
-    print(f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools")
-    print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
 
 # Initialize Whisper STT client
 whisper_service_url = os.getenv(
@@ -212,13 +208,12 @@ def create_nested_research_system(config):
     #existing_agents = get_predefined_agents(config)
     existing_agents = []
     # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetcher"]
+    mcp_tools = ["brave_web_search",  "fetch"]
 
    # for agent in existing_agents:
    #     # Update each agent to only use MCP tools
    #     agent.available_tools = mcp_tools
-   #     print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
-#
+
     # Create main orchestrator with all agents at the top level
     main_orchestrator = NestedOrchestrator(
         model_config=config,
@@ -235,7 +230,6 @@ def create_nested_research_system(config):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
 
     # Build messages array with conversation history
     if chat_request.messages:
@@ -244,20 +238,15 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     else:
         messages = [{"role": "user", "content": chat_request.message}]
 
-    print(f"[Backend] Created messages array with {len(messages)} messages")
 
     async def orchestrator_event_stream():
         chunk_sequence = 0
-        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
 
 
         try:
             # Always use nested orchestrator (can handle single-layer or multi-layer)
-            print("🎯 Using nested orchestrator mode")
             # Create a nested orchestrator structure
             orchestrator = create_nested_research_system(config)
-            print(f"🎯 Created nested orchestrator: {orchestrator.name}")
-            print(f"🎯 Agent hierarchy: {orchestrator.get_agent_hierarchy()}")
 
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
@@ -265,9 +254,8 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             # Configure available tools (only sub-agents, not MCP tools)
             all_tools = list(gpt_service._tool_registry.keys())
             # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
-            sub_agent_names = ['brave_web_search', 'brave_summarizer']
+            sub_agent_names = ['brave_web_search', 'fetch']
             available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
-            print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
 
             # Set the available tools on the orchestrator
             orchestrator.available_tools = available_tool_names
@@ -302,9 +290,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                 sub_agent.on("agent_error", capture_event("sub_agent_event"))
 
             # Run the orchestrator
-            print(f"🚀 Starting orchestrator with message: {chat_request.message}")
             final_response = await orchestrator.run(chat_request.message)
-            print(f"✅ Orchestrator completed with status: {final_response.status}")
 
             # Send all captured events
             for event in events_captured:
@@ -338,7 +324,6 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         except asyncio.TimeoutError as e:
             yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
         except Exception as e:
-            print(f"Error in orchestrator stream: {e}")
             import traceback
             traceback.print_exc()
             yield {

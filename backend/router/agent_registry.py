@@ -38,7 +38,6 @@ async def register_predefined_agents(gpt_service: GptService, config) -> List[st
         )
         
         registered.append(agent.name)
-        print(f"✅ Registered agent tool: {agent.name}")
     
     return registered
 
@@ -90,7 +89,6 @@ async def register_custom_agent(
         tool_type="agent"
     )
     
-    print(f"✅ Registered custom agent tool: {agent.name}")
     return agent.name
 
 
@@ -116,7 +114,6 @@ async def register_specific_agents(
     
     for agent_name in agent_names:
         if agent_name not in agent_map:
-            print(f"⚠️  Unknown agent: {agent_name}")
             continue
         
         agent = agent_map[agent_name]
@@ -134,7 +131,6 @@ async def register_specific_agents(
         )
         
         registered.append(agent.name)
-        print(f"✅ Registered agent tool: {agent.name}")
     
     return registered
 

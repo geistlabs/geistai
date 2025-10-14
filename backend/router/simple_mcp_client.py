@@ -82,21 +82,15 @@ class SimpleMCPClient:
                     self.sessions[gateway_url] = session_id
                     success_count += 1
                     
-                    print(f"✅ Connected to MCP gateway at {gateway_url}")
-                    
                 except Exception as e:
-                    print(f"❌ Failed to connect to gateway {gateway_url}: {e}")
                     continue
             
             if success_count > 0:
-                print(f"✅ Connected to {success_count}/{len(self.gateway_urls)} MCP gateways")
                 return True
             else:
-                print("❌ Failed to connect to any MCP gateways")
                 return False
             
         except Exception as e:
-            print(f"❌ Failed to connect to MCP gateways: {e}")
             return False
     
     async def disconnect(self):
@@ -106,15 +100,13 @@ class SimpleMCPClient:
             self.client = None
         self.sessions.clear()
         self._tool_cache.clear()
-        print("✅ Disconnected from all MCP gateways")
-    
+        
     # ------------------------------------------------------------------------
     # MCP Protocol Implementation
     # ------------------------------------------------------------------------
     
     async def _initialize_session(self, gateway_url: str) -> Optional[str]:
         """Initialize MCP session (step 1 of handshake)"""
-        print(f"Initializing MCP session with {gateway_url}")
         init_request = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -137,7 +129,6 @@ class SimpleMCPClient:
         
         # Extract session ID from headers
         session_id = response.headers.get("mcp-session-id")
-        print(f"✅ MCP session initialized with ID: {session_id}")
         
         return session_id
     
@@ -154,8 +145,7 @@ class SimpleMCPClient:
         if response.status_code not in [200, 202]:
             raise Exception(f"Initialized notification failed: {response.status_code}")
         
-        print("✅ MCP handshake completed")
-    
+        
     async def _cache_tools(self, gateway_url: str, session_id: str) -> None:
         """Cache available tools from gateway"""
         tools_request = {
@@ -175,10 +165,7 @@ class SimpleMCPClient:
                     "tool_info": tool,
                     "gateway_url": gateway_url
                 }
-            print(f"✅ Cached {len(result['result']['tools'])} tools from {gateway_url}")
-        else:
-            print(f"⚠️  No tools found in MCP gateway response from {gateway_url}")
-    
+        
     async def _send_request(self, gateway_url: str, request: dict, session_id: Optional[str] = None) -> httpx.Response:
         """
         Send a request to a specific MCP gateway
@@ -191,7 +178,6 @@ class SimpleMCPClient:
         Returns:
             HTTP response
         """
-        print(f"Sending request to {gateway_url}: {request}")
         headers = {
             "Accept": "application/json, text/event-stream",
             "Content-Type": "application/json"
@@ -209,7 +195,6 @@ class SimpleMCPClient:
             headers=headers,
             json=request
         )
-        print(f"MCP Response: {response.text}")
         
         if response.status_code not in [200, 202]:
             raise Exception(f"MCP request failed: {response.status_code} - {response.text}")
@@ -235,7 +220,6 @@ class SimpleMCPClient:
                 if line.startswith('data: '):
                     json_str = line[6:]  # Remove 'data: ' prefix
                     try:
-                        print(f"JSON MCP Response: {json_str}")
                         return json.loads(json_str)
                     except json.JSONDecodeError:
                         continue
@@ -324,7 +308,6 @@ class SimpleMCPClient:
             return self._format_tool_result(result)
             
         except Exception as e:
-            print(f"❌ Tool call failed: {tool_name} - {e}")
             return {"error": f"Tool call failed: {str(e)}"}
     
     def _format_tool_result(self, result: dict) -> dict:
@@ -398,31 +381,22 @@ async def test_mcp_client():
     """Test the MCP client functionality"""
     brave_and_fetch = ["http://mcp-brave:3000", "http://mcp-fetch:8000"]
     
-    print(f"Testing MCP client with: {brave_and_fetch}")
     
     try:
         async with SimpleMCPClient(brave_and_fetch) as client:
             # Connect to gateway
             if not await client.connect():
-                print("❌ Failed to connect to MCP gateway")
                 return
             
             # List available tools
             tools = await client.list_tools()
-            print(f"✅ Found {len(tools)} tools:")
-            for tool in tools:
-                print(f"  - {tool['name']}: {tool.get('description', 'No description')}")
-            
+
             # Test a tool call if tools are available
             if tools:
                 tool_name = tools[0]['name']
-                print(f"\n🔧 Testing tool: {tool_name}")
                 
                 # Get tool info
-                tool_info = await client.get_tool_info(tool_name)
-                if tool_info:
-                    print(f"Tool schema: {tool_info.get('inputSchema', {})}")
-                
+             
                 # Try a simple call (may fail depending on tool requirements)
                 try:
                     result = await client.call_tool(tool_name, {})

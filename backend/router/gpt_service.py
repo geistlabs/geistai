@@ -81,16 +81,12 @@ class GptService(EventEmitter):
 
         This is where you add your own tools. See examples below and
         """
-        print("Registering citation tool")
         async def citation_handler(arguments) -> Dict:
 
            """Simple calculator tool"""
-           print("Citation handler called with arguments:", arguments)
            try:
-                print(f"Citation handler returning arguments: {arguments.get('text')}")
                 return arguments
            except Exception as e:
-                print(f"Error in citation handler: {e}")
                 mock_result = {
                     "text": arguments.get("text"),
                     "sources": [
@@ -134,7 +130,6 @@ class GptService(EventEmitter):
         """Register tools from MCP gateway"""
         if not self.config.MCP_URLS:
             return
-        print(f"Connecting to mcp servers at MCP URLs: {self.config.MCP_URLS}")
         try:
 
             # Initialize MCP client
@@ -410,7 +405,6 @@ class GptService(EventEmitter):
                 request_data["tool_choice"] = "auto"
 
             try:
-                print(f"🔍 agent_name: {agent_name} request data: {request_data}")
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(
                         "POST",
@@ -419,6 +413,16 @@ class GptService(EventEmitter):
                         json=request_data,
                         timeout=self.config.INFERENCE_TIMEOUT
                     ) as resp:
+
+
+                        # INSERT_YOUR_CODE
+                        # Log HTTP 400 errors
+                        if resp.status_code == 400:
+                            try:
+                                error_body = await resp.aread()
+                                print(f"❌ DEBUG: HTTP 400 Error from LLM: {error_body.decode(errors='replace')}")
+                            except Exception as log_exc:
+                                print(f"❌ DEBUG: Failed to read 400 error response: {log_exc}")
 
                         async for line in resp.aiter_lines():
                             if not line or not line.startswith("data: "):
@@ -458,7 +462,5 @@ class GptService(EventEmitter):
                     return
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
-                    if tool_call_count >= MAX_TOOL_CALLS:
-                        print("Tool call count reached max, exiting tool call count: ", tool_call_count)
                     break  # Exit the inner loop to continue the outer loop
 
