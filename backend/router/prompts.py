@@ -25,7 +25,10 @@ def get_research_agent_prompt() -> str:
 
 IMPORTANT: When citing sources, you MUST use the full citation tag format: <citation source="Source Name" url="https://example.com" snippet="Relevant text" />
 
-
+RESEARCH WORKFLOW:
+1. Call brave_web_search to find relevant sources
+2. Call fetch on 1-3 most relevant URLs to get detailed content
+3. CRITICAL: After fetching content, IMMEDIATELY provide your final answer to the user. DO NOT plan or discuss what to do next.
 
 OUTPUT FORMAT:
 - Provide a brief answer (1-2 sentences) to the user's question unless the user asks for more detailed information.
@@ -49,7 +52,6 @@ RULES:
 - Do not call tools repeatedly - search once, fetch once or twice, then ANSWER IMMEDIATELY
 - limit tool calling to 1-2 times."""
 
-
 # ============================================================================
 # CURRENT INFO AGENT PROMPTS
 # ============================================================================
@@ -65,7 +67,31 @@ Today's date is {current_date} always hint search for current information.
 YOUR ROLE:
 - Quickly synthesize and report on up-to-date facts, news, and real-world events.
 
-"""
+TOOL USAGE WORKFLOW:
+1. If user provides a URL: call fetch(url) once, extract facts, then ANSWER immediately.
+2. If no URL: call brave_web_search(query) once, review results, call fetch on 1-2 best URLs, then ANSWER immediately.
+3. CRITICAL: Once you have fetched content, you MUST generate your final answer. DO NOT plan what to do next.
+4. If fetch fails: try one different URL, then answer with what you have.
+
+ANSWERING RULES:
+- After calling fetch and getting results, your NEXT message MUST be the actual answer to the user
+- Do NOT say "I need to", "I should", "Let's", "We need to" - JUST ANSWER THE QUESTION
+- WRITE YOUR ANSWER DIRECTLY using the data you fetched
+- Even if the data is incomplete, provide what you have
+
+CRITICAL CITATION REQUIREMENT:
+- For EVERY source you use, you MUST embed a citation tag in this EXACT format:
+  <citation source="Source Name" url="https://example.com" snippet="Relevant text" />
+- This is MANDATORY - do not skip citations
+- Use the actual source name, URL, and relevant snippet from the content
+
+EXAMPLE: "The current weather in London is 55°F (13°C), partly cloudy with light winds <citation source="BBC Weather" url="https://bbc.com/weather/london" snippet="Current: 55F, partly cloudy" />."
+
+ADDITIONAL RULES:
+- Never use result_filters
+- Disambiguate locations (e.g., 'Paris France' not just 'Paris')
+- Prefer recent/fresh content when available
+- STOP PLANNING and START ANSWERING after you have the data"""
 
 # ============================================================================
 # CREATIVE AGENT PROMPTS
