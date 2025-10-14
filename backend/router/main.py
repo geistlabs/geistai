@@ -71,12 +71,12 @@ gpt_service = GptService(config, can_log=True)
 async def startup_event():
     """Initialize GPT service tools on startup"""
     await gpt_service.init_tools()
-    
+
     # Register sub-agents as tools
     from agent_registry import register_predefined_agents
     registered_agents = await register_predefined_agents(gpt_service, config)
     print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
-    
+
     print(f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools")
     print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
 
@@ -179,14 +179,57 @@ async def test_tool(tool_name: str, arguments: dict = {}):
     """Test a specific tool"""
     if tool_name not in gpt_service._tool_registry:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-    
+
     try:
         result = await gpt_service._execute_tool(tool_name, arguments)
         return {"result": result}
-        
+
     except Exception as e:
         logger.error(f"Tool test failed: {e}")
         raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
+
+
+# ============================================================================
+# Nested Orchestrator Factory Functions
+# ============================================================================
+
+def create_nested_research_system(config):
+    """
+    Create a nested orchestrator system using your existing agents at the top level:
+
+    Main Orchestrator
+    ├── research_agent
+    ├── current_info_agent
+    ├── creative_agent
+    ├── technical_agent
+    └── summary_agent
+
+    Each agent has access to brave_search and fetch MCP tools.
+    """
+    from agent_tool import get_predefined_agents
+
+    # Get your existing agents
+    existing_agents = get_predefined_agents(config)
+
+    # Configure each agent to use brave_search and brave_summarizer tools
+    mcp_tools = ["brave_web_search",  "fetch"]
+
+    for agent in existing_agents:
+        # Update each agent to only use MCP tools
+        agent.available_tools = mcp_tools
+        print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
+
+    # Create main orchestrator with all agents at the top level
+    main_orchestrator = NestedOrchestrator(
+        model_config=config,
+        name="main_orchestrator",
+        description="Main coordination hub with all agents at top level",
+        system_prompt=get_prompt("main_orchestrator"),
+        sub_agents=existing_agents,  # All agents at top level
+        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
+    )
+
+    return main_orchestrator
 
 
 @app.post("/api/stream")
@@ -206,7 +249,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     async def orchestrator_event_stream():
         chunk_sequence = 0
         print(f"INFERENCE_URL: {config.INFERENCE_URL}")
-        
+
 
         try:
             # Always use nested orchestrator (can handle single-layer or multi-layer)
@@ -215,26 +258,26 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             orchestrator = create_nested_research_system(config)
             print(f"🎯 Created nested orchestrator: {orchestrator.name}")
             print(f"🎯 Agent hierarchy: {orchestrator.get_agent_hierarchy()}")
-            
+
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
-            
+
             # Configure available tools (only sub-agents, not MCP tools)
             all_tools = list(gpt_service._tool_registry.keys())
             # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
             sub_agent_names = ['research_agent', 'current_info_agent', 'creative_agent']#, 'brave_web_search', 'fetch']
             available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
             print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
-            
+
             # Set the available tools on the orchestrator
             orchestrator.available_tools = available_tool_names
-            
+
             # Make sure the orchestrator uses the main GPT service with all tools
             orchestrator.gpt_service = gpt_service
-            
+
             # Simple approach: just run the orchestrator and capture events
             events_captured = []
-            
+
             def capture_event(event_type):
                 def handler(data):
                     events_captured.append({
@@ -243,44 +286,44 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                         "sequence": chunk_sequence
                     })
                 return handler
-            
+
             # Register event listeners BEFORE running the orchestrator
             orchestrator.on("orchestrator_start", capture_event("orchestrator_start"))
             orchestrator.on("agent_token", capture_event("orchestrator_token"))
             orchestrator.on("orchestrator_complete", capture_event("orchestrator_complete"))
             orchestrator.on("sub_agent_event", capture_event("sub_agent_event"))
             orchestrator.on("tool_call_event", capture_event("tool_call_event"))
-            
+
             # Also listen to sub-agent events directly
             for sub_agent in orchestrator.sub_agents:
                 sub_agent.on("agent_start", capture_event("sub_agent_event"))
                 sub_agent.on("agent_token", capture_event("sub_agent_event"))
                 sub_agent.on("agent_complete", capture_event("sub_agent_event"))
                 sub_agent.on("agent_error", capture_event("sub_agent_event"))
-            
+
             # Run the orchestrator
             print(f"🚀 Starting orchestrator with message: {chat_request.message}")
             final_response = await orchestrator.run(chat_request.message)
             print(f"✅ Orchestrator completed with status: {final_response.status}")
-            
+
             # Send all captured events
             for event in events_captured:
                 if await request.is_disconnected():
                     return
-                    
+
                 yield {
                     "data": json.dumps(event),
                     "event": event.get("type", "unknown")
                 }
                 chunk_sequence += 1
-            
+
             # Send final response (citations are now handled by frontend)
             if final_response:
                 yield {
                     "data": json.dumps({
                         "type": "final_response",
                         "text": final_response.text,
-                       
+
                         "status": final_response.status,
                         "meta": final_response.meta,
                         "sequence": chunk_sequence
@@ -288,7 +331,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                     "event": "final_response"
                 }
                 chunk_sequence += 1
-            
+
             # Send end event
             yield {"data": json.dumps({"finished": True}), "event": "end"}
 
@@ -544,48 +587,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         sys.exit(1)
-
-# ============================================================================
-# Nested Orchestrator Factory Functions
-# ============================================================================
-
-def create_nested_research_system(config):
-    """
-    Create a nested orchestrator system using your existing agents at the top level:
-    
-    Main Orchestrator
-    ├── research_agent
-    ├── current_info_agent
-    ├── creative_agent
-    ├── technical_agent
-    └── summary_agent
-    
-    Each agent has access to brave_search and fetch MCP tools.
-    """
-    from agent_tool import get_predefined_agents
-    
-    # Get your existing agents
-    existing_agents = get_predefined_agents(config)
-    
-    # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetch"]
-    
-    for agent in existing_agents:
-        # Update each agent to only use MCP tools
-        agent.available_tools = mcp_tools
-        print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
-    
-    # Create main orchestrator with all agents at the top level
-    main_orchestrator = NestedOrchestrator(
-        model_config=config,
-        name="main_orchestrator",
-        description="Main coordination hub with all agents at top level",
-        system_prompt=get_prompt("main_orchestrator"),
-        sub_agents=existing_agents,  # All agents at top level
-        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
-    )
-    
-    return main_orchestrator
 
 
 # TEST INFERENCE SERVER CONNECTION
