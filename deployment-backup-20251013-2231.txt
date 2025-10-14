@@ -1,0 +1,13 @@
+# Development Namespace - Image Backup
+# Created: Mon Oct 13 22:31:07 -05 2025
+# Namespace: development
+
+geist-embeddings-55fb498646-ws9gt	alo42/embeddings:development-1.0.8
+geist-inference-d7b46956d-7h69v	alo42/inference:development-1.0.14
+geist-router-748f9b74bc-fp59d	alo42/router:development-1.0.32
+geist-webapp-6f7bc47ff7-c6dlm	alo42/webapp:development-1.0.6
+geist-whisper-stt-554f7bf5db-l7ngg	alo42/whisper-stt:development-1.0.17
+
+# MCP Services
+mcp-brave-7686567565-kvqtr	mcp/brave-search:latest
+mcp-fetch-77cd6b8dd5-cnwtg	mcp/fetch:latest
