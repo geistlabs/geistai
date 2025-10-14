@@ -172,12 +172,17 @@ async def process_llm_response_with_tools(
 
     # Stream one LLM response
     async for delta in llm_stream_once(conversation):
+        # DEBUG: Log all deltas to understand what GPT-OSS is sending
+        print(f"🔍 DEBUG: Received delta: {delta}")
+        
         if "choices" not in delta or not delta["choices"]:
             # Print reasoning content as it happens
+            print(f"🔍 DEBUG: No choices in delta, skipping")
             continue
 
         choice = delta["choices"][0]
         delta_obj = choice.get("delta", {})
+        print(f"🔍 DEBUG: delta_obj = {delta_obj}")
 
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
