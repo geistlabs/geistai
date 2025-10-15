@@ -404,6 +404,11 @@ class GptService(EventEmitter):
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
+            # INSERT_YOUR_CODE
+            # Print the names of the tools sent to the LLM for debugging
+            if tools_for_llm:
+                tool_names = [tool.get("function", {}).get("name", "unknown") for tool in tools_for_llm]
+                print(f"🛠️ Tools for LLM: {tool_names}")
             try:
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(

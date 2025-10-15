@@ -204,7 +204,7 @@ def create_nested_research_system(config):
     # Get your existing agents
     existing_agents = get_predefined_agents(config)
     permitted_agents = []
-    permitted_mcp_tools = ["brave_web_search" ]
+    permitted_mcp_tools = ["brave_web_search", "brave_summarizer" ]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
     existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]

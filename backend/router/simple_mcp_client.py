@@ -160,6 +160,7 @@ class SimpleMCPClient:
         
         if "result" in result and "tools" in result["result"]:
             for tool in result["result"]["tools"]:
+                print(f"Tool: {[tool['name']]}")
                 # Store tool with its gateway URL for routing
                 self._tool_cache[tool["name"]] = {
                     "tool_info": tool,

@@ -66,17 +66,23 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
         # INSERT_YOUR_CODE
         # If the tool is brave_web_search, remove any "summary" or similar keys from tool_args
-        if tool_name == "brave_web_search":
-            if "summary" in tool_args:
-                del tool_args["summary"]
+
         print(f"🔍 calling tool: {tool_name} with tool_args: {tool_args}")
         # Execute tool
+        # INSERT_YOUR_CODE
+        # Remove 'country_code' and 'ui_language' from tool_args before execution
+        if tool_name == "brave_web_search":
+            for key in ["ui_lang", "country", "search_lang","result_filter"]:
+                if key in tool_args:
+                    del tool_args[key]
         result = await execute_tool(tool_name, tool_args)
 
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
             result
         )
+
+        print(f"🔍 tool_call_result: {tool_call_result}")
         local_conversation.append(
             tool_call_result
         )
@@ -221,7 +227,6 @@ async def process_llm_response_with_tools(
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
-            print(f"🔍 agent_name: {agent_name} content: {delta_obj['content']}")
             yield (delta_obj["content"], None)  # Content with no status change
  
         ## Check finish reason
