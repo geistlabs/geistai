@@ -420,7 +420,20 @@ class GptService(EventEmitter):
                         if resp.status_code == 400:
                             try:
                                 error_body = await resp.aread()
-                                print(f"❌ DEBUG: HTTP 400 Error from LLM: {error_body.decode(errors='replace')}")
+                                decoded_error_body = error_body.decode(errors='replace')
+                                print(f"❌ DEBUG: HTTP 400 Error from LLM: {decoded_error_body}")
+                                if "message" in decoded_error_body and "the request exceeds the available context" in decoded_error_body:
+                                    print("❌ DEBUG: The request exceeds the available context size")
+                                    print(f"❌ DEBUG: Conversation:   {msgs}")
+                                try:
+                                    decoded_error_body_json = json.loads(decoded_error_body)
+                                    # Print if the error message includes "the request exceeds the available context size"
+                                    if "message" in decoded_error_body_json and "the request exceeds the available context" in decoded_error_body_json["message"]:
+                                        print("❌ DEBUG: The request exceeds the available context size")
+                                        print(f"❌ DEBUG: Conversation:   {msgs}")
+                                except Exception as parse_exc:
+                                    print(f"❌ DEBUG: Could not parse 400 error as JSON: {parse_exc}")
+                                
                             except Exception as log_exc:
                                 print(f"❌ DEBUG: Failed to read 400 error response: {log_exc}")
 

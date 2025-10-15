@@ -179,6 +179,7 @@ async def process_llm_response_with_tools(
         if "choices" not in delta or not delta["choices"]:
             continue
 
+
         choice = delta["choices"][0]
         delta_obj = choice.get("delta", {})
 
@@ -232,6 +233,7 @@ async def process_llm_response_with_tools(
 
                 for result in results:
                     if isinstance(result, BaseException):
+                        print(f"🔍 agent_name: {agent_name} tool call error, stopping loop")
                         yield (None, "stop")  # Stop on error
                         return
                     elif isinstance(result, dict) and "success" in result:
@@ -242,21 +244,23 @@ async def process_llm_response_with_tools(
                         conversation.extend(result["new_conversation_entries"])
 
                         await asyncio.sleep(0.01)
+                        print(f"🔍 agent_name: {agent_name} tool call result yielded, continuing loop")
                         yield (None, "continue")  # Continue with updated citations
                         return
                     else:  # Tool calls executed, continue loop
+                        print(f"🔍 agent_name: {agent_name} tool calls executed but didn't return dict, continuing loop")
                         yield (None, "continue")
                         return
 
             elif finish_reason == "stop":
                 # Normal completion, we're done
+                print(f"🔍 agent_name: {agent_name} normal completion, we're done")
                 yield (None, "stop")
                 return
 
-    # If no tools were called, we're done
-    if not saw_tool_call:
-        yield (None, "continue")
-        return
+
+
 
     # This shouldn't happen, but just in case
+    print(f"🔍 agent_name: {agent_name} no tool calls were made")
     yield (None, "stop")

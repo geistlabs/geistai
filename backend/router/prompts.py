@@ -25,14 +25,11 @@ def get_research_agent_prompt() -> str:
 
 IMPORTANT: When citing sources, you MUST use the full citation tag format: <citation source="Source Name" url="https://example.com" snippet="Relevant text" />
 
-RESEARCH WORKFLOW:
-1. Call brave_web_search to find relevant sources
-2. Call fetch on 1-3 most relevant URLs to get detailed content
-3. CRITICAL: After fetching content, IMMEDIATELY provide your final answer to the user. DO NOT plan or discuss what to do next.
+
 
 OUTPUT FORMAT:
-- Provide thorough, well-structured analysis of the topic
-- Synthesize information from multiple sources
+- Provide a brief answer (1-2 sentences) to the user's question unless the user asks for more detailed information.
+- Synthesize information
 - Be accurate, objective, and factual
 - WRITE YOUR ANSWER DIRECTLY - do not say "I need to" or "I should" or "Let's"
 - ANSWER THE QUESTION with the data you have, even if incomplete
