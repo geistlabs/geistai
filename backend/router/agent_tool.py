@@ -19,6 +19,7 @@ import asyncio
 from typing import Dict, List, Any, Optional
 import httpx
 from gpt_service import GptService
+from chat_types import ChatMessage
 from response_schema import AgentResponse
 from events import EventEmitter
 from prompts import get_prompt
@@ -122,7 +123,7 @@ class AgentTool(EventEmitter):
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
 
-    async def run(self, input_data: str, context: str = "") -> AgentResponse:
+    async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """
         Run the agent with structured response and event streaming
 
@@ -136,31 +137,18 @@ class AgentTool(EventEmitter):
         # Emit start event
         self.emit("agent_start", {
             "agent": self.name,
-            "input": input_data,
-            "context": context
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
         })
 
         try:
-            # Prepare the conversation
-            messages = []
-
-            # Add context if provided
-            if context:
-                messages.append({
-                    "role": "user",
-                    "content": f"Context: {context}\n\nTask: {input_data}"
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": input_data
-                })
-
             # Get response from agent using streaming with system prompt
             response_chunks = []
             chunk_count = 0
+            # Convert ChatMessage objects to dicts for stream_chat_request
+            message_dicts = [{"role": msg.role, "content": msg.content} for msg in messages]
+            
             async for chunk in self.gpt_service.stream_chat_request(
-                messages=messages,
+                messages=message_dicts,
                 reasoning_effort=self.reasoning_effort,
                 agent_name=self.name,
                 permitted_tools=self.available_tools,
@@ -275,12 +263,13 @@ class AgentTool(EventEmitter):
         """
         task = arguments.get("task", "")
         context = arguments.get("context", "")
+        messages = [ChatMessage(role="user", content="Your task is to " + task + " you have the following context: " + context)]
 
         if not task:
             return {"error": "No task provided"}
 
         # Use the new run method
-        agent_response = await self.run(task, context)
+        agent_response = await self.run(messages)
 
         # Convert to legacy format for backward compatibility
         return {

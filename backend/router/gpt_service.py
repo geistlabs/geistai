@@ -397,13 +397,13 @@ class GptService(EventEmitter):
                 "stream": True,
                 "model": model
             }
+            print(f"❌ DEBUG: Request data: {len(msgs)} msgs")
 
 
             # Add tools if available
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-
             try:
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(

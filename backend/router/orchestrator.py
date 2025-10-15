@@ -10,6 +10,7 @@ The Orchestrator is a specialized Agent that:
 
 from typing import List, Dict, Any, Optional
 from agent_tool import AgentTool
+from chat_types import ChatMessage
 from prompts import get_prompt
 from response_schema import AgentResponse,  merge_agent_responses
 from gpt_service import GptService
@@ -145,7 +146,7 @@ class Orchestrator(AgentTool):
             self.gpt_service.remove_all_listeners("tool_call_complete")
             self.gpt_service.remove_all_listeners("tool_call_error")
     
-    async def run(self, input_data: str, context: str = "") -> AgentResponse:
+    async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """
         Run the orchestrator with sub-agent coordination
         
@@ -159,8 +160,7 @@ class Orchestrator(AgentTool):
         # Emit orchestrator start event
         self.emit("orchestrator_start", {
             "orchestrator": self.name,
-            "input": input_data,
-            "context": context,
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
             "sub_agents": [agent.name for agent in self.sub_agents]
         })
         
@@ -169,28 +169,20 @@ class Orchestrator(AgentTool):
             if self.stream_sub_agents:
                 self._setup_sub_agent_event_forwarding()
             
-            # Prepare the conversation
-            messages = []
+            # Use the provided messages
             
-            # Add context if provided
-            if context:
-                messages.append({
-                    "role": "user",
-                    "content": f"Context: {context}\n\nTask: {input_data}"
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": input_data
-                })
+          
 
             # Use the orchestrator's GPT service to handle the request
             # This will automatically coordinate with sub-agents via tool calls
             response_chunks = []
             
             try:
+                # Convert ChatMessage objects to dicts for stream_chat_request
+                message_dicts = [{"role": msg.role, "content": msg.content} for msg in messages]
+                
                 async for chunk in self.gpt_service.stream_chat_request(
-                    messages=messages,
+                    messages=message_dicts,
                     permitted_tools=self.available_tools,
                     reasoning_effort=self.reasoning_effort,
                     agent_name=self.name,
@@ -305,7 +297,9 @@ class Orchestrator(AgentTool):
         
         for agent in self.sub_agents:
             try:
-                response = await agent.run(task, context)
+                messages = [ChatMessage(role="user", content="Your task is to " + task + " you have the following context: " + context)]
+
+                response = await agent.run(messages)
                 responses.append(response)
             except Exception as e:
                 error_response = AgentResponse(

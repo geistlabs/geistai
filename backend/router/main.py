@@ -14,6 +14,7 @@ from gpt_service import GptService
 from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
 from prompts import get_prompt
+from chat_types import ChatMessage
 
 from whisper_client import WhisperSTTClient
 
@@ -28,10 +29,6 @@ class HealthCheckResponse(BaseModel):
     ssl_enabled: bool
     ssl_status: str
 
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
 
 
 class ChatRequest(BaseModel):
@@ -207,7 +204,7 @@ def create_nested_research_system(config):
     # Get your existing agents
     existing_agents = get_predefined_agents(config)
     permitted_agents = []
-    permitted_mcp_tools = ["brave_web_search",  "fetch"]
+    permitted_mcp_tools = ["brave_web_search" ]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
     existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
@@ -235,11 +232,12 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
 
     # Build messages array with conversation history
-    if chat_request.messages:
-        messages = [msg.dict() for msg in chat_request.messages]
-        messages.append({"role": "user", "content": chat_request.message})
+    messages = chat_request.messages
+    if not messages:
+        messages = [ChatMessage(role="user", content=chat_request.message)]
     else:
-        messages = [{"role": "user", "content": chat_request.message}]
+        messages.append(ChatMessage(role="user", content=chat_request.message))
+   
 
 
     async def orchestrator_event_stream():
@@ -255,56 +253,81 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             await orchestrator.initialize(gpt_service, config)
 
             # Configure available tools (only sub-agents, not MCP tools)
-            all_tools = list(gpt_service._tool_registry.keys())
-            # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
-            sub_agent_names = ['brave_web_search', 'fetch']
-            available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
 
-            # Set the available tools on the orchestrator
-            orchestrator.available_tools = available_tool_names
 
             # Make sure the orchestrator uses the main GPT service with all tools
             orchestrator.gpt_service = gpt_service
 
-            # Simple approach: just run the orchestrator and capture events
-            events_captured = []
-
-            def capture_event(event_type):
+            # Use asyncio.Queue to stream events in real-time
+            event_queue = asyncio.Queue()
+            final_response = None
+            
+            def queue_event(event_type):
                 def handler(data):
-                    events_captured.append({
+                    event_data = {
                         "type": event_type,
                         "data": data,
                         "sequence": chunk_sequence
-                    })
+                    }
+                    try:
+                        event_queue.put_nowait(event_data)
+                    except asyncio.QueueFull:
+                        pass  # Skip if queue is full
                 return handler
 
             # Register event listeners BEFORE running the orchestrator
-            orchestrator.on("orchestrator_start", capture_event("orchestrator_start"))
-            orchestrator.on("agent_token", capture_event("orchestrator_token"))
-            orchestrator.on("orchestrator_complete", capture_event("orchestrator_complete"))
-            orchestrator.on("sub_agent_event", capture_event("sub_agent_event"))
-            orchestrator.on("tool_call_event", capture_event("tool_call_event"))
+            orchestrator.on("orchestrator_start", queue_event("orchestrator_start"))
+            orchestrator.on("agent_token", queue_event("orchestrator_token"))
+            orchestrator.on("orchestrator_complete", queue_event("orchestrator_complete"))
+            orchestrator.on("sub_agent_event", queue_event("sub_agent_event"))
+            orchestrator.on("tool_call_event", queue_event("tool_call_event"))
 
             # Also listen to sub-agent events directly
             for sub_agent in orchestrator.sub_agents:
-                sub_agent.on("agent_start", capture_event("sub_agent_event"))
-                sub_agent.on("agent_token", capture_event("sub_agent_event"))
-                sub_agent.on("agent_complete", capture_event("sub_agent_event"))
-                sub_agent.on("agent_error", capture_event("sub_agent_event"))
+                sub_agent.on("agent_start", queue_event("sub_agent_event"))
+                sub_agent.on("agent_token", queue_event("sub_agent_event"))
+                sub_agent.on("agent_complete", queue_event("sub_agent_event"))
+                sub_agent.on("agent_error", queue_event("sub_agent_event"))
 
-            # Run the orchestrator
-            final_response = await orchestrator.run(chat_request.message)
-
-            # Send all captured events
-            for event in events_captured:
-                if await request.is_disconnected():
-                    return
-
-                yield {
-                    "data": json.dumps(event),
-                    "event": event.get("type", "unknown")
-                }
-                chunk_sequence += 1
+            # Start orchestrator in background
+            orchestrator_task = asyncio.create_task(orchestrator.run(messages))
+            
+            # Stream events as they come in
+            while True:
+                try:
+                    # Wait for either an event or orchestrator completion
+                    done, pending = await asyncio.wait([
+                        asyncio.create_task(event_queue.get()),
+                        orchestrator_task
+                    ], return_when=asyncio.FIRST_COMPLETED)
+                    
+                    # Check if orchestrator is done
+                    if orchestrator_task in done:
+                        final_response = await orchestrator_task
+                        break
+                    
+                    # Process events
+                    for task in done:
+                        if task != orchestrator_task:
+                            event = await task
+                            if await request.is_disconnected():
+                                return
+                            
+                            # Ensure event is a dict (from queue) not AgentResponse
+                            if isinstance(event, dict):
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+                                chunk_sequence += 1
+                    
+                    # Cancel any pending tasks that aren't the orchestrator
+                    for task in pending:
+                        if task != orchestrator_task:
+                            task.cancel()
+                            
+                except asyncio.CancelledError:
+                    break
 
             # Send final response (citations are now handled by frontend)
             if final_response:

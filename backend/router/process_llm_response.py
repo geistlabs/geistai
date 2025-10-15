@@ -62,6 +62,14 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
             "tool_call_id": tool_call["id"],
             "content": empty_tool_call_text
         }
+
+
+        # INSERT_YOUR_CODE
+        # If the tool is brave_web_search, remove any "summary" or similar keys from tool_args
+        if tool_name == "brave_web_search":
+            if "summary" in tool_args:
+                del tool_args["summary"]
+        print(f"🔍 calling tool: {tool_name} with tool_args: {tool_args}")
         # Execute tool
         result = await execute_tool(tool_name, tool_args)
 
@@ -213,6 +221,7 @@ async def process_llm_response_with_tools(
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
+            print(f"🔍 agent_name: {agent_name} content: {delta_obj['content']}")
             yield (delta_obj["content"], None)  # Content with no status change
  
         ## Check finish reason
@@ -223,6 +232,7 @@ async def process_llm_response_with_tools(
 
                 # Create tasks for concurrent execution
                 tasks = []
+                print(f"🔍 agent_name: {agent_name} current_tool_calls: {current_tool_calls}")
                 for tool_call in current_tool_calls:
                     print(f"🔍 agent_name: {agent_name} calling tool: {tool_call['function']['name']} with arguments: {tool_call['function']['arguments']}")
                     task = execute_single_tool_call(tool_call, execute_tool)
