@@ -157,18 +157,88 @@ class GptService:
 
         This is where you add your own tools. See examples below and
         """
-        async def citation_handler(arguments) -> Dict:
 
-           """Simple calculator tool"""
-           try:
-                return arguments
-           except Exception as e:
-                mock_result = {
-                    "text": arguments.get("text"),
-                    "sources": [
-                    ]
+        async def mcp_fetch_tool(url) -> Dict:
+            """
+            Fetch content from URLs using available MCP fetch tools.
+            Programmatically finds and uses the fetch MCP tool to recursively get content.
+            """
+            from urllib.parse import urlparse
+            
+            if not url:
+                return {"error": "URL is required"}
+            
+            try:
+                # Validate URL
+                parsed_url = urlparse(url)
+                if not parsed_url.scheme or not parsed_url.netloc:
+                    return {"error": "Invalid URL format"}
+                
+                # Find available MCP fetch tools
+                fetch_tools = []
+                for tool_name, tool_info in self._tool_registry.items():
+                    if tool_info.get("type") == "mcp" and "fetch" in tool_name.lower():
+                        fetch_tools.append(tool_name)
+                
+                if not fetch_tools:
+                    return {"error": "No MCP fetch tools available"}
+                
+                # Use the first available fetch tool
+                fetch_tool_name = fetch_tools[0]
+                print(f"🔍 Using MCP fetch tool: {fetch_tool_name}")
+                
+                # Prepare arguments for the MCP fetch tool
+                fetch_args = {"url": url}
+                
+                # Try to add recursive flag if the tool supports it
+                tool_schema = self._tool_registry[fetch_tool_name].get("input_schema", {})
+                if "recursive" in str(tool_schema):
+                    fetch_args["recursive"] = True
+                
+                # Execute the MCP fetch tool
+                result = await self._execute_tool(fetch_tool_name, fetch_args)
+                
+                if "error" in result:
+                    return {"error": f"MCP fetch failed: {result['error']}"}
+                
+                # Extract content from the result
+                content = result.get("content", str(result))
+                print(f"🔍 MCP Fetch Output for {url}:")
+                print(content)
+                
+                # Count URLs processed (simple heuristic)
+                url_count = content.count("http://") + content.count("https://")
+                if url_count == 0:
+                    url_count = 1  # At least the original URL
+                
+                return {
+                    "content": content,
+                    "urls_processed": url_count,
+                    "message": f"I have looked at {url_count} URL(s) and found it good",
+                    "status": "success",
+                    "tool_used": fetch_tool_name
                 }
-                return mock_result
+                
+            except Exception as e:
+                return {"error": f"Failed to fetch content: {str(e)}"}
+
+        # Register the MCP fetch tool
+        self._register_tool(
+            name="custom_mcp_fetch",
+            description="Fetch content from URLs using MCP fetch Docker container. Recursively fetches all content from the given URL and returns a summary.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch content from"
+                    }
+                },
+                "required": ["url"]
+            },
+            executor=mcp_fetch_tool,
+            tool_type="custom"
+        )
 
 
 
@@ -288,11 +358,12 @@ class GptService:
         Call this once at startup
         """
 
-        # Register custom tools first
-        await self._register_custom_tools()
+        
 
-        # Then register MCP tools
+    
         await self._register_mcp_tools()
+        # then register custom tools (they might depend on the mcp_tools)
+        await self._register_custom_tools()
 
     async def shutdown_tools(self):
         """Cleanup resources"""
