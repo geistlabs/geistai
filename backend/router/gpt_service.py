@@ -192,7 +192,6 @@ class GptService(EventEmitter):
         Returns:
             dict with 'content' or 'error' key
         """
-        import time
 
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
