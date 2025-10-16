@@ -140,7 +140,6 @@ async def test_conversation(conversation_turns):
                             
                             try:
                                 data = json.loads(data_str)
-                                print(f"Data: {data}")
                                 
                                 # Handle different event types from the new streaming endpoint
                                 if data.get("type") == "orchestrator_token":
