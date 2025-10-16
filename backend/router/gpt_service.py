@@ -28,8 +28,7 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-# Reduced from 100 to prevent context overflow and excessive API calls
-MAX_TOOL_CALLS = 3
+MAX_TOOL_CALLS = 1
 
 
 class GptService(EventEmitter):
@@ -523,6 +522,7 @@ class GptService(EventEmitter):
 
         # Main tool calling loop
         tool_call_count = 0
+        print(f"🚀 Starting chat request with MAX_TOOL_CALLS={MAX_TOOL_CALLS}")
 
         while tool_call_count < MAX_TOOL_CALLS:
 
@@ -542,4 +542,22 @@ class GptService(EventEmitter):
                     return
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
+                    print(f"🔧 Tool call #{tool_call_count} completed")
                     break  # Exit the inner loop to continue the outer loop
+
+        # If we hit MAX_TOOL_CALLS, make one final LLM call to synthesize a response
+        if tool_call_count >= MAX_TOOL_CALLS:
+            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call with {tool_call_count} total calls.")
+            async for content_chunk, status in process_llm_response_with_tools(
+                self._execute_tool,
+                llm_stream_once,
+                conversation,
+                agent_name
+            ):
+                # Stream content to client if available
+                if content_chunk:
+                    yield content_chunk
+                # Check status - should be "stop" since we won't execute more tools
+                if status == "stop":
+                    print(f"✅ Chat request completed with {tool_call_count} tool calls")
+                    return
