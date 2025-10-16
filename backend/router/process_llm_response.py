@@ -10,6 +10,47 @@ import json
 # ------------------------------------------------------------------------
 from typing import TypedDict, List, Any
 
+# Tool parameter schemas - defines allowed parameters for each tool
+# Based on official Brave Search MCP documentation:
+# https://github.com/brave/brave-search-mcp-server
+TOOL_PARAM_SCHEMAS = {
+    "brave_web_search": {
+        # Official parameters from Brave API docs
+        "allowed": ["query", "count", "offset", "freshness", "spellcheck", "safesearch"],
+        "required": ["query"]
+    },
+    # brave_summarizer removed - had 0% success rate in testing
+    # "brave_summarizer": {
+    #     # Summarizer requires a key from web search results
+    #     "allowed": ["key", "entity_info", "inline_references"],
+    #     "required": ["key"]
+    # },
+    "fetch": {
+        # Fetch tool for retrieving web page content
+        "allowed": ["url", "max_length", "start_index", "raw"],
+        "required": ["url"]
+    }
+}
+
+def clean_tool_arguments(tool_name: str, args: dict) -> dict:
+    """
+    Clean tool arguments based on schema
+
+    Args:
+        tool_name: Name of the tool
+        args: Raw arguments from LLM
+
+    Returns:
+        Cleaned arguments with only allowed parameters
+    """
+    schema = TOOL_PARAM_SCHEMAS.get(tool_name)
+    if not schema:
+        # If no schema defined, return as-is
+        return args
+
+    allowed_params = schema.get("allowed", [])
+    return {k: v for k, v in args.items() if k in allowed_params}
+
 class ToolCallResponse(TypedDict):
     success: bool
     new_conversation_entries: List[Any]
@@ -19,79 +60,65 @@ class ToolCallResponse(TypedDict):
 
 async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> ToolCallResponse:
     """
-    Execute a single tool call and add result to conversation
+    Execute a single tool call and format the result for the LLM conversation.
 
     Args:
-        tool_call: Tool call object
-        execute_tool: Function to execute the tool
-        conversation: Current conversation messages
+        tool_call: Tool call object containing id, function name, and arguments
+        execute_tool: Async function to execute the tool (takes tool_name and tool_args)
 
     Returns:
-        bool: True if successful, False if error occurred
+        ToolCallResponse: Dictionary containing:
+            - success: bool indicating if execution succeeded
+            - new_conversation_entries: List of conversation messages to append
+            - tool_call_result: The formatted tool result or None on failure
     """
     tool_name = tool_call["function"]["name"]
     tool_args_str = tool_call["function"]["arguments"]
     local_conversation = []
 
-
+    # Validate required fields
     if not tool_name or not tool_args_str:
-
         return ToolCallResponse(
-        success=False,
-        new_conversation_entries=[],
-        tool_call_result=None
-
-    )  # Skip invalid tool calls
+            success=False,
+            new_conversation_entries=[],
+            tool_call_result=None
+        )
 
     try:
-        # Parse arguments
+        # Parse tool arguments from JSON string
         tool_args = json.loads(tool_args_str)
 
-        # Execute tool
-        # Add to conversation
+        # Add assistant's tool call to conversation
         local_conversation.append({
             "role": "assistant",
             "content": "",
-
             "tool_calls": [tool_call]
         })
 
-        empty_tool_call_text = ""
-        tool_call_result={
-            "role": "tool",
-            "tool_call_id": tool_call["id"],
-            "content": empty_tool_call_text
-        }
-
-
-        # INSERT_YOUR_CODE
-        # If the tool is brave_web_search, remove any "summary" or similar keys from tool_args
+        # Clean tool arguments using schema-based approach
+        tool_args = clean_tool_arguments(tool_name, tool_args)
 
         print(f"🔍 calling tool: {tool_name} with tool_args: {tool_args}")
-        # Execute tool
-        # INSERT_YOUR_CODE
-        # Remove 'country_code' and 'ui_language' from tool_args before execution
-        if tool_name == "brave_web_search":
-            for key in ["ui_lang", "country", "search_lang","result_filter"]:
-                if key in tool_args:
-                    del tool_args[key]
+
+        # Execute the tool
         result = await execute_tool(tool_name, tool_args)
 
+        # Format result for LLM
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
             result
         )
 
         print(f"🔍 tool_call_result: {tool_call_result}")
-        local_conversation.append(
-            tool_call_result
-        )
+
+        # Add tool result to conversation
+        local_conversation.append(tool_call_result)
+
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation,
             tool_call_result=tool_call_result
         )
-
 
     except json.JSONDecodeError as e:
         error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
@@ -228,7 +255,7 @@ async def process_llm_response_with_tools(
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
             yield (delta_obj["content"], None)  # Content with no status change
- 
+
         ## Check finish reason
         finish_reason = choice.get("finish_reason")
         if finish_reason:
@@ -246,11 +273,13 @@ async def process_llm_response_with_tools(
                 # Execute all tool calls concurrently
                 results: List[Union[ToolCallResponse, BaseException]] = await asyncio.gather(*tasks, return_exceptions=True)
 
+                # Process all results
+                has_error = False
                 for result in results:
                     if isinstance(result, BaseException):
-                        print(f"🔍 agent_name: {agent_name} tool call error, stopping loop")
-                        yield (None, "stop")  # Stop on error
-                        return
+                        print(f"🔍 agent_name: {agent_name} tool call error: {result}")
+                        has_error = True
+                        break
                     elif isinstance(result, dict) and "success" in result:
                         if result['tool_call_result'] is not None:
                             print(f"🔍 agent_name: {agent_name} tool call result: {str(result['tool_call_result']['content'])[:100]}")
@@ -258,14 +287,15 @@ async def process_llm_response_with_tools(
                             print(f"🔍 agent_name: {agent_name} tool call result: None")
                         conversation.extend(result["new_conversation_entries"])
 
-                        await asyncio.sleep(0.01)
-                        print(f"🔍 agent_name: {agent_name} tool call result yielded, continuing loop")
-                        yield (None, "continue")  # Continue with updated citations
-                        return
-                    else:  # Tool calls executed, continue loop
-                        print(f"🔍 agent_name: {agent_name} tool calls executed but didn't return dict, continuing loop")
-                        yield (None, "continue")
-                        return
+                if has_error:
+                    yield (None, "stop")
+                    return
+
+                # All tool calls processed, continue with next LLM turn
+                await asyncio.sleep(0.01)
+                print(f"🔍 agent_name: {agent_name} all tool calls processed, continuing")
+                yield (None, "continue")
+                return
 
             elif finish_reason == "stop":
                 # Normal completion, we're done

@@ -28,7 +28,8 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 100
+# Reduced from 100 to prevent context overflow and excessive API calls
+MAX_TOOL_CALLS = 3
 
 
 class GptService(EventEmitter):
@@ -43,6 +44,9 @@ class GptService(EventEmitter):
 
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
+
+        # Tool performance tracking
+        self._tool_stats: Dict[str, dict] = {}  # {tool_name: {calls: int, successes: int, failures: int, avg_time: float}}
 
     # ------------------------------------------------------------------------
     # Tool Registration & Management
@@ -191,8 +195,19 @@ class GptService(EventEmitter):
         Returns:
             dict with 'content' or 'error' key
         """
+        import time
+
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
+
+        # Initialize stats for this tool if not exists
+        if tool_name not in self._tool_stats:
+            self._tool_stats[tool_name] = {
+                "calls": 0,
+                "successes": 0,
+                "failures": 0,
+                "total_time": 0.0
+            }
 
         # Emit tool call start event
         self.emit("tool_call_start", {
@@ -200,10 +215,29 @@ class GptService(EventEmitter):
             "arguments": arguments
         })
 
+        start_time = time.time()
+
         try:
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
             result = await executor(arguments)
+
+            # Update stats - success
+            elapsed = time.time() - start_time
+            self._tool_stats[tool_name]["calls"] += 1
+            self._tool_stats[tool_name]["total_time"] += elapsed
+
+            # Check if result indicates failure (empty content, error message, etc)
+            is_success = True
+            if isinstance(result, dict):
+                content = result.get("content", "")
+                if "Unable to retrieve" in content or "error" in result:
+                    is_success = False
+
+            if is_success:
+                self._tool_stats[tool_name]["successes"] += 1
+            else:
+                self._tool_stats[tool_name]["failures"] += 1
 
             # Emit tool call complete event
             self.emit("tool_call_complete", {
@@ -215,6 +249,12 @@ class GptService(EventEmitter):
             return result
 
         except Exception as e:
+            # Update stats - failure
+            elapsed = time.time() - start_time
+            self._tool_stats[tool_name]["calls"] += 1
+            self._tool_stats[tool_name]["failures"] += 1
+            self._tool_stats[tool_name]["total_time"] += elapsed
+
             error_result = {"error": f"Tool execution failed: {str(e)}"}
 
             # Emit tool call error event
@@ -225,6 +265,25 @@ class GptService(EventEmitter):
             })
 
             return error_result
+
+    def get_tool_stats(self) -> Dict[str, dict]:
+        """Get tool performance statistics"""
+        stats_with_rates = {}
+        for tool_name, stats in self._tool_stats.items():
+            calls = stats["calls"]
+            if calls > 0:
+                success_rate = stats["successes"] / calls
+                avg_time = stats["total_time"] / calls
+            else:
+                success_rate = 0.0
+                avg_time = 0.0
+
+            stats_with_rates[tool_name] = {
+                **stats,
+                "success_rate": success_rate,
+                "avg_time_seconds": avg_time
+            }
+        return stats_with_rates
 
 
 
@@ -397,18 +456,18 @@ class GptService(EventEmitter):
                 "stream": True,
                 "model": model
             }
-            print(f"❌ DEBUG: Request data: {len(msgs)} msgs")
-
 
             # Add tools if available
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-            # INSERT_YOUR_CODE
-            # Print the names of the tools sent to the LLM for debugging
-            if tools_for_llm:
-                tool_names = [tool.get("function", {}).get("name", "unknown") for tool in tools_for_llm]
-                print(f"🛠️ Tools for LLM: {tool_names}")
+                if self.can_log:
+                    tool_names = [tool.get("function", {}).get("name", "unknown") for tool in tools_for_llm]
+                    print(f"🛠️  Tools available for LLM: {tool_names}")
+
+            if self.can_log:
+                print(f"📤 Sending request with {len(msgs)} messages")
+
             try:
                 async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
                     async with client.stream(
@@ -418,30 +477,28 @@ class GptService(EventEmitter):
                         json=request_data,
                         timeout=self.config.INFERENCE_TIMEOUT
                     ) as resp:
+                        # Handle HTTP errors
+                        if resp.status_code != 200:
+                            error_body = await resp.aread()
+                            error_text = error_body.decode(errors='replace')
+                            print(f"❌ HTTP {resp.status_code} Error from LLM: {error_text}")
 
-
-                        # INSERT_YOUR_CODE
-                        # Log HTTP 400 errors
-                        if resp.status_code == 400:
+                            # Parse error details if JSON
                             try:
-                                error_body = await resp.aread()
-                                decoded_error_body = error_body.decode(errors='replace')
-                                print(f"❌ DEBUG: HTTP 400 Error from LLM: {decoded_error_body}")
-                                if "message" in decoded_error_body and "the request exceeds the available context" in decoded_error_body:
-                                    print("❌ DEBUG: The request exceeds the available context size")
-                                    print(f"❌ DEBUG: Conversation:   {msgs}")
-                                try:
-                                    decoded_error_body_json = json.loads(decoded_error_body)
-                                    # Print if the error message includes "the request exceeds the available context size"
-                                    if "message" in decoded_error_body_json and "the request exceeds the available context" in decoded_error_body_json["message"]:
-                                        print("❌ DEBUG: The request exceeds the available context size")
-                                        print(f"❌ DEBUG: Conversation:   {msgs}")
-                                except Exception as parse_exc:
-                                    print(f"❌ DEBUG: Could not parse 400 error as JSON: {parse_exc}")
-                                
-                            except Exception as log_exc:
-                                print(f"❌ DEBUG: Failed to read 400 error response: {log_exc}")
+                                error_json = json.loads(error_text)
+                                error_msg = error_json.get("message", error_text)
+                                if "context" in error_msg.lower():
+                                    print(f"⚠️  Context limit exceeded - {len(msgs)} messages may be too many")
+                            except json.JSONDecodeError:
+                                pass
 
+                            raise httpx.HTTPStatusError(
+                                f"LLM request failed with status {resp.status_code}",
+                                request=resp.request,
+                                response=resp
+                            )
+
+                        # Stream response
                         async for line in resp.aiter_lines():
                             if not line or not line.startswith("data: "):
                                 continue
@@ -454,16 +511,21 @@ class GptService(EventEmitter):
                                 yield payload
                             except json.JSONDecodeError:
                                 continue
+
+            except httpx.HTTPStatusError:
+                raise  # Re-raise HTTP errors
             except Exception as e:
-                print(f"❌ DEBUG: Exception in llm_stream_once: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"❌ Exception in LLM streaming: {e}")
+                if self.can_log:
+                    import traceback
+                    traceback.print_exc()
+                raise
 
         # Main tool calling loop
         tool_call_count = 0
 
         while tool_call_count < MAX_TOOL_CALLS:
-            
+
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -481,4 +543,3 @@ class GptService(EventEmitter):
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
                     break  # Exit the inner loop to continue the outer loop
-

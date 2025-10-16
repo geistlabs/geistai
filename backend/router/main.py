@@ -44,6 +44,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3003",
+        "http://127.0.0.1:3003",
         "https://geist.im",
         "https://webapp.geist.im",
         "https://router.geist.im",
@@ -102,6 +104,14 @@ def health_check():
         "ssl_status": ssl_message,
         "tools_available": len(gpt_service._tool_registry),
         "tool_names": list(gpt_service._tool_registry.keys())
+    }
+
+
+@app.get("/api/tools/stats")
+async def get_tool_stats():
+    """Get tool performance statistics"""
+    return {
+        "tool_stats": gpt_service.get_tool_stats()
     }
 
 
@@ -204,11 +214,12 @@ def create_nested_research_system(config):
     # Get your existing agents
     existing_agents = get_predefined_agents(config)
     permitted_agents = []
-    permitted_mcp_tools = ["brave_web_search", "brave_summarizer" ]
+    # Removed brave_summarizer due to 0% success rate in testing
+    permitted_mcp_tools = ["brave_web_search"]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
     existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
-    # Configure each agent to use brave_search and brave_summarizer tools
+    # Configure each agent to use brave_search tools
 
    # for agent in existing_agents:
    #     # Update each agent to only use MCP tools
@@ -237,125 +248,154 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         messages = [ChatMessage(role="user", content=chat_request.message)]
     else:
         messages.append(ChatMessage(role="user", content=chat_request.message))
-   
-
 
     async def orchestrator_event_stream():
-        chunk_sequence = 0
-
+        orchestrator_task = None
 
         try:
-            # Always use nested orchestrator (can handle single-layer or multi-layer)
             # Create a nested orchestrator structure
             orchestrator = create_nested_research_system(config)
 
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
-
-            # Configure available tools (only sub-agents, not MCP tools)
-
-
-            # Make sure the orchestrator uses the main GPT service with all tools
             orchestrator.gpt_service = gpt_service
 
             # Use asyncio.Queue to stream events in real-time
             event_queue = asyncio.Queue()
             final_response = None
-            
+            sequence_counter = {"value": 0}  # Use dict for mutable closure
+
             def queue_event(event_type):
+                """Create event handler that queues events with proper sequencing"""
                 def handler(data):
                     event_data = {
                         "type": event_type,
                         "data": data,
-                        "sequence": chunk_sequence
+                        "sequence": sequence_counter["value"]
                     }
+                    sequence_counter["value"] += 1
                     try:
                         event_queue.put_nowait(event_data)
                     except asyncio.QueueFull:
-                        pass  # Skip if queue is full
+                        logger.warning(f"Event queue full, dropping {event_type} event")
                 return handler
 
-            # Register event listeners BEFORE running the orchestrator
+            # Register event listeners - orchestrator handles sub-agent event propagation
             orchestrator.on("orchestrator_start", queue_event("orchestrator_start"))
             orchestrator.on("agent_token", queue_event("orchestrator_token"))
             orchestrator.on("orchestrator_complete", queue_event("orchestrator_complete"))
             orchestrator.on("sub_agent_event", queue_event("sub_agent_event"))
             orchestrator.on("tool_call_event", queue_event("tool_call_event"))
 
-            # Also listen to sub-agent events directly
-            for sub_agent in orchestrator.sub_agents:
-                sub_agent.on("agent_start", queue_event("sub_agent_event"))
-                sub_agent.on("agent_token", queue_event("sub_agent_event"))
-                sub_agent.on("agent_complete", queue_event("sub_agent_event"))
-                sub_agent.on("agent_error", queue_event("sub_agent_event"))
-
             # Start orchestrator in background
             orchestrator_task = asyncio.create_task(orchestrator.run(messages))
-            
+
             # Stream events as they come in
             while True:
                 try:
                     # Wait for either an event or orchestrator completion
-                    done, pending = await asyncio.wait([
-                        asyncio.create_task(event_queue.get()),
-                        orchestrator_task
-                    ], return_when=asyncio.FIRST_COMPLETED)
-                    
+                    done, pending = await asyncio.wait(
+                        [
+                            asyncio.create_task(event_queue.get()),
+                            orchestrator_task
+                        ],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+
                     # Check if orchestrator is done
                     if orchestrator_task in done:
                         final_response = await orchestrator_task
+
+                        # Cancel pending event queue task
+                        for task in pending:
+                            task.cancel()
+
+                        # Drain remaining events from queue
+                        while not event_queue.empty():
+                            try:
+                                event = event_queue.get_nowait()
+                                if await request.is_disconnected():
+                                    return
+
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+                            except asyncio.QueueEmpty:
+                                break
                         break
-                    
+
                     # Process events
                     for task in done:
                         if task != orchestrator_task:
                             event = await task
                             if await request.is_disconnected():
+                                logger.info("Client disconnected, stopping stream")
+                                orchestrator_task.cancel()
                                 return
-                            
-                            # Ensure event is a dict (from queue) not AgentResponse
+
                             if isinstance(event, dict):
                                 yield {
                                     "data": json.dumps(event),
                                     "event": event.get("type", "unknown")
                                 }
-                                chunk_sequence += 1
-                    
-                    # Cancel any pending tasks that aren't the orchestrator
+
+                    # Cancel pending event queue tasks (not the orchestrator)
                     for task in pending:
                         if task != orchestrator_task:
                             task.cancel()
-                            
+
                 except asyncio.CancelledError:
+                    logger.info("Stream cancelled")
                     break
 
-            # Send final response (citations are now handled by frontend)
+            # Send final response
             if final_response:
                 yield {
                     "data": json.dumps({
                         "type": "final_response",
                         "text": final_response.text,
-
                         "status": final_response.status,
                         "meta": final_response.meta,
-                        "sequence": chunk_sequence
+                        "sequence": sequence_counter["value"]
                     }),
                     "event": "final_response"
                 }
-                chunk_sequence += 1
+                sequence_counter["value"] += 1
 
             # Send end event
-            yield {"data": json.dumps({"finished": True}), "event": "end"}
-
-        except asyncio.TimeoutError as e:
-            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
             yield {
-                "data": json.dumps({"error": "Internal server error"}),
+                "data": json.dumps({
+                    "finished": True,
+                    "sequence": sequence_counter["value"]
+                }),
+                "event": "end"
+            }
+
+        except asyncio.TimeoutError:
+            logger.error("Request timeout")
+            yield {
+                "data": json.dumps({"error": "Request timeout"}),
                 "event": "error"
             }
+        except Exception as e:
+            logger.error(f"Stream error: {str(e)}", exc_info=True)
+            yield {
+                "data": json.dumps({
+                    "error": "Internal server error",
+                    "details": str(e)
+                }),
+                "event": "error"
+            }
+        finally:
+            # Cleanup: cancel orchestrator task if still running
+            if orchestrator_task and not orchestrator_task.done():
+                logger.info("Cleaning up orchestrator task")
+                orchestrator_task.cancel()
+                try:
+                    await orchestrator_task
+                except asyncio.CancelledError:
+                    pass
 
     return EventSourceResponse(orchestrator_event_stream())
 
