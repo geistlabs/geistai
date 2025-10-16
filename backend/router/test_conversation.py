@@ -8,8 +8,9 @@ import time
 import httpx
 import asyncio
 import json
+import sys
 from reasonableness_service import reasonableness_service
-from initial_test_cases import  short_conversations
+from initial_test_cases import short_conversations, long_conversations
 
 
 async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float) -> dict:
@@ -57,22 +58,43 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
     }
 
 async def test_parallel_conversation():
+    """Run multiple conversations in parallel"""
+    print(f"🔄 Running {len(short_conversations)} conversations in parallel...")
+    
     # Run test_conversation once on each array within short_conversations
     tasks = [
         asyncio.create_task(test_conversation(conversation))
         for conversation in short_conversations
     ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for i, (conversation, result) in enumerate(zip(short_conversations, results)):
-        if isinstance(result, Exception):
-            print(f"Conversation {i+1} ({conversation}) failed: {result}")
-        else:
-            print(f"Conversation {i+1} completed")
+    
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        successful = 0
+        failed = 0
+        
+        for i, (conversation, result) in enumerate(zip(short_conversations, results)):
+            if isinstance(result, Exception):
+                print(f"❌ Conversation {i+1} failed: {result}")
+                failed += 1
+            else:
+                print(f"✅ Conversation {i+1} completed successfully")
+                successful += 1
+        
+        print(f"\n📊 Results: {successful} successful, {failed} failed")
+        
+    except Exception as e:
+        print(f"❌ Error in parallel execution: {e}")
+        raise
 
 
 async def test_conversation(conversation_turns):
     """Test a multi-turn conversation with evaluation and adaptive questioning"""
     url = f"http://localhost:8000/api/stream"
+    
+    if not conversation_turns:
+        print("⚠️ No conversation turns provided")
+        return None
     
     # Define conversation turns with next questions
    
@@ -283,6 +305,44 @@ async def test_conversation(conversation_turns):
     }
 
 
+async def main():
+    """Main function to run the conversation tests"""
+    try:
+        # Check command line arguments
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "--help" or sys.argv[1] == "-h":
+                print("Usage: python test_conversation.py [options]")
+                print("Options:")
+                print("  --help, -h     Show this help message")
+                print("  --single       Run a single conversation test")
+                print("  --long         Run long conversations instead of short ones")
+                return
+            elif sys.argv[1] == "--single":
+                print("🚀 Running single conversation test...")
+                await test_conversation(short_conversations[0])
+                print("✅ Single conversation test completed!")
+                return
+            elif sys.argv[1] == "--long":
+                print("🚀 Starting long conversation tests...")
+                print(f"📋 Running {len(long_conversations)} long conversation(s)")
+                # Run long conversations
+                tasks = [asyncio.create_task(test_conversation(conversation)) for conversation in long_conversations]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                successful = sum(1 for r in results if not isinstance(r, Exception))
+                failed = len(results) - successful
+                print(f"📊 Results: {successful} successful, {failed} failed")
+                return
+        
+        # Default: run short conversations in parallel
+        print("🚀 Starting conversation tests...")
+        print(f"📋 Running {len(short_conversations)} conversation(s)")
+        await test_parallel_conversation()
+        print("✅ All conversation tests completed!")
+        
+    except Exception as e:
+        print(f"❌ Error running tests: {e}")
+        import traceback
+        traceback.print_exc()
+
 if __name__ == "__main__":
-    
-    asyncio.run(test_parallel_conversation())
+    asyncio.run(main())

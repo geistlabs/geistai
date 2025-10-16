@@ -14,6 +14,7 @@ ARCHITECTURE:
 """
 
 import json
+from datetime import datetime
 from typing import Dict, List,  Callable, Optional
 import httpx
 from process_llm_response import process_llm_response_with_tools
@@ -43,7 +44,80 @@ class GptService(EventEmitter):
 
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
+        
+        # Tool call tracking
+        self._tool_call_count = 0
+        self._tool_call_history: List[dict] = []
 
+
+    # ------------------------------------------------------------------------
+    # Tool Call Tracking
+    # ------------------------------------------------------------------------
+    
+    def get_tool_call_count(self) -> int:
+        """Get the total number of tool calls made in this session"""
+        return self._tool_call_count
+    
+    def get_tool_call_history(self) -> List[dict]:
+        """Get the history of all tool calls made in this session"""
+        return self._tool_call_history.copy()
+    
+    def reset_tool_call_tracking(self):
+        """Reset tool call tracking counters"""
+        self._tool_call_count = 0
+        self._tool_call_history.clear()
+    
+    def _track_tool_call(self, tool_name: str, arguments: dict, result: dict, execution_time: float = 0.0):
+        """Track a tool call for monitoring and debugging"""
+        self._tool_call_count += 1
+        tool_call_record = {
+            "call_number": self._tool_call_count,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "result": result,
+            "execution_time": execution_time,
+            "timestamp": datetime.now().isoformat()
+        }
+        self._tool_call_history.append(tool_call_record)
+        
+        if self.can_log:
+            print(f"🔧 Tool call #{self._tool_call_count}: {tool_name} (took {execution_time:.2f}s)")
+    
+    def get_tool_call_statistics(self) -> dict:
+        """Get statistics about tool calls made in this session"""
+        if not self._tool_call_history:
+            return {
+                "total_calls": 0,
+                "average_execution_time": 0.0,
+                "tool_usage": {},
+                "success_rate": 0.0
+            }
+        
+        total_calls = len(self._tool_call_history)
+        total_execution_time = sum(call["execution_time"] for call in self._tool_call_history)
+        average_execution_time = total_execution_time / total_calls
+        
+        # Count tool usage
+        tool_usage = {}
+        successful_calls = 0
+        
+        for call in self._tool_call_history:
+            tool_name = call["tool_name"]
+            tool_usage[tool_name] = tool_usage.get(tool_name, 0) + 1
+            
+            # Check if call was successful (no error in result)
+            if "error" not in call["result"]:
+                successful_calls += 1
+        
+        success_rate = (successful_calls / total_calls) * 100 if total_calls > 0 else 0
+        
+        return {
+            "total_calls": total_calls,
+            "average_execution_time": average_execution_time,
+            "tool_usage": tool_usage,
+            "success_rate": success_rate,
+            "total_execution_time": total_execution_time
+        }
 
     # ------------------------------------------------------------------------
     # Tool Registration & Management
@@ -151,7 +225,7 @@ class GptService(EventEmitter):
                     return await self._mcp_client.call_tool(tn, args)
 
                 # Filter input schema to only include allowed parameters
-                input_schema = self._filter_tool_schema(tool_name, tool.get('inputSchema', {}))
+                input_schema = tool.get('inputSchema', {})
 
                 self._register_tool(
                     name=tool_name,
@@ -237,10 +311,13 @@ class GptService(EventEmitter):
         Returns:
             dict with 'content' or 'error' key
         """
+        import time
+        start_time = time.time()
 
         if tool_name not in self._tool_registry:
-            return {"error": f"Tool '{tool_name}' not found"}
-
+            error_result = {"error": f"Tool '{tool_name}' not found"}
+            self._track_tool_call(tool_name, arguments, error_result, time.time() - start_time)
+            return error_result
 
         # Emit tool call start event
         self.emit("tool_call_start", {
@@ -248,12 +325,14 @@ class GptService(EventEmitter):
             "arguments": arguments
         })
 
-
         try:
             tool_info = self._tool_registry[tool_name]
             executor = tool_info["executor"]
             result = await executor(arguments)
+            execution_time = time.time() - start_time
 
+            # Track the successful tool call
+            self._track_tool_call(tool_name, arguments, result, execution_time)
 
             # Emit tool call complete event
             self.emit("tool_call_complete", {
@@ -265,8 +344,11 @@ class GptService(EventEmitter):
             return result
 
         except Exception as e:
-
+            execution_time = time.time() - start_time
             error_result = {"error": f"Tool execution failed: {str(e)}"}
+
+            # Track the failed tool call
+            self._track_tool_call(tool_name, arguments, error_result, execution_time)
 
             # Emit tool call error event
             self.emit("tool_call_error", {
@@ -432,9 +514,7 @@ class GptService(EventEmitter):
         if not self._tool_registry:
             await self.init_tools()
 
-
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, agent_prompt)
-
         headers, model, url = self.get_chat_completion_params()
 
         # Get permitted tools for this request
@@ -443,6 +523,7 @@ class GptService(EventEmitter):
 
         async def llm_stream_once(msgs: List[dict]):
             """Make a single streaming LLM call"""
+            
             request_data = {
                 "messages": msgs,
                 "temperature": 1.0,
@@ -456,10 +537,10 @@ class GptService(EventEmitter):
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
-                if self.can_log:
-                    tool_names = [tool.get("function", {}).get("name", "unknown") for tool in tools_for_llm]
-                    print(f"🛠️  Tools available for LLM: {tool_names}")
 
+
+            
+            
             if self.can_log:
                 print(f"📤 Sending request with {len(msgs)} messages")
 
@@ -476,7 +557,6 @@ class GptService(EventEmitter):
                         if resp.status_code != 200:
                             error_body = await resp.aread()
                             error_text = error_body.decode(errors='replace')
-                            print(f"❌ HTTP {resp.status_code} Error from LLM: {error_text}")
 
                             # Parse error details if JSON
                             try:
@@ -519,6 +599,9 @@ class GptService(EventEmitter):
         # Main tool calling loop
         tool_call_count = 0
         print(f"🚀 Starting chat request with MAX_TOOL_CALLS={MAX_TOOL_CALLS}")
+        
+        # Reset tool call tracking for this conversation
+        self.reset_tool_call_tracking()
 
         while tool_call_count < MAX_TOOL_CALLS:
 
@@ -535,6 +618,15 @@ class GptService(EventEmitter):
                     yield content_chunk
                 # Check status
                 if status == "stop":  # Normal completion or error
+                    # Print tool call statistics at the end
+                    if self.can_log:
+                        stats = self.get_tool_call_statistics()
+                        print(f"\n📊 Tool Call Statistics:")
+                        print(f"   Total calls: {stats['total_calls']}")
+                        print(f"   Success rate: {stats['success_rate']:.1f}%")
+                        print(f"   Average execution time: {stats['average_execution_time']:.2f}s")
+                        if stats['tool_usage']:
+                            print(f"   Tool usage: {stats['tool_usage']}")
                     return
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
@@ -543,7 +635,6 @@ class GptService(EventEmitter):
 
         # If we hit MAX_TOOL_CALLS, make one final LLM call to synthesize from tool results
         if tool_call_count >= MAX_TOOL_CALLS:
-            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call (without tools).")
 
             # Replace system prompt to get direct answer without reasoning
             final_conversation = []
@@ -589,9 +680,6 @@ class GptService(EventEmitter):
                             timeout=self.config.INFERENCE_TIMEOUT
                         ) as resp:
                             if resp.status_code != 200:
-                                error_body = await resp.aread()
-                                error_text = error_body.decode(errors='replace')
-                                print(f"❌ HTTP {resp.status_code} Error in final synthesis: {error_text}")
                                 raise httpx.HTTPStatusError(
                                     f"Final synthesis failed with status {resp.status_code}",
                                     request=resp.request,
@@ -610,7 +698,6 @@ class GptService(EventEmitter):
                                     continue
 
                 except Exception as e:
-                    print(f"❌ Exception in final synthesis streaming: {e}")
                     if self.can_log:
                         import traceback
                         traceback.print_exc()
@@ -626,9 +713,16 @@ class GptService(EventEmitter):
                 if content_chunk:
                     yield content_chunk
                 if status == "stop":
-                    print(f"✅ Final synthesis completed")
+                    # Print tool call statistics at the end
+                    if self.can_log:
+                        stats = self.get_tool_call_statistics()
+                        print(f"\n📊 Tool Call Statistics:")
+                        print(f"   Total calls: {stats['total_calls']}")
+                        print(f"   Success rate: {stats['success_rate']:.1f}%")
+                        print(f"   Average execution time: {stats['average_execution_time']:.2f}s")
+                        if stats['tool_usage']:
+                            print(f"   Tool usage: {stats['tool_usage']}")
                     return
                 elif status == "continue":
                     # This shouldn't happen in final synthesis (no tools), but handle it
-                    print(f"⚠️  Unexpected 'continue' status in final synthesis, stopping anyway")
                     return

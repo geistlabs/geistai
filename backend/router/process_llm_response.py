@@ -32,24 +32,6 @@ TOOL_PARAM_SCHEMAS = {
     }
 }
 
-def clean_tool_arguments(tool_name: str, args: dict) -> dict:
-    """
-    Clean tool arguments based on schema
-
-    Args:
-        tool_name: Name of the tool
-        args: Raw arguments from LLM
-
-    Returns:
-        Cleaned arguments with only allowed parameters
-    """
-    schema = TOOL_PARAM_SCHEMAS.get(tool_name)
-    if not schema:
-        # If no schema defined, return as-is
-        return args
-
-    allowed_params = schema.get("allowed", [])
-    return {k: v for k, v in args.items() if k in allowed_params}
 
 class ToolCallResponse(TypedDict):
     success: bool
@@ -74,16 +56,11 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     """
     tool_name = tool_call["function"]["name"]
     tool_args_str = tool_call["function"]["arguments"]
+    print("Calling tool: ", tool_name, "with arguments: ", tool_args_str)
     local_conversation = []
-
-    print(f"\n🔧 [execute_single_tool_call] ============================================")
-    print(f"   Tool: {tool_name}")
-    print(f"   Call ID: {tool_call['id']}")
-    print(f"   Raw arguments (string): {tool_args_str[:200]}")
 
     # Validate required fields
     if not tool_name or not tool_args_str:
-        print(f"   ❌ Missing tool_name or tool_args_str")
         return ToolCallResponse(
             success=False,
             new_conversation_entries=[],
@@ -92,51 +69,26 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
     try:
         # Parse tool arguments from JSON string
-        print(f"   📝 Parsing JSON arguments...")
         tool_args = json.loads(tool_args_str)
-        print(f"   ✅ Parsed arguments: {json.dumps(tool_args, indent=2)[:300]}")
-
+       
         # Add assistant's tool call to conversation
         local_conversation.append({
             "role": "assistant",
             "content": "",
             "tool_calls": [tool_call]
         })
-        print(f"   📝 Added assistant message to conversation")
+  
 
-        # Clean tool arguments using schema-based approach
-        print(f"   🧹 Cleaning tool arguments based on schema...")
-        tool_args_before = dict(tool_args)
-        tool_args = clean_tool_arguments(tool_name, tool_args)
-        if tool_args_before != tool_args:
-            print(f"   ✅ Arguments cleaned:")
-            print(f"      Before: {tool_args_before}")
-            print(f"      After:  {tool_args}")
-        else:
-            print(f"   ✅ No changes after cleaning")
-
-        print(f"   🚀 Executing tool: {tool_name}({tool_args})")
 
         # Execute the tool
         result = await execute_tool(tool_name, tool_args)
-        print(f"   ✅ Tool execution completed")
-        print(f"   📊 Result: {json.dumps(result, indent=2)[:300]}")
-
-        # Format result for LLM
-        print(f"   📝 Formatting result for LLM...")
+        print("Tool result for ", tool_name, " is: ", json.dumps(result, indent=2))
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
             result
         )
-        print(f"   ✅ Formatted result: {json.dumps(tool_call_result, indent=2)[:300]}")
 
-        # Add tool result to conversation
         local_conversation.append(tool_call_result)
-        print(f"   📝 Added tool result to conversation")
-
-        print(f"   ✅ Tool call succeeded")
-        print(f"🔧 [execute_single_tool_call] ============================================\n")
-
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation,
@@ -144,7 +96,6 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
 
     except json.JSONDecodeError as e:
-        print(f"   ❌ JSON parsing error: {str(e)}")
         error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
         local_conversation.append(
             format_tool_result_for_llm(
@@ -152,7 +103,6 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
                 error_result
             )
         )
-        print(f"🔧 [execute_single_tool_call] ============================================\n")
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
@@ -160,7 +110,6 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
 
     except Exception as e:
-        print(f"   ❌ Execution error: {str(e)}")
         import traceback
         traceback.print_exc()
         error_result = {"error": str(e)}
@@ -170,7 +119,6 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
                 error_result
             )
         )
-        print(f"🔧 [execute_single_tool_call] ============================================\n")
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
@@ -242,35 +190,27 @@ async def process_llm_response_with_tools(
     current_tool_calls = []
     saw_tool_call = False
 
-    print(f"🔍 [agent: {agent_name}] === Starting process_llm_response_with_tools ===")
-    print(f"🔍 [agent: {agent_name}] Conversation history has {len(conversation)} messages")
-
+  
     # Stream one LLM response
     delta_count = 0
     content_deltas_count = 0  # Track actual content (not just reasoning markers)
     max_deltas_without_content = 100  # Safety limit for final synthesis
     async for delta in llm_stream_once(conversation):
         delta_count += 1
-        if delta_count <= 3 or delta_count % 10 == 0:
-            print(f"🔍 [agent: {agent_name}] Delta #{delta_count}: {str(delta)[:200]}...")
 
         if "choices" not in delta or not delta["choices"]:
-            print(f"🔍 [agent: {agent_name}] ⚠️  Delta #{delta_count} - No choices in delta, skipping")
             continue
 
         choice = delta["choices"][0]
         delta_obj = choice.get("delta", {})
 
-        print(f"🔍 [agent: {agent_name}] Delta #{delta_count} - delta_obj keys: {list(delta_obj.keys())}, finish_reason: {choice.get('finish_reason', 'NONE')}")
 
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
             saw_tool_call = True
-            print(f"🔍 [agent: {agent_name}] 🛠️  TOOL CALL DETECTED in delta #{delta_count}")
 
             for tc_delta in delta_obj["tool_calls"]:
                 tc_index = tc_delta.get("index", 0)
-                print(f"🔍 [agent: {agent_name}]   Tool delta index={tc_index}: {tc_delta}")
                 # Ensure array is large enough
                 while len(current_tool_calls) <= tc_index:
                     current_tool_calls.append({
@@ -291,23 +231,14 @@ async def process_llm_response_with_tools(
                     if "arguments" in func:
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
 
-            print(f"🔍 [agent: {agent_name}] Current accumulated tool_calls: {json.dumps(current_tool_calls, indent=2)[:500]}")
 
         # Stream content to client and print reasoning as it happens
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
-            content_preview = delta_obj["content"][:50] + "..." if len(delta_obj["content"]) > 50 else delta_obj["content"]
-            print(f"🔍 [agent: {agent_name}] 📝 Content chunk: {content_preview}")
             content_deltas_count += 1
             yield (delta_obj["content"], None)  # Content with no status change
-        elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
-            # With llama.cpp --reasoning-format none, this should rarely happen
-            # But if it does, stream it as content
-            content_preview = delta_obj["reasoning_content"][:50] + "..." if len(delta_obj["reasoning_content"]) > 50 else delta_obj["reasoning_content"]
-            print(f"🔍 [agent: {agent_name}] 📝 Content: {content_preview}")
-            content_deltas_count += 1
-            yield (delta_obj["reasoning_content"], None)
+
 
         # Safety: Force stop if final synthesis is stuck in reasoning loop
         if "_final" in agent_name and delta_count > max_deltas_without_content and content_deltas_count == 0:
