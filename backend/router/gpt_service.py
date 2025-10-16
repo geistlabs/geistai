@@ -150,10 +150,13 @@ class GptService(EventEmitter):
                         raise ValueError("MCP client is not initialized")
                     return await self._mcp_client.call_tool(tn, args)
 
+                # Filter input schema to only include allowed parameters
+                input_schema = self._filter_tool_schema(tool_name, tool.get('inputSchema', {}))
+
                 self._register_tool(
                     name=tool_name,
                     description=tool.get('description', f'MCP tool: {tool_name}'),
-                    input_schema=tool.get('inputSchema', {}),
+                    input_schema=input_schema,
                     executor=mcp_executor,
                     tool_type="mcp"
                 )
@@ -161,6 +164,48 @@ class GptService(EventEmitter):
         except Exception as e:
             print(f"❌ Failed to initialize MCP: {e}")
             # Don't raise - allow service to continue without MCP
+
+    def _filter_tool_schema(self, tool_name: str, schema: dict) -> dict:
+        """
+        Filter tool schema to only include allowed parameters
+
+        This ensures the LLM only sees parameters we support,
+        preventing confusion from extra MCP parameters
+
+        Args:
+            tool_name: Name of the tool
+            schema: Original schema from MCP gateway
+
+        Returns:
+            Filtered schema with only allowed parameters
+        """
+        from process_llm_response import TOOL_PARAM_SCHEMAS
+
+        tool_schema = TOOL_PARAM_SCHEMAS.get(tool_name)
+        if not tool_schema:
+            # If no schema defined, return original schema
+            return schema
+
+        allowed_params = tool_schema.get("allowed", [])
+        required_params = tool_schema.get("required", [])
+
+        if not schema.get("properties"):
+            return schema
+
+        # Filter properties to only allowed parameters
+        filtered_properties = {
+            k: v for k, v in schema["properties"].items()
+            if k in allowed_params
+        }
+
+        # Return filtered schema
+        filtered_schema = {
+            "type": "object",
+            "properties": filtered_properties,
+            "required": [p for p in schema.get("required", []) if p in required_params]
+        }
+
+        return filtered_schema
 
     async def init_tools(self):
         """
