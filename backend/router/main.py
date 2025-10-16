@@ -107,14 +107,6 @@ def health_check():
     }
 
 
-@app.get("/api/tools/stats")
-async def get_tool_stats():
-    """Get tool performance statistics"""
-    return {
-        "tool_stats": gpt_service.get_tool_stats()
-    }
-
-
 @app.get("/ssl/info")
 def ssl_info():
     """Get SSL configuration and certificate information."""
@@ -214,12 +206,12 @@ def create_nested_research_system(config):
     # Get your existing agents
     existing_agents = get_predefined_agents(config)
     permitted_agents = []
-    # Removed brave_summarizer due to 0% success rate in testing
+    # Removed brave_summarizer due to 0% success rate in testing - it consistently failed with "Unable to retrieve a Summarizer summary"
     permitted_mcp_tools = ["brave_web_search"]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
     existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
-    # Configure each agent to use brave_search tools
+    # Configure each agent to use brave_search and brave_summarizer tools
 
    # for agent in existing_agents:
    #     # Update each agent to only use MCP tools
