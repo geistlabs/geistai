@@ -226,6 +226,7 @@ cd "$INFERENCE_DIR"
     --ubatch-size 256 \
     --mlock \
     --jinja \
+    --reasoning-format none \
     > /tmp/geist-inference.log 2>&1 &
 
 INFERENCE_PID=$!

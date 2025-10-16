@@ -24,6 +24,7 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
      "--mlock", \
      "--n-gpu-layers", "8", \
      "--jinja", \
+     "--reasoning-format", "none", \
      "--context-shift"]
 
 # Example usage:

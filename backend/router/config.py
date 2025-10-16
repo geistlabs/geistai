@@ -35,7 +35,7 @@ REASONING_EFFORT = os.getenv(
 # Note: Always using nested orchestrator (can handle single-layer or multi-layer scenarios)
 
 # External service settings
-INFERENCE_URL ="https://inference.geist.im"# os.getenv("INFERENCE_URL", "https://inference.geist.im")
+INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"

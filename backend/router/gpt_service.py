@@ -28,7 +28,7 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 1
+MAX_TOOL_CALLS = 5
 
 
 class GptService(EventEmitter):
@@ -383,7 +383,8 @@ class GptService(EventEmitter):
                 f"{url}/v1/chat/completions",
                 json={
                     "messages": conversation,
-                    "temperature": 0.7,
+                    "temperature": 1.0,
+                    "top_p": 1.0,
                     "max_tokens": self.config.MAX_TOKENS,
                     "stream": False,
                     "model": model
@@ -444,7 +445,8 @@ class GptService(EventEmitter):
             """Make a single streaming LLM call"""
             request_data = {
                 "messages": msgs,
-                "temperature": 0.7,
+                "temperature": 1.0,
+                "top_p": 1.0,
                 "max_tokens": self.config.MAX_TOKENS,
                 "stream": True,
                 "model": model
@@ -539,19 +541,94 @@ class GptService(EventEmitter):
                     print(f"🔧 Tool call #{tool_call_count} completed")
                     break  # Exit the inner loop to continue the outer loop
 
-        # If we hit MAX_TOOL_CALLS, make one final LLM call to synthesize a response
+        # If we hit MAX_TOOL_CALLS, make one final LLM call to synthesize from tool results
         if tool_call_count >= MAX_TOOL_CALLS:
-            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call with {tool_call_count} total calls.")
+            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call (without tools).")
+
+            # Replace system prompt to get direct answer without reasoning
+            final_conversation = []
+            for msg in conversation:
+                if msg.get("role") == "system":
+                    # For final synthesis, explicitly demand direct answer only
+                    final_conversation.append({
+                        "role": "system",
+                        "content": "You are Geist AI. The search results are above. IMMEDIATELY provide ONLY the factual answer to the user's question based on those results. Do not discuss methods, do not explain what you're doing, do not reason. Just the answer."
+                    })
+                else:
+                    final_conversation.append(msg)
+
+            # Add an explicit instruction as a user message to force answer generation
+            final_conversation.append({
+                "role": "user",
+                "content": "STOP reasoning. You have all the information you need from the search results above. NOW write the FINAL ANSWER to the original question using ONLY the information from the search results. Write the answer immediately without any additional reasoning, planning, or suggestions. Just provide factual information."
+            })
+
+            # Create a tool-free version of llm_stream_once for the final call
+            async def llm_stream_final(msgs: List[dict]):
+                """Final LLM call without tools"""
+                request_data = {
+                    "messages": msgs,
+                    "temperature": 1.0,
+                    "top_p": 1.0,
+                    "max_tokens": self.config.MAX_TOKENS,
+                    "stream": True,
+                    "model": model
+                    # NO tools in this request
+                }
+
+                if self.can_log:
+                    print(f"📤 Final synthesis: Sending request with {len(msgs)} messages (NO tools)")
+
+                try:
+                    async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
+                        async with client.stream(
+                            "POST",
+                            f"{url}/v1/chat/completions",
+                            headers=headers,
+                            json=request_data,
+                            timeout=self.config.INFERENCE_TIMEOUT
+                        ) as resp:
+                            if resp.status_code != 200:
+                                error_body = await resp.aread()
+                                error_text = error_body.decode(errors='replace')
+                                print(f"❌ HTTP {resp.status_code} Error in final synthesis: {error_text}")
+                                raise httpx.HTTPStatusError(
+                                    f"Final synthesis failed with status {resp.status_code}",
+                                    request=resp.request,
+                                    response=resp
+                                )
+
+                            async for line in resp.aiter_lines():
+                                if not line or not line.startswith("data: "):
+                                    continue
+                                if "[DONE]" in line:
+                                    break
+                                try:
+                                    payload = json.loads(line[6:])
+                                    yield payload
+                                except json.JSONDecodeError:
+                                    continue
+
+                except Exception as e:
+                    print(f"❌ Exception in final synthesis streaming: {e}")
+                    if self.can_log:
+                        import traceback
+                        traceback.print_exc()
+                    raise
+
+            # Use process_llm_response_with_tools for proper streaming and handling
             async for content_chunk, status in process_llm_response_with_tools(
                 self._execute_tool,
-                llm_stream_once,
-                conversation,
-                agent_name
+                llm_stream_final,
+                final_conversation,  # Use modified conversation with direct response prompt
+                agent_name + "_final"
             ):
-                # Stream content to client if available
                 if content_chunk:
                     yield content_chunk
-                # Check status - should be "stop" since we won't execute more tools
                 if status == "stop":
-                    print(f"✅ Chat request completed with {tool_call_count} tool calls")
+                    print(f"✅ Final synthesis completed")
+                    return
+                elif status == "continue":
+                    # This shouldn't happen in final synthesis (no tools), but handle it
+                    print(f"⚠️  Unexpected 'continue' status in final synthesis, stopping anyway")
                     return
