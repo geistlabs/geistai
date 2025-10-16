@@ -44,8 +44,6 @@ class GptService(EventEmitter):
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
 
-        # Tool performance tracking
-        self._tool_stats: Dict[str, dict] = {}  # {tool_name: {calls: int, successes: int, failures: int, avg_time: float}}
 
     # ------------------------------------------------------------------------
     # Tool Registration & Management
@@ -199,14 +197,6 @@ class GptService(EventEmitter):
         if tool_name not in self._tool_registry:
             return {"error": f"Tool '{tool_name}' not found"}
 
-        # Initialize stats for this tool if not exists
-        if tool_name not in self._tool_stats:
-            self._tool_stats[tool_name] = {
-                "calls": 0,
-                "successes": 0,
-                "failures": 0,
-                "total_time": 0.0
-            }
 
         # Emit tool call start event
         self.emit("tool_call_start", {
@@ -221,22 +211,6 @@ class GptService(EventEmitter):
             executor = tool_info["executor"]
             result = await executor(arguments)
 
-            # Update stats - success
-            elapsed = time.time() - start_time
-            self._tool_stats[tool_name]["calls"] += 1
-            self._tool_stats[tool_name]["total_time"] += elapsed
-
-            # Check if result indicates failure (empty content, error message, etc)
-            is_success = True
-            if isinstance(result, dict):
-                content = result.get("content", "")
-                if "Unable to retrieve" in content or "error" in result:
-                    is_success = False
-
-            if is_success:
-                self._tool_stats[tool_name]["successes"] += 1
-            else:
-                self._tool_stats[tool_name]["failures"] += 1
 
             # Emit tool call complete event
             self.emit("tool_call_complete", {
@@ -248,11 +222,6 @@ class GptService(EventEmitter):
             return result
 
         except Exception as e:
-            # Update stats - failure
-            elapsed = time.time() - start_time
-            self._tool_stats[tool_name]["calls"] += 1
-            self._tool_stats[tool_name]["failures"] += 1
-            self._tool_stats[tool_name]["total_time"] += elapsed
 
             error_result = {"error": f"Tool execution failed: {str(e)}"}
 
@@ -265,24 +234,6 @@ class GptService(EventEmitter):
 
             return error_result
 
-    def get_tool_stats(self) -> Dict[str, dict]:
-        """Get tool performance statistics"""
-        stats_with_rates = {}
-        for tool_name, stats in self._tool_stats.items():
-            calls = stats["calls"]
-            if calls > 0:
-                success_rate = stats["successes"] / calls
-                avg_time = stats["total_time"] / calls
-            else:
-                success_rate = 0.0
-                avg_time = 0.0
-
-            stats_with_rates[tool_name] = {
-                **stats,
-                "success_rate": success_rate,
-                "avg_time_seconds": avg_time
-            }
-        return stats_with_rates
 
 
 
