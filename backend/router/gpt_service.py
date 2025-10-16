@@ -204,7 +204,6 @@ class GptService(EventEmitter):
             "arguments": arguments
         })
 
-        start_time = time.time()
 
         try:
             tool_info = self._tool_registry[tool_name]
