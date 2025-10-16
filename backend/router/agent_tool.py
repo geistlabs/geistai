@@ -70,7 +70,7 @@ class AgentTool(EventEmitter):
         self.stream_sub_agents = stream_sub_agents
 
         # Create a GPT service instance for this agent
-        self.gpt_service = GptService(model_config)
+        self.gpt_service = GptService(model_config, EventEmitter())
 
         # Set up tool call event forwarding from this agent's GPT service
         self._setup_tool_call_event_forwarding()
@@ -90,16 +90,16 @@ class AgentTool(EventEmitter):
                 return forwarder
 
             # Add tool call event listeners
-            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
-            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
-            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
+            self.gpt_service.event_emitter.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.event_emitter.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.event_emitter.on("tool_call_error", create_tool_forwarder("tool_call_error"))
 
     def _cleanup_tool_call_event_forwarding(self):
         """Clean up tool call event listeners from this agent's GPT service"""
         if hasattr(self.gpt_service, 'remove_all_listeners'):
-            self.gpt_service.remove_all_listeners("tool_call_start")
-            self.gpt_service.remove_all_listeners("tool_call_complete")
-            self.gpt_service.remove_all_listeners("tool_call_error")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_start")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_complete")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_error")
 
     async def initialize(self, main_gpt_service: GptService, config):
         """

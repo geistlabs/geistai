@@ -32,11 +32,12 @@ from simple_mcp_client import SimpleMCPClient
 MAX_TOOL_CALLS = 5
 
 
-class GptService(EventEmitter):
+class GptService:
     """Main service for handling GPT requests with tool support"""
 
-    def __init__(self, config, can_log: bool = False):
-        super().__init__()
+    def __init__(self, config, event_emitter: EventEmitter, can_log: bool = False):
+        # Store the event emitter
+        self.event_emitter = event_emitter
         # Tool registry: name -> {description, input_schema, executor, type}
         self._tool_registry: Dict[str, dict] = {}
         self.config = config
@@ -320,7 +321,7 @@ class GptService(EventEmitter):
             return error_result
 
         # Emit tool call start event
-        self.emit("tool_call_start", {
+        self.event_emitter.emit("tool_call_start", {
             "tool_name": tool_name,
             "arguments": arguments
         })
@@ -335,7 +336,7 @@ class GptService(EventEmitter):
             self._track_tool_call(tool_name, arguments, result, execution_time)
 
             # Emit tool call complete event
-            self.emit("tool_call_complete", {
+            self.event_emitter.emit("tool_call_complete", {
                 "tool_name": tool_name,
                 "arguments": arguments,
                 "result": result
@@ -351,7 +352,7 @@ class GptService(EventEmitter):
             self._track_tool_call(tool_name, arguments, error_result, execution_time)
 
             # Emit tool call error event
-            self.emit("tool_call_error", {
+            self.event_emitter.emit("tool_call_error", {
                 "tool_name": tool_name,
                 "arguments": arguments,
                 "error": str(e)

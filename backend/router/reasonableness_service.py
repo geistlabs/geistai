@@ -90,12 +90,13 @@ class ReasonablenessService:
                     timeout=300.0
                 )
                 if response.status_code != 200:
+                    print(f"Rating API error: {response.status_code} {response.text}")
                     return {
                 
                         "rating": 0.5,
                         "reasoning": f"Rating API error: {response.status_code}",
                         "confidence": 0.0,
-                        "issues": ["API request failed"]
+                        "issues": [f"API request failed: {response.status_code} {response.text}"]
                     }
                 
                 result = response.json()

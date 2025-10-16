@@ -119,9 +119,9 @@ class Orchestrator(AgentTool):
                 return forwarder
             
             # Add tool call event listeners
-            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
-            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
-            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
+            self.gpt_service.event_emitter.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.event_emitter.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.event_emitter.on("tool_call_error", create_tool_forwarder("tool_call_error"))
     
     def _cleanup_sub_agent_event_forwarding(self):
         """Clean up event listeners from all registered sub-agents"""
@@ -142,9 +142,9 @@ class Orchestrator(AgentTool):
         
         # Also remove tool call event listeners from the orchestrator's GPT service
         if hasattr(self.gpt_service, 'remove_all_listeners'):
-            self.gpt_service.remove_all_listeners("tool_call_start")
-            self.gpt_service.remove_all_listeners("tool_call_complete")
-            self.gpt_service.remove_all_listeners("tool_call_error")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_start")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_complete")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_error")
     
     async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """

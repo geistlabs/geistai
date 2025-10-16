@@ -41,9 +41,9 @@ INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL = "https://api.openai.com"
 USE_REMOTE_INFERENCE = False#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-
+INFERENCE_URL = "https://inference.geist.im"
 OPENAI_KEY = os.getenv("OPENAI_KEY", "")
-BRAVE_API_KEY ="BSATtI0p03AxfdQvPZ0Th7mjR9jwRGO" #  os.getenv("BRAVE_API_KEY", "")
+BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000") + "/mcp/"
 MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000") + "/mcp/"
 MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]

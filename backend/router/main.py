@@ -1,3 +1,4 @@
+from events import EventEmitter
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,18 +61,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Gpt service if enabled
-gpt_service = GptService(config, can_log=True)
-
-# Initialize tools for the GPT service on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize GPT service tools on startup"""
-    await gpt_service.init_tools()
-
-    # Register sub-agents as tools
-    from agent_registry import register_predefined_agents
-    registered_agents = await register_predefined_agents(gpt_service, config)
 
 # Initialize Whisper STT client
 whisper_service_url = os.getenv(
@@ -91,6 +80,39 @@ elif config.SSL_ENABLED:
 else:
     logger.info("SSL disabled - running in HTTP mode")
 
+# Global GptService instance (initialized once at startup)
+gpt_service_instance = None
+
+async def get_gpt_service():
+    """
+    Factory function that returns a GptService with a fresh event emitter.
+    This allows us to reuse the same service instance but with different event emitters per request.
+    """
+    global gpt_service_instance
+    
+    # Initialize the service once if not already done
+    if gpt_service_instance is None:
+        # Create a temporary event emitter for initialization
+        temp_emitter = EventEmitter()
+        gpt_service_instance = GptService(config, temp_emitter, can_log=True)
+        await gpt_service_instance.init_tools()
+        logger.info("GptService initialized with tools")
+    
+    # Create a new instance with a fresh event emitter for each request
+    fresh_emitter = EventEmitter()
+    new_service = GptService(config, fresh_emitter, can_log=True)
+    
+    # Copy the tool registry from the initialized instance
+    new_service._tool_registry = gpt_service_instance._tool_registry.copy()
+    new_service._mcp_client = gpt_service_instance._mcp_client
+    
+    return new_service
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize GptService on server startup"""
+    await get_gpt_service()
+    logger.info("Server startup complete - GptService initialized")
 
 @app.get("/health")
 def health_check():
@@ -100,8 +122,6 @@ def health_check():
         "status": "healthy",
         "ssl_enabled": config.SSL_ENABLED,
         "ssl_status": ssl_message,
-        "tools_available": len(gpt_service._tool_registry),
-        "tool_names": list(gpt_service._tool_registry.keys())
     }
 
 
@@ -154,41 +174,12 @@ def ssl_info():
 # Tool Management Endpoints
 # ============================================================================
 
-@app.get("/api/tools")
-async def list_tools():
-    """List available tools"""
-    return {
-        "tools": [
-            {
-                "name": name,
-                "description": info.get("description", ""),
-                "type": info.get("type", "unknown"),
-                "input_schema": info.get("input_schema", {})
-            }
-            for name, info in gpt_service._tool_registry.items()
-        ]
-    }
-
-@app.post("/api/tools/{tool_name}/test")
-async def test_tool(tool_name: str, arguments: dict = {}):
-    """Test a specific tool"""
-    if tool_name not in gpt_service._tool_registry:
-        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-
-    try:
-        result = await gpt_service._execute_tool(tool_name, arguments)
-        return {"result": result}
-
-    except Exception as e:
-        logger.error(f"Tool test failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
-
 
 # ============================================================================
 # Nested Orchestrator Factory Functions
 # ============================================================================
 
-def create_nested_research_system(config):
+def create_nested_research_system(config, EventEmitter):
     """
     Create a nested orchestrator system using your existing agents at the top level:
 
@@ -233,7 +224,8 @@ def create_nested_research_system(config):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-
+    
+    gpt_service = await get_gpt_service()
     # Build messages array with conversation history
     messages = chat_request.messages
     if not messages:
@@ -246,7 +238,8 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
         try:
             # Create a nested orchestrator structure
-            orchestrator = create_nested_research_system(config)
+            event_emitter = EventEmitter()
+            orchestrator = create_nested_research_system(config, event_emitter)
 
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)

@@ -159,14 +159,7 @@ TOOL & AGENT POLICY:
 - prefer short answers and concise responses.
 - Prefer internal reasoning and existing context before calling any tool or agent.
 - Never call tools for static knowledge, definitions, math, or reasoning tasks.
-- You can only do 2 tool calls per user query.
 
-
-LIMITS & FAILURE HANDLING:
-- Call at most **3 total tools or agents** per user query.
-- If a tool or agent fails, returns empty, or produces no improvement in confidence — stop immediately and respond with what you know.
-- Never enter a retry loop.
-- If uncertain after one failed attempt, summarize what’s known and tell the user what you *could not retrieve* rather than retrying.
 
 
 
@@ -218,6 +211,13 @@ PRIORITY ORDER:
 #- Use the actual source name, URL, and relevant snippet from the content
 #- ALWAYS use the citation tag format embedded within your response text
 # Registry of all available prompts for easy access
+LIMITS_AND_FAILURE_HANDLING = """
+LIMITS & FAILURE HANDLING:
+- Call at most **3 total tools or agents** per user query.
+- If a tool or agent fails, returns empty, or produces no improvement in confidence — stop immediately and respond with what you know.
+- Never enter a retry loop.
+- If uncertain after one failed attempt, summarize what’s known and tell the user what you *could not retrieve* rather than retrying.
+"""
 PROMPTS = {
     "research_agent": get_research_agent_prompt,
     "current_info_agent": get_current_info_agent_prompt,
