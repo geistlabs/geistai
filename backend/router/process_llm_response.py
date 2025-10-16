@@ -15,8 +15,8 @@ from typing import TypedDict, List, Any
 # https://github.com/brave/brave-search-mcp-server
 TOOL_PARAM_SCHEMAS = {
     "brave_web_search": {
-        # Official parameters from Brave API docs
-        "allowed": ["query", "count", "offset", "freshness", "spellcheck", "safesearch"],
+        # Official parameters from Brave API docs (including summary for richer results)
+        "allowed": ["query", "count", "offset", "freshness", "spellcheck", "safesearch", "summary"],
         "required": ["query"]
     },
     # brave_summarizer removed - had 0% success rate in testing
