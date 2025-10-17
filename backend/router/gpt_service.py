@@ -432,11 +432,6 @@ class GptService(EventEmitter):
         if not self._tool_registry:
             await self.init_tools()
 
-        # Debug: Log reasoning effort being used
-        print(f"⚙️ [gpt_service] Starting request with reasoning_effort: '{reasoning_effort}'")
-        print(f"   - Agent: {agent_name}")
-        print(f"   - Tools: {len(permitted_tools)} tools ({permitted_tools})")
-
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, agent_prompt)
 
         headers, model, url = self.get_chat_completion_params()
@@ -572,7 +567,6 @@ class GptService(EventEmitter):
 
         # If we made tool calls and need to synthesize, do final synthesis
         # ONLY synthesize if MAX_TOOL_CALLS was reached (tool_call_count >= MAX_TOOL_CALLS)
-        # Do NOT synthesize on normal completion (exited_via_stop without reaching MAX_TOOL_CALLS)
         if tool_call_count >= MAX_TOOL_CALLS:
             print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call.")
 
@@ -583,7 +577,11 @@ class GptService(EventEmitter):
                     # Replace system prompt for final synthesis
                     final_conversation.append({
                         "role": "system",
-                        "content": "You are Geist AI. Based on the search results provided, give a DIRECT ANSWER to the user's question. Output ONLY the factual answer with citations. DO NOT include analysis blocks, reasoning, thinking process, or any text containing '<|channel|>' or 'analysis'. Just the answer."
+                        "content": """You are Geist AI. The user asked a question and you've gathered information using tools.
+
+Now provide a clear, complete answer to their question using the search results. Include relevant facts, data, and citations. Be direct and helpful.
+
+Important: This is your FINAL response to the user - make it complete and actionable."""
                     })
                 else:
                     final_conversation.append(msg)
@@ -595,7 +593,7 @@ class GptService(EventEmitter):
                     "messages": msgs,
                     "temperature": 1.0,
                     "top_p": 1.0,
-                    "max_tokens": min(4000, self.config.MAX_TOKENS * 4),  # Priority 1 Fix: Increase tokens for final synthesis
+                    "max_tokens": min(4000, self.config.MAX_TOKENS * 4),
                     "stream": True,
                     "model": model
                     # NO tools in this request
