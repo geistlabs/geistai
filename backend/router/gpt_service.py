@@ -28,7 +28,7 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 5  # Increased to allow more tool calls before synthesis (with 8K context we have room)
+MAX_TOOL_CALLS = 3  # Increased to allow more tool calls before synthesis (with 8K context we have room)
 
 
 class GptService(EventEmitter):
