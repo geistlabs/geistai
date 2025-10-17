@@ -1,60 +1,65 @@
+/// <reference types="vite/client" />
+
 // API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface AgentMessage {
-  agent: string
-  content: string
-  timestamp: number
-  type: 'start' | 'token' | 'complete' | 'error'
-  status?: string
-  citations?: any[]
-  meta?: any
+  agent: string;
+  content: string;
+  timestamp: number;
+  type: "start" | "token" | "complete" | "error";
+  status?: string;
+  citations?: any[];
+  meta?: any;
 }
 
 export interface ChatRequest {
-  message: string
-  messages?: ChatMessage[]
+  message: string;
+  messages?: ChatMessage[];
 }
 
 export interface ChatResponse {
-  response: string
+  response: string;
 }
 
 export interface ChatError {
-  error: string
+  error: string;
 }
 
 // Send a message to the chat API (non-streaming)
-export async function sendMessage(message: string, conversationHistory?: ChatMessage[]): Promise<{ content: string }> {
+export async function sendMessage(
+  message: string,
+  conversationHistory?: ChatMessage[]
+): Promise<{ content: string }> {
   const requestBody: ChatRequest = {
     message,
-    messages: conversationHistory
-  }
+    messages: conversationHistory,
+  };
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/chat`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-    })
+    });
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`HTTP ${response.status}: ${errorText}`)
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
-    const data: ChatResponse = await response.json()
-    return { content: data.response }
+    const data: ChatResponse = await response.json();
+    return { content: data.response };
   } catch (error) {
-    console.error('Error sending message:', error)
-    throw error
+    console.error("Error sending message:", error);
+    throw error;
   }
 }
 
@@ -76,78 +81,151 @@ export type StreamEvent = StreamChunk | StreamEnd | StreamError;
 
 // Send a streaming message to the chat API
 export async function sendStreamingMessage(
-  message: string, 
+  message: string,
   conversationHistory: ChatMessage[],
   onToken: (token: string) => void,
-  onSubAgentEvent: (agentEvent: {agent: string, token: string, isStreaming?: boolean, task?: string, context?: string}) => void,
-  onToolCallEvent: (toolCallEvent: {type: string, toolName: string, arguments?: any, result?: any, error?: string}) => void,
+  onSubAgentEvent: (agentEvent: {
+    agent: string;
+    token: string;
+    isStreaming?: boolean;
+    task?: string;
+    context?: string;
+  }) => void,
+  onToolCallEvent: (toolCallEvent: {
+    type: string;
+    toolName: string;
+    arguments?: any;
+    result?: any;
+    error?: string;
+  }) => void,
   onComplete: () => void,
   onError: (error: string) => void,
+  onReasoningToken?: (token: string) => void
 ): Promise<void> {
   const requestBody: ChatRequest = {
     message,
-    messages: conversationHistory
-  }
+    messages: conversationHistory,
+  };
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/stream`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(requestBody),
-    })
-    console.log(response.status, "response.status")
+    });
+    console.log(response.status, "response.status");
     if (!response.ok) {
-      console.log(response.status, "response.status")
-      const errorText = await response.text()
-      throw new Error(`HTTP ${response.status}: ${errorText}`)
+      console.log(response.status, "response.status");
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
 
     if (!response.body) {
-      console.log(response.status, "response.status")
-      throw new Error('No response body received')
+      console.log(response.status, "response.status");
+      throw new Error("No response body received");
     }
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
 
     try {
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
 
-        console.log(done, "done") 
+        console.log(done, "done");
         if (done) {
-          break
+          break;
         }
 
-        const chunk = decoder.decode(value, { stream: true })
-        console.log(chunk, "chunk")
-        const lines = chunk.split('\n')
+        const chunk = decoder.decode(value, { stream: true });
+        console.log(chunk, "chunk");
+        const lines = chunk.split("\n");
 
         for (const line of lines) {
-          console.log("line", line)
-          if (line.startsWith('data: ')) {
+          console.log("line", line);
+          if (line.startsWith("data: ")) {
             try {
-              const data = JSON.parse(line.slice(6))
-              console.log("data", data)
+              const data = JSON.parse(line.slice(6));
+              console.log("data", data);
               if (data.type === "final_response") {
-               console.log("final_response", data)
-               console.log("Citations in final_response:", data.citations)
-               console.log("Number of citations:", data.citations ? data.citations.length : 0)
+                console.log("final_response", data);
+                console.log("Citations in final_response:", data.citations);
+                console.log(
+                  "Number of citations:",
+                  data.citations ? data.citations.length : 0
+                );
               }
-              
+
               if (data.type === "orchestrator_token") {
-                if (data.data.content) {
-                  onToken(data.data.content)
+                // Debug: Log the exact structure received
+                console.log(
+                  "🔍 [chat.ts] orchestrator_token data structure:",
+                  JSON.stringify(data, null, 2)
+                );
+                console.log("🔍 [chat.ts] typeof data.data:", typeof data.data);
+                console.log(
+                  "🔍 [chat.ts] data.data keys:",
+                  data.data ? Object.keys(data.data) : "null"
+                );
+
+                // Handle new channel-based format
+                if (data.data?.channel === "content") {
+                  // Extract the actual text from data.data.data
+                  const text = data.data.data;
+                  console.log("🔍 [chat.ts] Content channel detected");
+                  console.log("🔍 [chat.ts] Content text extracted:", text);
+                  console.log("🔍 [chat.ts] typeof text:", typeof text);
+                  if (typeof text === "string") {
+                    console.log("✅ [chat.ts] Calling onToken with:", text);
+                    onToken(text);
+                  } else {
+                    console.error(
+                      "❌ [chat.ts] text is not a string! Type:",
+                      typeof text,
+                      "Value:",
+                      text
+                    );
+                  }
+                } else if (
+                  data.data?.channel === "reasoning" &&
+                  onReasoningToken
+                ) {
+                  // Extract the actual text from data.data.data
+                  const text = data.data.data;
+                  console.log("🔍 [chat.ts] Reasoning text extracted:", text);
+                  if (typeof text === "string") {
+                    onReasoningToken(text);
+                  }
                 }
-              } else if (data.type === "sub_agent_event" ) {
-                if (data.data.type === "agent_token" && data.data.data.content) {
-                onSubAgentEvent({
+                // Fallback for old format (before channel separation)
+                else if (!data.data?.channel) {
+                  console.log(
+                    "🔍 [chat.ts] Using fallback format, data.data:",
+                    data.data
+                  );
+                  if (data.data?.content) {
+                    onToken(data.data.content);
+                  }
+                  if (data.data?.reasoning_content) {
+                    onReasoningToken?.(data.data.reasoning_content);
+                  }
+                } else {
+                  console.warn(
+                    "🔍 [chat.ts] Unknown channel or no channel match:",
+                    data.data?.channel
+                  );
+                }
+              } else if (data.type === "sub_agent_event") {
+                if (
+                  data.data.type === "agent_token" &&
+                  data.data.data.content
+                ) {
+                  onSubAgentEvent({
                     agent: data.data.data.agent,
                     token: data.data.data.content,
-
-                  })
+                  });
                 }
                 if (data.data.type === "agent_start") {
                   onSubAgentEvent({
@@ -155,109 +233,138 @@ export async function sendStreamingMessage(
                     token: "Sub Agent tokens: ",
                     isStreaming: true,
                     task: data.data.data.input,
-                    context: data.data.data.context
-                  })
+                    context: data.data.data.context,
+                  });
                 }
                 if (data.data.type === "agent_complete") {
                   onSubAgentEvent({
                     agent: data.data.data.agent,
                     token: data.data.data.content,
-                    isStreaming: false
-                  })
+                    isStreaming: false,
+                  });
                 }
                 if (data.data.type === "tool_call_event") {
                   // Handle tool call events from sub-agents
-                  console.log("🔍 Sub-agent tool call event structure:", data)
-                  const toolCallEventData = data.data.data
-                  const toolCallData = toolCallEventData.data
-                  const eventType = toolCallEventData.type
-                  
-                  if (eventType === "tool_call_start" && toolCallData && toolCallData.tool_name) {
-                    console.log(`🔧 Sub-agent ${data.data.agent} tool call started: ${toolCallData.tool_name}`, toolCallData.arguments)
+                  console.log("🔍 Sub-agent tool call event structure:", data);
+                  const toolCallEventData = data.data.data;
+                  const toolCallData = toolCallEventData.data;
+                  const eventType = toolCallEventData.type;
+
+                  if (
+                    eventType === "tool_call_start" &&
+                    toolCallData &&
+                    toolCallData.tool_name
+                  ) {
+                    console.log(
+                      `🔧 Sub-agent ${data.data.agent} tool call started: ${toolCallData.tool_name}`,
+                      toolCallData.arguments
+                    );
                     onToolCallEvent({
                       type: "start",
                       toolName: toolCallData.tool_name,
-                      arguments: toolCallData.arguments
-                    })
-                  } else if (eventType === "tool_call_complete" && toolCallData && toolCallData.tool_name) {
-                    console.log(`✅ Sub-agent ${data.data.agent} tool call completed: ${toolCallData.tool_name}`, toolCallData.result)
+                      arguments: toolCallData.arguments,
+                    });
+                  } else if (
+                    eventType === "tool_call_complete" &&
+                    toolCallData &&
+                    toolCallData.tool_name
+                  ) {
+                    console.log(
+                      `✅ Sub-agent ${data.data.agent} tool call completed: ${toolCallData.tool_name}`,
+                      toolCallData.result
+                    );
                     onToolCallEvent({
                       type: "complete",
                       toolName: toolCallData.tool_name,
                       arguments: toolCallData.arguments,
-                      result: toolCallData.result
-                    })
-                  } else if (eventType === "tool_call_error" && toolCallData && toolCallData.tool_name) {
-                    console.log(`❌ Sub-agent ${data.data.agent} tool call error: ${toolCallData.tool_name}`, toolCallData.error)
+                      result: toolCallData.result,
+                    });
+                  } else if (
+                    eventType === "tool_call_error" &&
+                    toolCallData &&
+                    toolCallData.tool_name
+                  ) {
+                    console.log(
+                      `❌ Sub-agent ${data.data.agent} tool call error: ${toolCallData.tool_name}`,
+                      toolCallData.error
+                    );
                     onToolCallEvent({
                       type: "error",
                       toolName: toolCallData.tool_name,
                       arguments: toolCallData.arguments,
-                      error: toolCallData.error
-                    })
+                      error: toolCallData.error,
+                    });
                   } else {
-                    console.warn("🔍 Invalid tool call event data:", { eventType, toolCallData, data })
+                    console.warn("🔍 Invalid tool call event data:", {
+                      eventType,
+                      toolCallData,
+                      data,
+                    });
                   }
                 }
-
-
               } else if (data.type === "tool_call_event") {
                 // Handle tool call events
                 if (data.data.type === "tool_call_start") {
-                  console.log(`🔧 Tool call started: ${data.data.data.tool_name}`, data.data.data.arguments)
+                  console.log(
+                    `🔧 Tool call started: ${data.data.data.tool_name}`,
+                    data.data.data.arguments
+                  );
                   onToolCallEvent({
                     type: "start",
                     toolName: data.data.data.tool_name,
-                    arguments: data.data.data.arguments
-                  })
+                    arguments: data.data.data.arguments,
+                  });
                 } else if (data.data.type === "tool_call_complete") {
-                  console.log(`✅ Tool call completed: ${data.data.data.tool_name}`, data.data.data.result)
+                  console.log(
+                    `✅ Tool call completed: ${data.data.data.tool_name}`,
+                    data.data.data.result
+                  );
                   onToolCallEvent({
                     type: "complete",
                     toolName: data.data.data.tool_name,
                     arguments: data.data.data.arguments,
-                    result: data.data.data.result
-                  })
+                    result: data.data.data.result,
+                  });
                 } else if (data.data.type === "tool_call_error") {
-                  console.log(`❌ Tool call error: ${data.data.data.tool_name}`, data.data.data.error)
+                  console.log(
+                    `❌ Tool call error: ${data.data.data.tool_name}`,
+                    data.data.data.error
+                  );
                   onToolCallEvent({
                     type: "error",
                     toolName: data.data.data.tool_name,
                     arguments: data.data.data.arguments,
-                    error: data.data.data.error
-                  })
+                    error: data.data.data.error,
+                  });
                 }
-
               } else if (data.type === "orchestrator_start") {
                 // Handle orchestrator start event
-              
               } else if (data.type === "orchestrator_complete") {
-                console.log("orchestrator_complete", data)
+                console.log("orchestrator_complete", data);
                 // Handle orchestrator completion
-          
               } else if (data.type === "final_response") {
                 // Handle final response (citations are now parsed from text)
-                console.log("Processing final_response event")
-                console.log("Final response data:", data)
+                console.log("Processing final_response event");
+                console.log("Final response data:", data);
               } else if (data.finished) {
-                onComplete()
-                return
+                onComplete();
+                return;
               } else if (data.error) {
-                onError(data.error)
-                return
+                onError(data.error);
+                return;
               }
             } catch (parseError) {
-              console.warn('Failed to parse SSE data:', parseError)
+              console.warn("Failed to parse SSE data:", parseError);
             }
           }
         }
       }
     } finally {
-      reader.releaseLock()
+      reader.releaseLock();
     }
   } catch (error) {
-    console.error('Error in streaming chat:', error)
-    onError(error instanceof Error ? error.message : 'Unknown error occurred')
+    console.error("Error in streaming chat:", error);
+    onError(error instanceof Error ? error.message : "Unknown error occurred");
   }
 }
 
@@ -265,7 +372,7 @@ export async function sendStreamingMessage(
 export function createAgentMessage(
   agent: string,
   content: string,
-  type: 'start' | 'token' | 'complete' | 'error',
+  type: "start" | "token" | "complete" | "error",
   status?: string,
   citations?: any[],
   meta?: any
@@ -277,44 +384,53 @@ export function createAgentMessage(
     type,
     status,
     citations,
-    meta
-  }
+    meta,
+  };
 }
 
-export function groupAgentMessagesByAgent(messages: AgentMessage[]): Record<string, AgentMessage[]> {
+export function groupAgentMessagesByAgent(
+  messages: AgentMessage[]
+): Record<string, AgentMessage[]> {
   return messages.reduce((groups, message) => {
     if (!groups[message.agent]) {
-      groups[message.agent] = []
+      groups[message.agent] = [];
     }
-    groups[message.agent].push(message)
-    return groups
-  }, {} as Record<string, AgentMessage[]>)
+    groups[message.agent].push(message);
+    return groups;
+  }, {} as Record<string, AgentMessage[]>);
 }
 
 export function getAgentDisplayName(agentName: string): string {
   const displayNames: Record<string, string> = {
-    'main_orchestrator': 'Main Orchestrator',
-    'research_agent': 'Research Agent',
-    'current_info_agent': 'Current Info Agent',
-    'creative_agent': 'Creative Agent',
-    'technical_agent': 'Technical Agent',
-    'summary_agent': 'Summary Agent'
-  }
-  return displayNames[agentName] || agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+    main_orchestrator: "Main Orchestrator",
+    research_agent: "Research Agent",
+    current_info_agent: "Current Info Agent",
+    creative_agent: "Creative Agent",
+    technical_agent: "Technical Agent",
+    summary_agent: "Summary Agent",
+  };
+  return (
+    displayNames[agentName] ||
+    agentName.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  );
 }
 
 // Health check function
-export async function checkHealth(): Promise<{ status: string; ssl_enabled: boolean; ssl_status: string }> {
+export async function checkHealth(): Promise<{
+  status: string;
+  ssl_enabled: boolean;
+  ssl_status: string;
+}> {
   try {
-    const response = await fetch(`${API_BASE_URL}/health`)
-    
+    const response = await fetch(`${API_BASE_URL}/health`);
+
     if (!response.ok) {
-      throw new Error(`Health check failed: ${response.status}`)
+      throw new Error(`Health check failed: ${response.status}`);
     }
 
-    return await response.json()
+    return await response.json();
   } catch (error) {
-    console.error('Health check error:', error)
-    throw error
+    console.error("Health check error:", error);
+    throw error;
   }
 }

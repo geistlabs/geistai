@@ -28,7 +28,7 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 5
+MAX_TOOL_CALLS = 5  # Increased to allow more tool calls before synthesis (with 8K context we have room)
 
 
 class GptService(EventEmitter):
@@ -432,6 +432,10 @@ class GptService(EventEmitter):
         if not self._tool_registry:
             await self.init_tools()
 
+        # Debug: Log reasoning effort being used
+        print(f"⚙️ [gpt_service] Starting request with reasoning_effort: '{reasoning_effort}'")
+        print(f"   - Agent: {agent_name}")
+        print(f"   - Tools: {len(permitted_tools)} tools ({permitted_tools})")
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, agent_prompt)
 
@@ -441,13 +445,32 @@ class GptService(EventEmitter):
         tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
 
 
-        async def llm_stream_once(msgs: List[dict]):
-            """Make a single streaming LLM call"""
+        async def llm_stream_once(msgs: List[dict], use_increased_tokens: bool = False):
+            """Make a single streaming LLM call
+
+            Args:
+                msgs: Messages to send
+                use_increased_tokens: If True, use increased max_tokens for tool-calling scenarios
+            """
+            # Priority 1 Fix: Increase max_tokens for multi-tool scenarios to prevent stream termination
+            # Check if conversation has tool calls (indicates multi-tool scenario)
+            max_tokens_to_use = self.config.MAX_TOKENS
+
+            has_tool_calls = any(
+                msg.get("role") == "assistant" and "tool_calls" in msg
+                for msg in msgs
+            )
+
+            if has_tool_calls or use_increased_tokens:
+                max_tokens_to_use = min(4000, self.config.MAX_TOKENS * 4)
+                if self.can_log:
+                    print(f"⚡ Using increased max_tokens: {max_tokens_to_use} (multi-tool scenario detected)")
+
             request_data = {
                 "messages": msgs,
                 "temperature": 1.0,
                 "top_p": 1.0,
-                "max_tokens": self.config.MAX_TOKENS,
+                "max_tokens": max_tokens_to_use,
                 "stream": True,
                 "model": model
             }
@@ -458,7 +481,7 @@ class GptService(EventEmitter):
                 request_data["tool_choice"] = "auto"
                 if self.can_log:
                     tool_names = [tool.get("function", {}).get("name", "unknown") for tool in tools_for_llm]
-                    print(f"🛠️  Tools available for LLM: {tool_names}")
+                    print(f"🛠️  Tools: {', '.join(tool_names)}")
 
             if self.can_log:
                 print(f"📤 Sending request with {len(msgs)} messages")
@@ -520,8 +543,9 @@ class GptService(EventEmitter):
         tool_call_count = 0
         print(f"🚀 Starting chat request with MAX_TOOL_CALLS={MAX_TOOL_CALLS}")
 
-        while tool_call_count < MAX_TOOL_CALLS:
+        exited_via_stop = False
 
+        while tool_call_count < MAX_TOOL_CALLS:
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -535,33 +559,34 @@ class GptService(EventEmitter):
                     yield content_chunk
                 # Check status
                 if status == "stop":  # Normal completion or error
-                    return
+                    exited_via_stop = True
+                    break  # Exit inner loop to trigger final synthesis
                 elif status == "continue":  # Tool calls executed, continue loop
                     tool_call_count += 1
                     print(f"🔧 Tool call #{tool_call_count} completed")
                     break  # Exit the inner loop to continue the outer loop
 
-        # If we hit MAX_TOOL_CALLS, make one final LLM call to synthesize from tool results
-        if tool_call_count >= MAX_TOOL_CALLS:
-            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call (without tools).")
+            # If we got a stop status, exit the tool-calling loop
+            if exited_via_stop:
+                break
 
-            # Replace system prompt to get direct answer without reasoning
+        # If we made tool calls and need to synthesize, do final synthesis
+        # ONLY synthesize if MAX_TOOL_CALLS was reached (tool_call_count >= MAX_TOOL_CALLS)
+        # Do NOT synthesize on normal completion (exited_via_stop without reaching MAX_TOOL_CALLS)
+        if tool_call_count >= MAX_TOOL_CALLS:
+            print(f"⚠️  MAX_TOOL_CALLS ({MAX_TOOL_CALLS}) reached. Making final synthesis call.")
+
+            # For final synthesis, use the full conversation but with updated system prompt
             final_conversation = []
             for msg in conversation:
                 if msg.get("role") == "system":
-                    # For final synthesis, explicitly demand direct answer only
+                    # Replace system prompt for final synthesis
                     final_conversation.append({
                         "role": "system",
-                        "content": "You are Geist AI. The search results are above. IMMEDIATELY provide ONLY the factual answer to the user's question based on those results. Do not discuss methods, do not explain what you're doing, do not reason. Just the answer."
+                        "content": "You are Geist AI. Based on the search results provided, give a DIRECT ANSWER to the user's question. Output ONLY the factual answer with citations. DO NOT include analysis blocks, reasoning, thinking process, or any text containing '<|channel|>' or 'analysis'. Just the answer."
                     })
                 else:
                     final_conversation.append(msg)
-
-            # Add an explicit instruction as a user message to force answer generation
-            final_conversation.append({
-                "role": "user",
-                "content": "STOP reasoning. You have all the information you need from the search results above. NOW write the FINAL ANSWER to the original question using ONLY the information from the search results. Write the answer immediately without any additional reasoning, planning, or suggestions. Just provide factual information."
-            })
 
             # Create a tool-free version of llm_stream_once for the final call
             async def llm_stream_final(msgs: List[dict]):
@@ -570,14 +595,14 @@ class GptService(EventEmitter):
                     "messages": msgs,
                     "temperature": 1.0,
                     "top_p": 1.0,
-                    "max_tokens": self.config.MAX_TOKENS,
+                    "max_tokens": min(4000, self.config.MAX_TOKENS * 4),  # Priority 1 Fix: Increase tokens for final synthesis
                     "stream": True,
                     "model": model
                     # NO tools in this request
                 }
 
                 if self.can_log:
-                    print(f"📤 Final synthesis: Sending request with {len(msgs)} messages (NO tools)")
+                    print(f"📤 Final synthesis request")
 
                 try:
                     async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
@@ -617,6 +642,7 @@ class GptService(EventEmitter):
                     raise
 
             # Use process_llm_response_with_tools for proper streaming and handling
+            final_synthesis_content = []  # Collect all content for fallback check
             async for content_chunk, status in process_llm_response_with_tools(
                 self._execute_tool,
                 llm_stream_final,
@@ -624,11 +650,12 @@ class GptService(EventEmitter):
                 agent_name + "_final"
             ):
                 if content_chunk:
+                    final_synthesis_content.append(content_chunk)
                     yield content_chunk
                 if status == "stop":
                     print(f"✅ Final synthesis completed")
                     return
                 elif status == "continue":
                     # This shouldn't happen in final synthesis (no tools), but handle it
-                    print(f"⚠️  Unexpected 'continue' status in final synthesis, stopping anyway")
+                    print(f"⚠️  Unexpected 'continue' in final synthesis, stopping")
                     return
