@@ -15,6 +15,7 @@ export interface Message {
   agentConversations?: AgentConvo[]; // Agent conversations associated with this message
   collectedLinks?: CollectedLink[]; // All unique links collected from this message and its agents
   toolCallEvents?: ToolCallEvent[]; // Tool call events associated with this message
+  reasoningContent?: string; // Internal reasoning/thinking process
 }
 
 export interface CollectedLink {
@@ -67,10 +68,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       timestamp: new Date(),
     },
   ]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used for future reasoning display feature
-  const [reasoningContent, setReasoningContent] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used for future reasoning toggle feature
-  const [showReasoning, setShowReasoning] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(true); // Show reasoning by default
 
   console.log("🎯 [ChatInterface] Component initialized:", {
     chatId,
@@ -566,10 +564,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           };
           createMessageEmbedding(errorMessage);
         },
-        // onReasoningToken callback (NEW)
+        // onReasoningToken callback - Update message's reasoning content
         (token: string) => {
-          console.log("🧠 [ChatInterface] Received reasoning token");
-          setReasoningContent((prev) => prev + token);
+          console.log("🧠 [ChatInterface] Received reasoning token:", {
+            token: token.substring(0, 50) + (token.length > 50 ? "..." : ""),
+            tokenLength: token.length,
+            assistantMessageId,
+          });
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? {
+                    ...msg,
+                    reasoningContent: (msg.reasoningContent || "") + token,
+                  }
+                : msg
+            )
+          );
         }
       );
     } catch (error) {
@@ -640,8 +651,43 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     >
       {/* Agent conversations are now embedded within messages */}
 
-      <MessageList messages={messages} isLoading={isLoading} />
+      <MessageList
+        messages={messages}
+        isLoading={isLoading}
+        showReasoning={showReasoning}
+      />
       <MessageInput onSendMessage={handleSendMessage} disabled={isLoading} />
+
+      {/* Reasoning Toggle Button */}
+      <button
+        onClick={() => setShowReasoning(!showReasoning)}
+        style={{
+          position: "fixed",
+          bottom: "80px",
+          right: "20px",
+          padding: "8px 16px",
+          backgroundColor: showReasoning ? "#4CAF50" : "#757575",
+          color: "white",
+          border: "none",
+          borderRadius: "20px",
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: "500",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          transition: "all 0.2s ease",
+          zIndex: 1000,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.05)";
+          e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+        }}
+      >
+        {showReasoning ? "🧠 Hide Reasoning" : "🧠 Show Reasoning"}
+      </button>
 
       {/* Activity Panel */}
       <ActivityPanel
