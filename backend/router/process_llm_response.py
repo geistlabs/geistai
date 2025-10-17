@@ -52,8 +52,12 @@ def clean_tool_arguments(tool_name: str, args: dict) -> dict:
     cleaned_args = {k: v for k, v in args.items() if k in allowed_params}
 
     # Always include summary: true for brave_web_search
+    # Set default count to 5 for better search results quality
     if tool_name == "brave_web_search":
         cleaned_args["summary"] = True
+        # Override count if not provided or if it's too low
+        if "count" not in cleaned_args or cleaned_args["count"] < 5:
+            cleaned_args["count"] = 5
 
     return cleaned_args
 
@@ -240,7 +244,7 @@ async def process_llm_response_with_tools(
     delta_count = 0
     content_deltas_count = 0  # Track actual content (not just reasoning markers)
     reasoning_deltas_count = 0  # Track reasoning_content deltas
-    max_deltas_without_content = 100  # Safety limit for final synthesis
+    max_deltas_without_content = 500  # Safety limit for final synthesis (plenty of room for medium reasoning)
     async for delta in llm_stream_once(conversation):
         delta_count += 1
 

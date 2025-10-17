@@ -140,6 +140,23 @@ class GptService(EventEmitter):
             tools = await self._mcp_client.list_tools()
 
 
+            # Custom descriptions for MCP tools (emphasizing their capabilities)
+            TOOL_DESCRIPTION_OVERRIDES = {
+                "brave_web_search": (
+                    "Search the web and get rich summaries with current information. "
+                    "Returns a SUMMARY containing key facts, data, and details - not just links. "
+                    "For weather queries, the summary includes temperature and conditions. "
+                    "For stock prices, the summary includes current price. "
+                    "For news, the summary includes headlines and key points. "
+                    "READ THE SUMMARY carefully - it usually contains the answer you need."
+                ),
+                "fetch": (
+                    "Fetch the full content of a specific web page URL. "
+                    "Use this ONLY if brave_web_search summaries lack critical details. "
+                    "For simple queries (weather, stocks, news), the search summary is usually sufficient."
+                )
+            }
+
             # Register each MCP tool
             for tool in tools:
                 tool_name = tool['name']
@@ -153,9 +170,15 @@ class GptService(EventEmitter):
                 # Filter input schema to only include allowed parameters
                 input_schema = self._filter_tool_schema(tool_name, tool.get('inputSchema', {}))
 
+                # Use custom description if available, otherwise use MCP's description
+                description = TOOL_DESCRIPTION_OVERRIDES.get(
+                    tool_name,
+                    tool.get('description') or f'MCP tool: {tool_name}'
+                )
+
                 self._register_tool(
                     name=tool_name,
-                    description=tool.get('description', f'MCP tool: {tool_name}'),
+                    description=description,
                     input_schema=input_schema,
                     executor=mcp_executor,
                     tool_type="mcp"
@@ -581,7 +604,12 @@ class GptService(EventEmitter):
 
 Now provide a clear, complete answer to their question using the search results. Include relevant facts, data, and citations. Be direct and helpful.
 
-Important: This is your FINAL response to the user - make it complete and actionable."""
+CRITICAL - Handle Contradictions:
+- If the search results show information that contradicts the user's question (e.g., they ask for 'president' but the country has 'prime minister'), CLARIFY the distinction in your answer.
+- If a title or term in the question doesn't match reality, explain what the correct term is and provide the accurate information.
+- Example: If asked "who is the president of Spain", clarify that Spain has a Prime Minister (not a president) and provide both the Prime Minister's name and the King's name.
+
+Important: This is your FINAL response to the user - make it complete, accurate, and actionable."""
                     })
                 else:
                     final_conversation.append(msg)
