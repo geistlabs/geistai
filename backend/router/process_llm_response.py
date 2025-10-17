@@ -350,11 +350,9 @@ async def process_llm_response_with_tools(
                 return
 
             elif finish_reason == "stop":
-                print(f"🔍 [agent: {agent_name}] ✅ Stream completed")
-                print(f"📊 [agent: {agent_name}] Channel Summary:")
-                print(f"   📝 CONTENT deltas: {content_deltas_count}")
-                print(f"   🧠 REASONING_CONTENT deltas: {reasoning_deltas_count}")
-                print(f"   🎯 Total deltas: {delta_count}")
+                # Normal completion, we're done
+                print(f"🔍 [agent: {agent_name}] ✅ NORMAL COMPLETION - finish_reason='stop'")
+                print(f"🔍 [agent: {agent_name}] 🛑 RETURNING 'stop' status to exit")
                 yield (None, "stop")
                 return
 

@@ -595,7 +595,8 @@ Important: This is your FINAL response to the user - make it complete and action
                     "top_p": 1.0,
                     "max_tokens": min(4000, self.config.MAX_TOKENS * 4),
                     "stream": True,
-                    "model": model
+                    "model": model,
+                    "reasoning_effort": "medium"  # Better quality for final user-facing responses
                     # NO tools in this request
                 }
 
