@@ -16,7 +16,7 @@ from typing import TypedDict, List, Any
 TOOL_PARAM_SCHEMAS = {
     "brave_web_search": {
         # Official parameters from Brave API docs
-        "allowed": ["query", "count", "offset", "freshness", "spellcheck", "safesearch"],
+        "allowed": ["query", "count", "offset", "freshness", "spellcheck", "safesearch", "summary"],
         "required": ["query"]
     },
     # brave_summarizer removed - had 0% success rate in testing
@@ -32,6 +32,34 @@ TOOL_PARAM_SCHEMAS = {
     }
 }
 
+def clean_tool_arguments(tool_name: str, args: dict) -> dict:
+    """
+    Clean tool arguments based on schema
+
+    Args:
+        tool_name: Name of the tool
+        args: Raw arguments from LLM
+
+    Returns:
+        Cleaned arguments with only allowed parameters
+    """
+    schema = TOOL_PARAM_SCHEMAS.get(tool_name)
+    if not schema:
+        # If no schema defined, return as-is
+        return args
+
+    allowed_params = schema.get("allowed", [])
+    cleaned_args = {k: v for k, v in args.items() if k in allowed_params}
+
+    # Always include summary: true for brave_web_search
+    # Set default count to 5 for better search results quality
+    if tool_name == "brave_web_search":
+        cleaned_args["summary"] = True
+        # Override count if not provided or if it's too low
+        if "count" not in cleaned_args or cleaned_args["count"] < 5:
+            cleaned_args["count"] = 5
+
+    return cleaned_args
 
 class ToolCallResponse(TypedDict):
     success: bool
@@ -70,25 +98,31 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     try:
         # Parse tool arguments from JSON string
         tool_args = json.loads(tool_args_str)
-       
         # Add assistant's tool call to conversation
         local_conversation.append({
             "role": "assistant",
             "content": "",
             "tool_calls": [tool_call]
         })
-  
 
+        # Clean tool arguments using schema-based approach
+        tool_args = clean_tool_arguments(tool_name, tool_args)
+
+        print(f"   🚀 Executing tool: {tool_name}")
 
         # Execute the tool
         result = await execute_tool(tool_name, tool_args)
-        print("Tool result for ", tool_name, " is: ", json.dumps(result, indent=2))
+
+        # Format result for LLM
         tool_call_result = format_tool_result_for_llm(
             tool_call["id"],
             result
         )
 
         local_conversation.append(tool_call_result)
+
+        print(f"   ✅ Tool call succeeded: {tool_name}")
+
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation,
@@ -110,6 +144,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
 
     except Exception as e:
+        print(f"   ❌ Execution error in {tool_name}: {str(e)}")
         import traceback
         traceback.print_exc()
         error_result = {"error": str(e)}
@@ -168,6 +203,15 @@ def format_tool_result_for_llm( tool_call_id: str, result: dict) -> dict:
     }
 
 
+
+def count_total_tool_calls(conversation):
+    """Count total tool calls made in conversation so far"""
+    total = 0
+    for msg in conversation:
+        if msg.get("role") == "assistant" and "tool_calls" in msg:
+            total += len(msg["tool_calls"])
+    return total
+
 async def process_llm_response_with_tools(
         execute_tool: Callable,
         llm_stream_once: Callable,
@@ -194,7 +238,8 @@ async def process_llm_response_with_tools(
     # Stream one LLM response
     delta_count = 0
     content_deltas_count = 0  # Track actual content (not just reasoning markers)
-    max_deltas_without_content = 100  # Safety limit for final synthesis
+    reasoning_deltas_count = 0  # Track reasoning_content deltas
+    max_deltas_without_content = 500  # Safety limit for final synthesis (plenty of room for medium reasoning)
     async for delta in llm_stream_once(conversation):
         delta_count += 1
 
@@ -204,10 +249,10 @@ async def process_llm_response_with_tools(
         choice = delta["choices"][0]
         delta_obj = choice.get("delta", {})
 
-
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
             saw_tool_call = True
+            print(f"🔍 [agent: {agent_name}] 🛠️  TOOL CALL DETECTED")
 
             for tc_delta in delta_obj["tool_calls"]:
                 tc_index = tc_delta.get("index", 0)
@@ -231,66 +276,75 @@ async def process_llm_response_with_tools(
                     if "arguments" in func:
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
 
-
         # Stream content to client and print reasoning as it happens
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
             content_deltas_count += 1
-            yield (delta_obj["content"], None)  # Content with no status change
-
+            # Yield with explicit channel identification for frontend as a tuple
+            yield ({
+                "channel": "content",
+                "data": delta_obj["content"]
+            }, None)
+        elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
+            reasoning_deltas_count += 1
+            # Yield with explicit channel identification for frontend as a tuple
+            yield ({
+                "channel": "reasoning",
+                "data": delta_obj["reasoning_content"]
+            }, None)
 
         # Safety: Force stop if final synthesis is stuck in reasoning loop
         if "_final" in agent_name and delta_count > max_deltas_without_content and content_deltas_count == 0:
-            print(f"🔍 [agent: {agent_name}] ⚠️  SAFETY STOP: Too many deltas without content ({delta_count}), forcing completion")
+            print(f"🔍 [agent: {agent_name}] ⚠️  SAFETY STOP: Too many deltas without content, forcing completion")
             yield (None, "stop")
             return
 
         ## Check finish reason
         finish_reason = choice.get("finish_reason")
         if finish_reason:
-            print(f"🔍 [agent: {agent_name}] 🎯 FINISH_REASON DETECTED: '{finish_reason}'")
-            print(f"🔍 [agent: {agent_name}]    saw_tool_call={saw_tool_call}, tool_calls_count={len(current_tool_calls)}")
+            total_tool_calls = count_total_tool_calls(conversation)
+            print(f"🔍 [agent: {agent_name}] 🎯 FINISH_REASON: '{finish_reason}' | current_turn: {len(current_tool_calls)} | total_so_far: {total_tool_calls}")
 
             if finish_reason == "tool_calls" and current_tool_calls:
-                print(f"🔍 [agent: {agent_name}] ✅ EXECUTING TOOLS - finish_reason='tool_calls'")
+                print(f"🔍 [agent: {agent_name}] ✅ EXECUTING {len(current_tool_calls)} TOOL(S)")
                 # Execute tool calls concurrently
 
                 # Create tasks for concurrent execution
                 tasks = []
-                print(f"🔍 [agent: {agent_name}] Preparing to execute {len(current_tool_calls)} tool(s)")
                 for tool_call in current_tool_calls:
                     tool_name = tool_call['function']['name']
-                    tool_args = tool_call['function']['arguments']
-                    print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}, Args: {tool_args[:100]}")
+                    tool_args_str = tool_call['function']['arguments']
+
+                    # Parse and clean args for better logging
+                    try:
+                        tool_args_dict = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
+                        cleaned_args = clean_tool_arguments(tool_name, tool_args_dict)
+                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}")
+                    except:
+                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}")
+
                     task = execute_single_tool_call(tool_call, execute_tool)
                     tasks.append(task)
 
                 # Execute all tool calls concurrently
-                print(f"🔍 [agent: {agent_name}] Running {len(tasks)} tool tasks concurrently...")
                 results: List[Union[ToolCallResponse, BaseException]] = await asyncio.gather(*tasks, return_exceptions=True)
 
                 # Process all results
                 has_error = False
                 for i, result in enumerate(results):
                     if isinstance(result, BaseException):
-                        print(f"🔍 [agent: {agent_name}] ❌ Tool #{i} error: {result}")
+                        print(f"🔍 [agent: {agent_name}] ❌ Tool error: {result}")
                         has_error = True
                         break
                     elif isinstance(result, dict) and "success" in result:
-                        tool_result_content = str(result['tool_call_result']['content'])[:100] if result['tool_call_result'] else "None"
-                        print(f"🔍 [agent: {agent_name}] ✅ Tool #{i} result: {tool_result_content}")
                         conversation.extend(result["new_conversation_entries"])
 
                 if has_error:
-                    print(f"🔍 [agent: {agent_name}] 💥 Tool execution failed, stopping")
                     yield (None, "stop")
                     return
 
-                # All tool calls processed, continue with next LLM turn
-                await asyncio.sleep(0.01)
-                print(f"🔍 [agent: {agent_name}] ✅ All tools executed successfully")
-                print(f"🔍 [agent: {agent_name}] 🔄 RETURNING 'continue' status to loop again")
+                print(f"🔍 [agent: {agent_name}] 🔄 Continuing with next LLM turn")
                 yield (None, "continue")
                 return
 
@@ -298,6 +352,12 @@ async def process_llm_response_with_tools(
                 # Normal completion, we're done
                 print(f"🔍 [agent: {agent_name}] ✅ NORMAL COMPLETION - finish_reason='stop'")
                 print(f"🔍 [agent: {agent_name}] 🛑 RETURNING 'stop' status to exit")
+                yield (None, "stop")
+                return
+
+            elif finish_reason == "length":
+                # Token limit reached - treat as stop
+                print(f"🔍 [agent: {agent_name}] ⚠️  Token limit reached, stopping")
                 yield (None, "stop")
                 return
 
