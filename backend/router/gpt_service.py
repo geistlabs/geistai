@@ -640,11 +640,11 @@ Important: This is your FINAL response to the user - make it complete and action
                     raise
 
             # Use process_llm_response_with_tools for proper streaming and handling
-            final_synthesis_content = []  # Collect all content for fallback check
+            final_synthesis_content = []
             async for content_chunk, status in process_llm_response_with_tools(
                 self._execute_tool,
                 llm_stream_final,
-                final_conversation,  # Use modified conversation with direct response prompt
+                final_conversation,
                 agent_name + "_final"
             ):
                 if content_chunk:
