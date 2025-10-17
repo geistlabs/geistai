@@ -28,7 +28,7 @@ WHISPER_PORT=8004
 
 # GPU settings for Apple Silicon
 GPU_LAYERS=32  # All layers on GPU for best performance
-CONTEXT_SIZE=16384  # Full context for gpt-oss-20b with --parallel 1 (required for stable tool calling)
+CONTEXT_SIZE=16384  # Full context for gpt-oss-20b with --parallel 2 (required for stable tool calling)
 THREADS=0  # Auto-detect CPU threads
 
 echo -e "${BLUE}🚀 Starting Geist Backend Local Development Environment${NC}"

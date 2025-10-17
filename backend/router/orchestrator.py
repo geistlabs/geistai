@@ -191,28 +191,18 @@ class Orchestrator(AgentTool):
                     agent_name=self.name,
                     agent_prompt=self.system_prompt,
                 ):
-                    # DEBUG: Log what we're receiving
-                    print(f"🔍 [orchestrator] Received chunk type: {type(chunk)}, is_dict: {isinstance(chunk, dict)}")
-                    if isinstance(chunk, dict):
-                        print(f"🔍 [orchestrator] Chunk keys: {chunk.keys()}")
-                        print(f"🔍 [orchestrator] Has 'channel' key: {'channel' in chunk}")
-                    print(f"🔍 [orchestrator] Chunk value: {repr(chunk)[:200]}")
-
                     # Handle channel-separated chunks from process_llm_response
                     if isinstance(chunk, dict) and "channel" in chunk:
                         # This is a channel-separated chunk, emit it as-is
-                        print(f"✅ [orchestrator] Emitting channel-separated chunk: {chunk}")
                         self.emit("agent_token", chunk)
                         # Only append content chunks to response_text
                         if chunk.get("channel") == "content":
                             response_chunks.append(chunk.get("data", ""))
                     elif isinstance(chunk, tuple):
                         # This is a control signal (status, action), pass through
-                        print(f"⚠️ [orchestrator] Tuple chunk: {chunk}")
                         response_chunks.append(chunk)
                     else:
                         # Legacy string chunk format (backward compatibility)
-                        print(f"⚠️ [orchestrator] Legacy string chunk: {repr(chunk)[:100]}")
                         response_chunks.append(chunk)
                         self.emit("agent_token", {
                             "agent": self.name,

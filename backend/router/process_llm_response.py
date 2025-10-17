@@ -245,7 +245,6 @@ async def process_llm_response_with_tools(
         delta_count += 1
 
         if "choices" not in delta or not delta["choices"]:
-            print(f"🔍 [agent: {agent_name}] ⚠️  Delta #{delta_count} - No choices in delta, skipping")
             continue
 
         choice = delta["choices"][0]
@@ -283,8 +282,6 @@ async def process_llm_response_with_tools(
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
             content_deltas_count += 1
-            # Debug: Log ALL content channel deltas
-            print(f"📝 [agent: {agent_name}] CONTENT[{content_deltas_count}]: {delta_obj['content']}")
             # Yield with explicit channel identification for frontend as a tuple
             yield ({
                 "channel": "content",
@@ -292,8 +289,6 @@ async def process_llm_response_with_tools(
             }, None)
         elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
             reasoning_deltas_count += 1
-            # Debug: Log ALL reasoning channel deltas
-            print(f"🧠 [agent: {agent_name}] REASONING[{reasoning_deltas_count}]: {delta_obj['reasoning_content']}")
             # Yield with explicit channel identification for frontend as a tuple
             yield ({
                 "channel": "reasoning",
@@ -326,15 +321,14 @@ async def process_llm_response_with_tools(
                     try:
                         tool_args_dict = json.loads(tool_args_str) if isinstance(tool_args_str, str) else tool_args_str
                         cleaned_args = clean_tool_arguments(tool_name, tool_args_dict)
-                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}, Args: {str(cleaned_args)[:150]}")
+                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}")
                     except:
-                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}, Args: {tool_args_str[:100]}")
+                        print(f"🔍 [agent: {agent_name}]   → Tool: {tool_name}")
 
                     task = execute_single_tool_call(tool_call, execute_tool)
                     tasks.append(task)
 
                 # Execute all tool calls concurrently
-                print(f"🔍 [agent: {agent_name}] Running {len(tasks)} tool tasks concurrently...")
                 results: List[Union[ToolCallResponse, BaseException]] = await asyncio.gather(*tasks, return_exceptions=True)
 
                 # Process all results
