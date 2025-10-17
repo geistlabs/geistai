@@ -22,7 +22,7 @@ RUN pip install "mcp[docker]" websockets
 ENV PYTHONPATH=/app:/app/router:/app/embeddings:/app/database
 
 # Install dependencies
-RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette python-multipart
+RUN pip install fastapi uvicorn httpx openai-harmony sse-starlette python-multipart beautifulsoup4 sentence-transformers
 
 # Create non-root user
 RUN useradd -m -u 1000 router && chown -R router:router /app

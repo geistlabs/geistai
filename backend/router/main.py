@@ -198,7 +198,7 @@ def create_nested_research_system(config, EventEmitter):
     existing_agents = get_predefined_agents(config)
     permitted_agents = []
     # Removed brave_summarizer due to 0% success rate in testing - it consistently failed with "Unable to retrieve a Summarizer summary"
-    permitted_mcp_tools = ["brave_summarizer", "brave_web_search"]
+    permitted_mcp_tools = ["custom_mcp_fetch"]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
     existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]

@@ -158,70 +158,78 @@ class GptService:
         This is where you add your own tools. See examples below and
         """
 
-        async def mcp_fetch_tool(url) -> Dict:
+        async def mcp_fetch_tool(args: dict) -> Dict:
             """
             Fetch content from URLs using available MCP fetch tools.
-            Programmatically finds and uses the fetch MCP tool to recursively get content.
+            Expects args to be a dict with one key: 'url'.
             """
             from urllib.parse import urlparse
-            
+
+            url = args.get("url")
             if not url:
                 return {"error": "URL is required"}
-            
+
             try:
                 # Validate URL
-                parsed_url = urlparse(url)
+                print(f"Fetching URL: {url}")
+                parsed_url = urlparse(str(url))
                 if not parsed_url.scheme or not parsed_url.netloc:
                     return {"error": "Invalid URL format"}
-                
+
                 # Find available MCP fetch tools
-                fetch_tools = []
-                for tool_name, tool_info in self._tool_registry.items():
-                    if tool_info.get("type") == "mcp" and "fetch" in tool_name.lower():
-                        fetch_tools.append(tool_name)
-                
+                fetch_tools = [
+                    tool_name
+                    for tool_name, tool_info in self._tool_registry.items()
+                    if tool_info.get("type") == "mcp" and "fetch" in tool_name.lower()
+                ]
+
                 if not fetch_tools:
                     return {"error": "No MCP fetch tools available"}
-                
+
                 # Use the first available fetch tool
                 fetch_tool_name = fetch_tools[0]
                 print(f"🔍 Using MCP fetch tool: {fetch_tool_name}")
-                
+
                 # Prepare arguments for the MCP fetch tool
                 fetch_args = {"url": url}
-                
+
                 # Try to add recursive flag if the tool supports it
-                tool_schema = self._tool_registry[fetch_tool_name].get("input_schema", {})
-                if "recursive" in str(tool_schema):
-                    fetch_args["recursive"] = True
-                
+                fetch_args["max_length"] = 10000
+                fetch_args["markdown"] = True
+                fetch_args["html"] = False
+                fetch_args["include_links"] = True
+                fetch_args["include_tables"] = True
+                fetch_args["include_code"] = True
+                fetch_args["recursive"] = True
+
                 # Execute the MCP fetch tool
                 result = await self._execute_tool(fetch_tool_name, fetch_args)
-                
+
                 if "error" in result:
                     return {"error": f"MCP fetch failed: {result['error']}"}
-                
+
                 # Extract content from the result
                 content = result.get("content", str(result))
                 print(f"🔍 MCP Fetch Output for {url}:")
                 print(content)
-                
+
                 # Count URLs processed (simple heuristic)
                 url_count = content.count("http://") + content.count("https://")
                 if url_count == 0:
                     url_count = 1  # At least the original URL
-                
+
                 return {
-                    "content": content,
                     "urls_processed": url_count,
                     "message": f"I have looked at {url_count} URL(s) and found it good",
                     "status": "success",
                     "tool_used": fetch_tool_name
                 }
-                
-            except Exception as e:
-                return {"error": f"Failed to fetch content: {str(e)}"}
 
+            except Exception as e:
+                import traceback
+                print(f"Failed to fetch content: {e}")
+                traceback.print_exc()
+                return {"error": f"Failed to fetch content: {str(e)}"}
         # Register the MCP fetch tool
         self._register_tool(
             name="custom_mcp_fetch",
