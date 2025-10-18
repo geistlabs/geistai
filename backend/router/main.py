@@ -71,16 +71,21 @@ async def startup_event():
     """Initialize GPT service tools on startup"""
     await gpt_service.init_tools()
 
-    # Register sub-agents as tools
-    from agent_registry import register_predefined_agents
+    if config.ENABLE_TOOL_CALLS:
+        # Register sub-agents as tools
+        from agent_registry import register_predefined_agents
 
-    registered_agents = await register_predefined_agents(gpt_service, config)
-    print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
+        registered_agents = await register_predefined_agents(gpt_service, config)
+        print(
+            f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}"
+        )
 
-    print(
-        f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools"
-    )
-    print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
+        print(
+            f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools"
+        )
+        print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
+    else:
+        print("🚫 Tool calls disabled - skipping agent registration")
 
 
 # Initialize Whisper STT client
@@ -205,11 +210,16 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
         # Initialize the orchestrator with the main GPT service
         await orchestrator.initialize(gpt_service, config)
 
-        # Configure available tools (only sub-agents)
-        sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
-        all_tools = list(gpt_service._tool_registry.keys())
-        available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
-        orchestrator.available_tools = available_tool_names
+        # Configure available tools (only sub-agents) if tool calls are enabled
+        if config.ENABLE_TOOL_CALLS:
+            sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
+            all_tools = list(gpt_service._tool_registry.keys())
+            available_tool_names = [
+                tool for tool in all_tools if tool in sub_agent_names
+            ]
+            orchestrator.available_tools = available_tool_names
+        else:
+            orchestrator.available_tools = []
         orchestrator.gpt_service = gpt_service
 
         # Run the orchestrator and get the final response
