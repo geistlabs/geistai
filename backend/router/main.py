@@ -186,6 +186,49 @@ def create_nested_research_system(config):
     return main_orchestrator
 
 
+@app.post("/api/chat")
+async def chat_with_orchestrator(chat_request: ChatRequest):
+    """Non-streaming chat endpoint for simple requests"""
+    print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
+
+    # Build messages array with conversation history
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    try:
+        # Create a nested orchestrator structure
+        orchestrator = create_nested_research_system(config)
+
+        # Initialize the orchestrator with the main GPT service
+        await orchestrator.initialize(gpt_service, config)
+
+        # Configure available tools (only sub-agents)
+        sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
+        all_tools = list(gpt_service._tool_registry.keys())
+        available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
+        orchestrator.available_tools = available_tool_names
+        orchestrator.gpt_service = gpt_service
+
+        # Run the orchestrator and get the final response
+        final_response = await orchestrator.run(chat_request.message)
+
+        return {
+            "response": final_response.text,
+            "status": final_response.status,
+            "meta": final_response.meta,
+        }
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
@@ -516,143 +559,6 @@ async def proxy_embeddings(request: Request, path: str):
         raise HTTPException(
             status_code=502, detail="Failed to proxy request to embeddings service"
         )
-
-
-# Memory extraction endpoints
-@app.post("/api/memory/extract")
-async def extract_memories(request: Request):
-    """Extract key facts/memories from a conversation"""
-    try:
-        body = await request.json()
-        chat_id = body.get("chatId")
-        messages = body.get("messages", [])
-        max_memories = body.get("maxMemories", 10)
-
-        if not chat_id or not messages:
-            raise HTTPException(
-                status_code=400, detail="chatId and messages are required"
-            )
-
-        # Create extraction prompt
-        conversation_text = "\n".join(
-            [
-                f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
-                for msg in messages
-            ]
-        )
-
-        extraction_prompt = f"""Analyze the following conversation and extract key facts, preferences, and contextual information that would be useful to remember for future conversations. Focus on:
-
-1. Personal information (name, location, job, interests, etc.)
-2. Technical preferences (tools, languages, frameworks, etc.)
-3. User preferences (communication style, specific needs, etc.)
-4. Important context (current projects, goals, constraints, etc.)
-
-For each fact, provide:
-- A concise summary (1-2 sentences max)
-- A category (personal, technical, preference, context, other)
-- A relevance score (0.0-1.0)
-
-Conversation:
-{conversation_text}
-
-Extract up to {max_memories} key facts. Return as JSON array with format:
-[{{"content": "fact summary", "category": "category", "relevanceScore": 0.8, "originalContext": "relevant snippet from conversation"}}]
-
-Only return the JSON array, no other text."""
-
-        # Call LLM for extraction
-        extraction_request = {
-            "messages": [{"role": "user", "content": extraction_prompt}],
-            "temperature": 0.1,
-            "max_tokens": 1000,
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{config.INFERENCE_URL}/v1/chat/completions",
-                headers={"Content-Type": "application/json"},
-                json=extraction_request,
-                timeout=30.0,
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(status_code=502, detail="Memory extraction failed")
-
-            result = response.json()
-            content = (
-                result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-
-            # Parse extracted memories
-            try:
-                import json
-
-                memories = json.loads(content)
-                if not isinstance(memories, list):
-                    memories = []
-            except:
-                memories = []
-
-            # Add metadata
-            for memory in memories:
-                memory["chatId"] = chat_id
-                memory["messageIds"] = [
-                    msg.get("id", 0) for msg in messages if msg.get("id")
-                ]
-
-            return {"memories": memories, "success": True}
-
-    except Exception as e:
-        logger.error(f"Memory extraction error: {str(e)}")
-        return {"memories": [], "success": False, "error": str(e)}
-
-
-@app.post("/api/memory/search")
-async def search_memories(request: Request):
-    """Search for relevant memories based on query"""
-    try:
-        body = await request.json()
-        query = body.get("query", "")
-        exclude_chat_id = body.get("excludeChatId")
-        limit = body.get("limit", 10)
-        threshold = body.get("threshold", 0.7)
-
-        if not query:
-            return {"memories": []}
-
-        # Generate embedding for query
-        embed_request = {"input": query, "model": "all-MiniLM-L6-v2"}
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{config.EMBEDDINGS_URL}/embed",
-                headers={"Content-Type": "application/json"},
-                json=embed_request,
-                timeout=10.0,
-            )
-
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=502, detail="Embedding generation failed"
-                )
-
-            result = response.json()
-            query_embedding = result.get("data", [{}])[0].get("embedding", [])
-
-            if not query_embedding:
-                return {"memories": []}
-
-            # Note: In a real implementation, you'd search your memory database here
-            # For now, return empty results since we don't have a backend memory store
-            return {
-                "memories": [],
-                "query_embedding": query_embedding,  # Return for frontend to use
-            }
-
-    except Exception as e:
-        logger.error(f"Memory search error: {str(e)}")
-        return {"memories": []}
 
 
 if __name__ == "__main__":
