@@ -282,68 +282,97 @@ export async function sendStreamingMessage(
     // Handle different event types
     es.addEventListener('orchestrator_token', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_token:', parseError);
+        console.warn('Failed to parse orchestrator_token:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('sub_agent_event', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse sub_agent_event:', parseError);
+        console.warn('Failed to parse sub_agent_event:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('tool_call_event', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse tool_call_event:', parseError);
+        console.warn('Failed to parse tool_call_event:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('orchestrator_start', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_start:', parseError);
+        console.warn('Failed to parse orchestrator_start:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('orchestrator_complete', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_complete:', parseError);
+        console.warn('Failed to parse orchestrator_complete:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('final_response', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse final_response:', parseError);
+        console.warn('Failed to parse final_response:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('error', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        // Only try to parse if event.data exists and is a string
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        } else {
+          // Handle error events without data
+          console.warn('Error event received without valid data:', event);
+          handlers.onError('Stream error occurred');
+        }
       } catch (parseError) {
-        console.warn('Failed to parse error event:', parseError);
+        console.warn('Failed to parse error event:', parseError, 'Raw data:', event.data);
       }
     });
 
     es.addEventListener('end', (event: any) => {
+      try {
+        // Check if there's any data to process before completing
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse end event data:', parseError, 'Raw data:', event.data);
+      }
+      
       handlers.onComplete();
       es.close();
       resolve();

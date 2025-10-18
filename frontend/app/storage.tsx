@@ -73,27 +73,31 @@ export default function StorageScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [memoryManager]);
+  }, []); // Remove memoryManager dependency to prevent infinite loop
 
-  const initializeAndLoadItems = useCallback(async () => {
+  const initializeDatabase = useCallback(async () => {
     try {
       await vectorStorage.initDatabase();
-      if (activeTab === 'embeddings') {
-        await loadStorageItems();
-      } else {
-        await loadMemories();
-      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to initialize database:', error);
       Alert.alert('Error', 'Failed to initialize vector storage');
     }
-  }, [loadStorageItems, loadMemories, activeTab]);
+  }, []);
 
-  // Load all storage items on component mount
+  // Initialize database on component mount
   useEffect(() => {
-    initializeAndLoadItems();
-  }, [initializeAndLoadItems]);
+    initializeDatabase();
+  }, [initializeDatabase]);
+
+  // Load items when activeTab changes
+  useEffect(() => {
+    if (activeTab === 'embeddings') {
+      loadStorageItems();
+    } else {
+      loadMemories();
+    }
+  }, [activeTab, loadStorageItems, loadMemories]);
 
   const handleEmbedAndStore = async () => {
     if (!newText.trim()) {
