@@ -59,6 +59,10 @@ export class MemoryService {
       baseUrl: this.baseUrl
     });
     
+    // Add timeout and retry logic for memory extraction
+    const MEMORY_EXTRACTION_TIMEOUT = 120000; // 120 seconds (2 minutes)
+    const MAX_RETRIES = 2;
+    
     try {
       // Create extraction prompt
       const conversationText = request.messages
@@ -102,22 +106,31 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
       
       const apiUrl = `${this.baseUrl}/api/chat`;
       console.log('🧠 [MemoryService] Making API call to:', apiUrl);
-      console.log('🧠 [MemoryService] Request body:', {
+      console.log('🧠 [MemoryService] Request body structure:', {
+        hasMessage: !!requestBody.message,
         messageLength: requestBody.message.length,
         messagesCount: requestBody.messages.length,
         // Don't log the full message as it's very long
         messagePreview: requestBody.message.substring(0, 100) + '...'
       });
+      console.log('🧠 [MemoryService] Actual request body:', requestBody);
       
       try {
-        // First try the /api/chat endpoint
+        // First try the /api/chat endpoint with timeout
+        // The backend will automatically detect memory extraction requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), MEMORY_EXTRACTION_TIMEOUT);
+        
         response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeoutId);
         
         console.log('🧠 [MemoryService] API response status:', response.status);
         console.log('🧠 [MemoryService] API response headers:', Object.fromEntries(response.headers.entries()));
@@ -139,24 +152,69 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
           hasResponse: !!result.response,
           responseLength: result.response?.length || 0,
           responseType: typeof result.response,
-          fullResult: result
+          status: result.status,
+          meta: result.meta
         });
         
         content = result.response || '';
         console.log('🧠 [MemoryService] Extracted content length:', content.length);
         console.log('🧠 [MemoryService] Content preview:', content.substring(0, 500) + (content.length > 500 ? '...' : ''));
         
+        // Check if content is empty
+        if (!content || content.trim().length === 0) {
+          console.log('🧠 [MemoryService] ❌ Empty response content');
+          return {
+            memories: [],
+            success: false,
+            error: 'Empty response from backend',
+          };
+        }
+        
       } catch (error) {
         console.log('🧠 [MemoryService] ❌ API call error:', error);
         
-        if (error instanceof Error && error.message.includes('Chat endpoint not available')) {
-          // Try the stream endpoint as fallback
-          console.log('🧠 [MemoryService] Attempting to use stream endpoint for memory extraction');
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            console.log('🧠 [MemoryService] ❌ Request was aborted (timeout or manual abort)');
+            throw new Error(`Memory extraction timed out after ${MEMORY_EXTRACTION_TIMEOUT / 1000} seconds`);
+          }
           
-          // For now, return an error suggesting local development
-          throw new Error('Memory extraction requires updated backend. Please use local development setup or update the deployed router.');
+          if (error.message.includes('Chat endpoint not available')) {
+            // Try the dedicated memory extraction endpoint as fallback
+            console.log('🧠 [MemoryService] Attempting to use dedicated memory extraction endpoint');
+            
+            try {
+              const memoryApiUrl = `${this.baseUrl}/api/memory/extract`;
+              const memoryRequestBody = {
+                ...requestBody,
+                extract_memories: true
+              };
+              
+              const memoryResponse = await fetch(memoryApiUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(memoryRequestBody),
+              });
+              
+              if (memoryResponse.ok) {
+                const memoryResult = await memoryResponse.json();
+                content = memoryResult.response || '';
+                console.log('🧠 [MemoryService] ✅ Memory extraction endpoint successful');
+              } else {
+                throw new Error('Memory extraction endpoint also failed');
+              }
+            } catch (memoryError) {
+              console.log('🧠 [MemoryService] ❌ Memory extraction endpoint failed:', memoryError);
+              throw new Error('Memory extraction requires updated backend. Please use local development setup or update the deployed router.');
+            }
+          }
         }
-        throw error;
+        
+        if (!content) {
+          throw error;
+        }
       }
       
       // Parse extracted memories
@@ -357,6 +415,75 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
       .join('\n');
 
     return `Previous conversation context:\n${formattedMemories}\n\n`;
+  }
+
+  /**
+   * Debug method to test memory extraction with a simple conversation
+   */
+  async debugMemoryExtraction(): Promise<void> {
+    console.log('🧠 [MemoryService] 🔧 Starting debug memory extraction...');
+    console.log('🧠 [MemoryService] 🔧 Current API URL:', this.baseUrl);
+    
+    const testMessages = [
+      { id: '1', role: 'user', content: 'I am running Ubuntu on System 76. How should I install ffmpeg?', timestamp: new Date() },
+      { id: '2', role: 'assistant', content: 'You can install ffmpeg on Ubuntu using apt: sudo apt update && sudo apt install ffmpeg', timestamp: new Date() }
+    ];
+    
+    try {
+      const result = await this.extractMemories({
+        chatId: 999,
+        messages: testMessages,
+        maxMemories: 5
+      });
+      
+      console.log('🧠 [MemoryService] 🔧 Debug extraction result:', result);
+      
+      if (result.success && result.memories.length > 0) {
+        console.log('🧠 [MemoryService] ✅ Debug extraction successful!');
+        console.log('🧠 [MemoryService] 🔧 Extracted memories:', result.memories);
+      } else {
+        console.log('🧠 [MemoryService] ❌ Debug extraction failed:', result.error);
+      }
+    } catch (error) {
+      console.log('🧠 [MemoryService] ❌ Debug extraction error:', error);
+    }
+  }
+
+  /**
+   * Test the API endpoint with a simple request
+   */
+  async testApiEndpoint(): Promise<void> {
+    console.log('🧠 [MemoryService] 🔧 Testing API endpoint...');
+    console.log('🧠 [MemoryService] 🔧 API URL:', this.baseUrl);
+    
+    const testRequest = {
+      message: 'Test simple message',
+      messages: []
+    };
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testRequest),
+      });
+      
+      console.log('🧠 [MemoryService] 🔧 Test response status:', response.status);
+      console.log('🧠 [MemoryService] 🔧 Test response headers:', Object.fromEntries(response.headers.entries()));
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('🧠 [MemoryService] ✅ API endpoint test successful!');
+        console.log('🧠 [MemoryService] 🔧 Test response:', result);
+      } else {
+        const errorText = await response.text();
+        console.log('🧠 [MemoryService] ❌ API endpoint test failed:', response.status, errorText);
+      }
+    } catch (error) {
+      console.log('🧠 [MemoryService] ❌ API endpoint test error:', error);
+    }
   }
 }
 

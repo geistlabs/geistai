@@ -37,6 +37,14 @@ class ChatRequest(BaseModel):
     messages: Optional[List[ChatMessage]] = None
 
 
+class MemoryExtractionRequest(BaseModel):
+    message: str
+    messages: Optional[List[ChatMessage]] = None
+    extract_memories: bool = (
+        True  # Flag to indicate this is a memory extraction request
+    )
+
+
 app = FastAPI(title="Geist Router")
 
 # Add CORS middleware
@@ -196,6 +204,18 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
     """Non-streaming chat endpoint for simple requests"""
     print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
 
+    # Check if this is a memory extraction request
+    is_memory_extraction = (
+        "extract key facts" in chat_request.message.lower()
+        and "json array" in chat_request.message.lower()
+    )
+
+    if is_memory_extraction:
+        print(
+            "[Backend] 🧠 Detected memory extraction request, using direct GPT service"
+        )
+        return await handle_memory_extraction(chat_request)
+
     # Build messages array with conversation history
     if chat_request.messages:
         messages = [msg.dict() for msg in chat_request.messages]
@@ -237,6 +257,80 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
 
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+async def handle_memory_extraction(chat_request: ChatRequest):
+    """Handle memory extraction requests with direct GPT service call"""
+    print("[Backend] 🧠 Processing memory extraction request")
+
+    # Build messages array
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    try:
+        # Use direct GPT service call without orchestrator for clean response
+        response_text = await gpt_service.process_chat_request(
+            messages=messages,
+            reasoning_effort="low",  # Use low reasoning for cleaner output
+            system_prompt="You are a memory extraction assistant. Your job is to extract key facts from conversations and return ONLY a valid JSON array. Do not include any reasoning, explanations, or other text. Return only the JSON array starting with [ and ending with ].",
+        )
+
+        print(f"[Backend] 🧠 Raw GPT response: {response_text[:200]}...")
+
+        # Extract JSON array from response
+        json_start = response_text.find("[")
+        json_end = response_text.rfind("]")
+
+        if json_start != -1 and json_end != -1 and json_start < json_end:
+            json_array = response_text[json_start : json_end + 1]
+            print(f"[Backend] 🧠 Extracted JSON: {json_array}")
+
+            # Validate JSON
+            try:
+                import json as json_lib
+
+                parsed = json_lib.loads(json_array)
+                if isinstance(parsed, list):
+                    return {
+                        "response": json_array,
+                        "status": "success",
+                        "meta": {"extracted_memories": len(parsed)},
+                    }
+                else:
+                    print(
+                        f"[Backend] 🧠 ❌ Parsed result is not an array: {type(parsed)}"
+                    )
+            except json_lib.JSONDecodeError as e:
+                print(f"[Backend] 🧠 ❌ JSON parsing error: {e}")
+
+        # Fallback: return the raw response if JSON extraction fails
+        print("[Backend] 🧠 ❌ Failed to extract valid JSON, returning raw response")
+        return {
+            "response": response_text,
+            "status": "success",
+            "meta": {"warning": "Could not extract clean JSON array"},
+        }
+
+    except Exception as e:
+        print(f"[Backend] 🧠 ❌ Memory extraction error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Memory extraction failed: {str(e)}"
+        )
+
+
+@app.post("/api/memory/extract")
+async def extract_memories(memory_request: MemoryExtractionRequest):
+    """Dedicated endpoint for memory extraction"""
+    print(
+        f"[Backend] 🧠 Received memory extraction request: {memory_request.model_dump_json(indent=2)}"
+    )
+    return await handle_memory_extraction(memory_request)
 
 
 @app.post("/api/stream")
