@@ -421,8 +421,6 @@ export function getAgentDisplayName(agentName: string): string {
 // Health check function
 export async function checkHealth(): Promise<{
   status: string;
-  ssl_enabled: boolean;
-  ssl_status: string;
 }> {
   try {
     const response = await fetch(`${ENV.API_URL}/health`);

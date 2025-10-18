@@ -9,7 +9,6 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
       - EMBEDDINGS_URL=http://embeddings:8001
-      - SSL_ENABLED=false
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -23,11 +22,6 @@ services:
       - MCP_BRAVE_URL=http://mcp-brave:8080
       - MCP_FETCH_URL=http://mcp-fetch:8000
       
-      # SSL Configuration (uncomment to enable)
-      # - SSL_ENABLED=true
-      # - SSL_CERT_PATH=/app/certificates/cert.pem
-      # - SSL_KEY_PATH=/app/certificates/key.pem
-      # - API_PORT=8443
     volumes:
       # Mount source code for live reloading
       - ./router:/app

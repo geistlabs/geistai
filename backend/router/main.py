@@ -25,8 +25,6 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckResponse(BaseModel):
     status: str
-    ssl_enabled: bool
-    ssl_status: str
 
 
 class ChatMessage(BaseModel):
@@ -66,6 +64,7 @@ app.add_middleware(
 # Initialize Gpt service if enabled
 gpt_service = GptService(config, can_log=True)
 
+
 # Initialize tools for the GPT service on startup
 @app.on_event("startup")
 async def startup_event():
@@ -74,11 +73,15 @@ async def startup_event():
 
     # Register sub-agents as tools
     from agent_registry import register_predefined_agents
+
     registered_agents = await register_predefined_agents(gpt_service, config)
     print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
 
-    print(f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools")
+    print(
+        f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools"
+    )
     print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
+
 
 # Initialize Whisper STT client
 whisper_service_url = os.getenv(
@@ -88,76 +91,21 @@ stt_service = WhisperSTTClient(whisper_service_url)
 
 logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
 
-# Validate SSL configuration on startup
-ssl_valid, ssl_message = config.validate_ssl_config()
-if config.SSL_ENABLED and not ssl_valid:
-    logger.error(f"SSL configuration error: {ssl_message}")
-    raise RuntimeError(f"SSL configuration error: {ssl_message}")
-elif config.SSL_ENABLED:
-    logger.info(f"SSL enabled: {ssl_message}")
-else:
-    logger.info("SSL disabled - running in HTTP mode")
-
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint that includes SSL status."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
+    """Health check endpoint."""
     return {
         "status": "healthy",
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_status": ssl_message,
         "tools_available": len(gpt_service._tool_registry),
-        "tool_names": list(gpt_service._tool_registry.keys())
+        "tool_names": list(gpt_service._tool_registry.keys()),
     }
-
-
-@app.get("/ssl/info")
-def ssl_info():
-    """Get SSL configuration and certificate information."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
-
-    info = {
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_valid": ssl_valid,
-        "ssl_status": ssl_message,
-        "cert_path": config.SSL_CERT_PATH,
-        "key_path": config.SSL_KEY_PATH,
-    }
-
-    if config.SSL_ENABLED and ssl_valid:
-        try:
-            import ssl
-            import socket
-            from datetime import datetime
-
-            # Load certificate and get basic info
-            with open(config.SSL_CERT_PATH, "rb") as f:
-                cert_data = f.read()
-
-            # Parse certificate (basic info)
-            cert_lines = cert_data.decode("utf-8").split("\n")
-            cert_info = {}
-
-            for line in cert_lines:
-                if "BEGIN CERTIFICATE" in line:
-                    cert_info["format"] = "PEM"
-                    break
-
-            info["certificate"] = {
-                "format": cert_info.get("format", "Unknown"),
-                "size_bytes": len(cert_data),
-            }
-
-        except Exception as e:
-            info["certificate"] = {"error": f"Could not read certificate: {str(e)}"}
-
-    return info
 
 
 # ============================================================================
 # Tool Management Endpoints
 # ============================================================================
+
 
 @app.get("/api/tools")
 async def list_tools():
@@ -168,11 +116,12 @@ async def list_tools():
                 "name": name,
                 "description": info.get("description", ""),
                 "type": info.get("type", "unknown"),
-                "input_schema": info.get("input_schema", {})
+                "input_schema": info.get("input_schema", {}),
             }
             for name, info in gpt_service._tool_registry.items()
         ]
     }
+
 
 @app.post("/api/tools/{tool_name}/test")
 async def test_tool(tool_name: str, arguments: dict = {}):
@@ -193,6 +142,7 @@ async def test_tool(tool_name: str, arguments: dict = {}):
 # Nested Orchestrator Factory Functions
 # ============================================================================
 
+
 def create_nested_research_system(config):
     """
     Create a nested orchestrator system using your existing agents at the top level:
@@ -212,7 +162,7 @@ def create_nested_research_system(config):
     existing_agents = get_predefined_agents(config)
 
     # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetch"]
+    mcp_tools = ["brave_web_search", "fetch"]
 
     for agent in existing_agents:
         # Update each agent to only use MCP tools
@@ -226,7 +176,11 @@ def create_nested_research_system(config):
         description="Main coordination hub with all agents at top level",
         system_prompt=get_prompt("main_orchestrator"),
         sub_agents=existing_agents,  # All agents at top level
-        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
+        available_tools=[
+            "research_agent",
+            "current_info_agent",
+            "creative_agent",
+        ],  # Set specific tools here
     )
 
     return main_orchestrator
@@ -235,7 +189,9 @@ def create_nested_research_system(config):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
+    print(
+        f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}"
+    )
 
     # Build messages array with conversation history
     if chat_request.messages:
@@ -249,7 +205,6 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     async def orchestrator_event_stream():
         chunk_sequence = 0
         print(f"INFERENCE_URL: {config.INFERENCE_URL}")
-
 
         try:
             # Always use nested orchestrator (can handle single-layer or multi-layer)
@@ -265,8 +220,14 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             # Configure available tools (only sub-agents, not MCP tools)
             all_tools = list(gpt_service._tool_registry.keys())
             # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
-            sub_agent_names = ['research_agent', 'current_info_agent', 'creative_agent']#, 'brave_web_search', 'fetch']
-            available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
+            sub_agent_names = [
+                "research_agent",
+                "current_info_agent",
+                "creative_agent",
+            ]  # , 'brave_web_search', 'fetch']
+            available_tool_names = [
+                tool for tool in all_tools if tool in sub_agent_names
+            ]
             print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
 
             # Set the available tools on the orchestrator
@@ -280,17 +241,18 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
             def capture_event(event_type):
                 def handler(data):
-                    events_captured.append({
-                        "type": event_type,
-                        "data": data,
-                        "sequence": chunk_sequence
-                    })
+                    events_captured.append(
+                        {"type": event_type, "data": data, "sequence": chunk_sequence}
+                    )
+
                 return handler
 
             # Register event listeners BEFORE running the orchestrator
             orchestrator.on("orchestrator_start", capture_event("orchestrator_start"))
             orchestrator.on("agent_token", capture_event("orchestrator_token"))
-            orchestrator.on("orchestrator_complete", capture_event("orchestrator_complete"))
+            orchestrator.on(
+                "orchestrator_complete", capture_event("orchestrator_complete")
+            )
             orchestrator.on("sub_agent_event", capture_event("sub_agent_event"))
             orchestrator.on("tool_call_event", capture_event("tool_call_event"))
 
@@ -311,24 +273,22 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                 if await request.is_disconnected():
                     return
 
-                yield {
-                    "data": json.dumps(event),
-                    "event": event.get("type", "unknown")
-                }
+                yield {"data": json.dumps(event), "event": event.get("type", "unknown")}
                 chunk_sequence += 1
 
             # Send final response (citations are now handled by frontend)
             if final_response:
                 yield {
-                    "data": json.dumps({
-                        "type": "final_response",
-                        "text": final_response.text,
-
-                        "status": final_response.status,
-                        "meta": final_response.meta,
-                        "sequence": chunk_sequence
-                    }),
-                    "event": "final_response"
+                    "data": json.dumps(
+                        {
+                            "type": "final_response",
+                            "text": final_response.text,
+                            "status": final_response.status,
+                            "meta": final_response.meta,
+                            "sequence": chunk_sequence,
+                        }
+                    ),
+                    "event": "final_response",
                 }
                 chunk_sequence += 1
 
@@ -340,10 +300,11 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         except Exception as e:
             print(f"Error in orchestrator stream: {e}")
             import traceback
+
             traceback.print_exc()
             yield {
                 "data": json.dumps({"error": "Internal server error"}),
-                "event": "error"
+                "event": "error",
             }
 
     return EventSourceResponse(orchestrator_event_stream())
@@ -562,28 +523,8 @@ if __name__ == "__main__":
     import sys
 
     try:
-        if config.SSL_ENABLED:
-            logger.info(
-                f"Starting server with SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            logger.info(f"SSL Certificate: {config.SSL_CERT_PATH}")
-            logger.info(f"SSL Private Key: {config.SSL_KEY_PATH}")
-
-            uvicorn.run(
-                app,
-                host=config.API_HOST,
-                port=config.API_PORT,
-                ssl_keyfile=config.SSL_KEY_PATH,
-                ssl_certfile=config.SSL_CERT_PATH,
-                log_level="info",
-            )
-        else:
-            logger.info(
-                f"Starting server without SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            uvicorn.run(
-                app, host=config.API_HOST, port=config.API_PORT, log_level="info"
-            )
+        logger.info(f"Starting server on {config.API_HOST}:{config.API_PORT}")
+        uvicorn.run(app, host=config.API_HOST, port=config.API_PORT, log_level="info")
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         sys.exit(1)
