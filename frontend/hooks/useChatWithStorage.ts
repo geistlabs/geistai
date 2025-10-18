@@ -579,17 +579,28 @@ export function useChatWithStorage(
 
               // Extract and store memories from the conversation asynchronously
               if (memoryManager.isInitialized) {
+                console.log('[Memory] 🧠 Starting memory extraction and storage process...');
                 const conversationMessages = [...messagesWithContext, finalAssistantMessage];
                 memoryManager
                   .extractMemories(currentChatId, conversationMessages)
                   .then(memories => {
+                    console.log('[Memory] 🧠 Extraction completed, memories found:', memories.length);
                     if (memories.length > 0) {
+                      console.log('[Memory] 🧠 Storing memories in local database...');
                       return memoryManager.storeMemories(memories);
+                    } else {
+                      console.log('[Memory] 🧠 No memories to store');
                     }
                   })
+                  .then(() => {
+                    console.log('[Memory] 🧠 ✅ Memories stored successfully!');
+                  })
                   .catch(err => {
-                    console.warn('[Memory] Failed to extract/store memories:', err);
+                    console.error('[Memory] 🧠 ❌ Failed to extract/store memories:', err);
+                    console.error('[Memory] 🧠 Error details:', err.message, err.stack);
                   });
+              } else {
+                console.log('[Memory] 🧠 ❌ Memory manager not initialized');
               }
             }
           },

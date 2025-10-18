@@ -51,10 +51,12 @@ export function MemoryDebugger() {
 				return;
 			}
 
-			const stats = await memoryManager.getStats();
+			const stats = await memoryManager.getMemoryStats();
 			addLog(`Memory stats: ${JSON.stringify(stats, null, 2)}`);
 
-			const allMemories = await memoryManager.getAllMemories();
+			// Get all memories from storage directly
+			const { memoryStorage } = await import('../lib/memoryStorage');
+			const allMemories = await memoryStorage.getAllMemories();
 			addLog(`Total memories: ${allMemories.length}`);
 
 			if (allMemories.length > 0) {
