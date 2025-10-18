@@ -48,23 +48,84 @@ export class MemoryService {
   }
 
   /**
-   * Extract key facts/memories from a conversation
+   * Extract key facts/memories from a conversation using local LLM call
    */
   async extractMemories(request: MemoryExtractionRequest): Promise<MemoryExtractionResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/memory/extract`, {
+      // Create extraction prompt
+      const conversationText = request.messages
+        .map(msg => `${msg.role}: ${msg.content}`)
+        .join('\n');
+      
+      const extractionPrompt = `Analyze the following conversation and extract key facts, preferences, and contextual information that would be useful to remember for future conversations. Focus on:
+
+1. Personal information (name, location, job, interests, etc.)
+2. Technical preferences (tools, languages, frameworks, etc.)
+3. User preferences (communication style, specific needs, etc.)
+4. Important context (current projects, goals, constraints, etc.)
+
+For each fact, provide:
+- A concise summary (1-2 sentences max)
+- A category (personal, technical, preference, context, other)
+- A relevance score (0.0-1.0)
+
+Conversation:
+${conversationText}
+
+Extract up to ${request.maxMemories || 10} key facts. Return as JSON array with format:
+[{"content": "fact summary", "category": "category", "relevanceScore": 0.8, "originalContext": "relevant snippet from conversation"}]
+
+Only return the JSON array, no other text.`;
+
+      // Call the existing chat endpoint for extraction
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(request),
+        body: JSON.stringify({
+          message: extractionPrompt,
+          messages: [], // No conversation history for extraction
+        }),
       });
 
       if (!response.ok) {
         throw new Error(`Memory extraction failed: ${response.status}`);
       }
 
-      return await response.json();
+      const result = await response.json();
+      const content = result.response || '';
+      
+      // Parse extracted memories
+      try {
+        const memories = JSON.parse(content);
+        if (!Array.isArray(memories)) {
+          return {
+            memories: [],
+            success: false,
+            error: 'Invalid response format from LLM',
+          };
+        }
+        
+        // Add metadata
+        const processedMemories = memories.map(memory => ({
+          ...memory,
+          chatId: request.chatId,
+          messageIds: request.messages.map(msg => parseInt(msg.id || '0')).filter(id => id > 0),
+        }));
+        
+        return {
+          memories: processedMemories,
+          success: true,
+        };
+      } catch (parseError) {
+        console.warn('Failed to parse LLM response:', content);
+        return {
+          memories: [],
+          success: false,
+          error: 'Failed to parse LLM response',
+        };
+      }
     } catch (error) {
       console.error('Failed to extract memories:', error);
       return {
@@ -76,28 +137,15 @@ export class MemoryService {
   }
 
   /**
-   * Search for relevant memories based on query
+   * Search for relevant memories based on query (local implementation)
+   * This method is now handled entirely by the useMemoryManager hook
+   * using local storage and embeddings
    */
   async searchMemories(request: MemorySearchRequest): Promise<MemorySearchResult[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/memory/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Memory search failed: ${response.status}`);
-      }
-
-      const result = await response.json();
-      return result.memories || [];
-    } catch (error) {
-      console.error('Failed to search memories:', error);
-      return [];
-    }
+    // This method is deprecated in favor of local search in useMemoryManager
+    // It's kept for interface compatibility but returns empty results
+    console.warn('searchMemories called on MemoryService - use useMemoryManager.searchMemories instead');
+    return [];
   }
 
   /**
