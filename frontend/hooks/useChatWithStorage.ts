@@ -12,6 +12,7 @@ import { ENV } from '../lib/config/environment';
 import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
+import { useMemoryManager } from './useMemoryManager';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -205,6 +206,13 @@ export function useChatWithStorage(
 
   // Storage integration
   const storage = useChatStorage(options.chatId);
+  
+  // Memory integration
+  const memoryManager = useMemoryManager({
+    autoExtract: true,
+    contextThreshold: 0.7,
+    maxContextMemories: 5,
+  });
 
   // Keep isStreamingRef in sync with isStreaming state
   useEffect(() => {
@@ -283,6 +291,16 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
+      
+      // Get relevant memory context
+      let memoryContext = '';
+      if (memoryManager.isInitialized && currentChatId) {
+        try {
+          memoryContext = await memoryManager.getRelevantContext(content, currentChatId);
+        } catch (err) {
+          console.warn('Failed to get memory context:', err);
+        }
+      }
 
       // Update local state immediately
       setMessages(prev => [...prev, userMessage]);
@@ -558,6 +576,21 @@ export function useChatWithStorage(
                     err,
                   );
                 });
+
+              // Extract and store memories from the conversation asynchronously
+              if (memoryManager.isInitialized) {
+                const conversationMessages = [...messagesWithContext, finalAssistantMessage];
+                memoryManager
+                  .extractMemories(currentChatId, conversationMessages)
+                  .then(memories => {
+                    if (memories.length > 0) {
+                      return memoryManager.storeMemories(memories);
+                    }
+                  })
+                  .catch(err => {
+                    console.warn('[Memory] Failed to extract/store memories:', err);
+                  });
+              }
             }
           },
           onError: (error: string) => {
@@ -571,8 +604,20 @@ export function useChatWithStorage(
           },
         };
 
+        // Prepare messages with memory context
+        const messagesWithContext = [...currentMessages];
+        if (memoryContext) {
+          // Insert memory context as a system message at the beginning
+          messagesWithContext.unshift({
+            id: 'memory-context',
+            role: 'system',
+            content: memoryContext,
+            timestamp: Date.now(),
+          });
+        }
+
         // Use the new sendStreamingMessage function
-        await sendStreamingMessage(content, currentMessages, eventHandlers);
+        await sendStreamingMessage(content, messagesWithContext, eventHandlers);
       } catch (err) {
         console.error('[Chat] Error sending message:', err);
         const error =
