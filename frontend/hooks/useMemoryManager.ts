@@ -113,6 +113,17 @@ export function useMemoryManager(
         );
 
         console.log(`🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`);
+        
+        // Log details about found memories for debugging
+        if (results.length > 0) {
+          console.log('🔍 [MemoryManager] Found memories:');
+          results.forEach((result, index) => {
+            console.log(`  ${index + 1}. [${result.memory.category}] Similarity: ${result.similarity.toFixed(3)} - ${result.memory.content.substring(0, 100)}...`);
+          });
+        } else {
+          console.log('🔍 [MemoryManager] No memories found above threshold');
+        }
+        
         return results;
       } catch (err) {
         console.error('Failed to search memories:', err);

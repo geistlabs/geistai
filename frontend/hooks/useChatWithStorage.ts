@@ -718,10 +718,13 @@ export function useChatWithStorage(
               content: contextWithTimeout,
               timestamp: Date.now(),
             });
-            console.log('🧠 [Chat] Added memory context to request');
+            console.log('🧠 [Chat] ✅ Added memory context to request');
+            console.log('🧠 [Chat] Memory context content:', contextWithTimeout);
+          } else {
+            console.log('🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)');
           }
         } catch (err) {
-          console.warn('🧠 [Chat] Memory context retrieval timed out or failed:', err);
+          console.warn('🧠 [Chat] ❌ Memory context retrieval timed out or failed:', err);
         }
 
         // 2. Start streaming to /api/stream

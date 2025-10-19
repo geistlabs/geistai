@@ -262,6 +262,29 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
+  // 🔍 DEBUG: Log the FULL prompt being sent to backend
+  console.log(
+    '🚀 [Chat API] ===== FULL PROMPT BEING SENT TO /api/stream =====',
+  );
+  console.log('🚀 [Chat API] User Message:', message);
+  console.log(
+    '🚀 [Chat API] Conversation History Length:',
+    conversationHistory.length,
+  );
+  console.log(
+    '🚀 [Chat API] Full Request Body:',
+    JSON.stringify(requestBody, null, 2),
+  );
+
+  // Log each message in the conversation history for debugging
+  conversationHistory.forEach((msg, index) => {
+    console.log(
+      `🚀 [Chat API] Message ${index + 1} [${msg.role}]:`,
+      msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''),
+    );
+  });
+  console.log('🚀 [Chat API] ============================================');
+
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
 
