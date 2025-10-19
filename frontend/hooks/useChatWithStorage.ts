@@ -295,6 +295,9 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
+      
+      // Get current chat ID from ref
+      const currentChatId = currentChatIdRef.current;
 
       // Extract memories from the user question using the dedicated memory extraction endpoint
       try {
@@ -320,7 +323,7 @@ export function useChatWithStorage(
                   embedding,
                   relevanceScore: memoryData.relevanceScore || 0.8,
                   extractedAt: Date.now(),
-                  messageIds: [userMessage.id],
+                  messageIds: [parseInt(userMessage.id)],
                   category: memoryData.category || 'other',
                 };
                 
@@ -359,7 +362,6 @@ export function useChatWithStorage(
 
       // Save user message to storage asynchronously (don't block UI)
       // Use the current chat ID from the ref, which is kept up to date
-      const currentChatId = currentChatIdRef.current;
       if (currentChatId && storage.addMessage) {
         storage
           .addMessage(convertToLegacyMessage(userMessage), currentChatId)
@@ -645,7 +647,6 @@ export function useChatWithStorage(
             options.onStreamEnd?.();
 
             // Save final assistant message to storage asynchronously (don't block completion)
-            const currentChatId = currentChatIdRef.current;
             if (currentChatId && storage.addMessage && accumulatedContent) {
               const finalAssistantMessage = {
                 ...assistantMessage,

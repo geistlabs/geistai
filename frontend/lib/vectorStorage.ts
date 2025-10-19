@@ -56,6 +56,7 @@ class VectorStorageService {
 
     const rows = await this.db!.getAllAsync(
       'SELECT * FROM embeddings ORDER BY created_at DESC',
+    );
 
     return rows.map((row: any) => ({
       id: row.id,

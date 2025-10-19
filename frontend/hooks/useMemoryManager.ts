@@ -102,10 +102,10 @@ export function useMemoryManager(
         // Generate embeddings and create full Memory objects
         const memories: Memory[] = [];
 
-      for (const memoryData of response.memories) {
+        for (const memoryData of response.memories) {
           const embedding = await memoryService.getEmbedding(
             memoryData.content,
-
+          );
 
           if (embedding.length > 0) {
             const memory: Memory = {
@@ -120,8 +120,7 @@ export function useMemoryManager(
               category: memoryData.category,
             };
 
-
-          memories.push(memory);
+            memories.push(memory);
           }
         }
 
@@ -158,7 +157,7 @@ export function useMemoryManager(
         // Generate embedding for query
         const queryEmbedding = await memoryService.getEmbedding(query);
 
-      if (queryEmbedding.length === 0) {
+        if (queryEmbedding.length === 0) {
           return [];
         }
 
@@ -192,14 +191,14 @@ export function useMemoryManager(
       try {
         const results = await searchMemories(query, excludeChatId);
 
-      if (results.length === 0) {
+        if (results.length === 0) {
           return '';
         }
 
         // Take top results up to maxContextMemories
         const topResults = results.slice(0, maxContextMemories);
 
-      return memoryService.formatMemoriesForContext(topResults);
+        return memoryService.formatMemoriesForContext(topResults);
       } catch (err) {
         console.error('Failed to get relevant context:', err);
         return '';

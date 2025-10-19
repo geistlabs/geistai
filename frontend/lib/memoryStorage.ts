@@ -251,6 +251,7 @@ class MemoryStorageService {
       const similarity = this.cosineSimilarity(
         queryEmbedding,
         memory.embedding,
+      );
 
       if (similarity >= threshold) {
         results.push({

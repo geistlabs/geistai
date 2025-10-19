@@ -411,6 +411,7 @@ export async function sendStreamingMessage(
           'Raw data:',
           event.data,
         );
+      }
 
       handlers.onComplete();
       es.close();
