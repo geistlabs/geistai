@@ -37,7 +37,38 @@ python check_grammar.py schema.gbnf
   • Rule 'hex' is referenced but not defined (this was your exact issue!)
 ```
 
-### 2. Pre-commit Hook Integration
+### 2. Native llama.cpp Validator (`validate_schema.sh`)
+
+The most accurate validation method uses llama.cpp's built-in `test-gbnf-validator`:
+
+```bash
+# Navigate to memory directory
+cd backend/memory
+
+# Run the native validator
+./validate_schema.sh
+
+# Example output for valid grammar:
+🔍 GBNF Schema Validator
+==================================
+📄 Validating schema: schema.gbnf
+🧪 Using test input: test_input.txt
+
+Running validation...
+
+Input string is valid according to the grammar.
+
+✅ Grammar validation PASSED!
+   Your schema.gbnf is syntactically correct and can parse the test input.
+```
+
+This validator:
+- Uses llama.cpp's actual grammar parser (most accurate)
+- Tests against real JSON input (`test_input.txt` in the same directory)
+- Automatically creates test input if needed
+- Provides detailed error messages for parsing failures
+
+### 3. Pre-commit Hook Integration
 
 Install pre-commit hooks to catch grammar errors before they reach production:
 
@@ -53,12 +84,16 @@ git add schema.gbnf
 git commit -m "Update grammar"  # Will run validation automatically
 ```
 
-### 3. Manual Validation
+### 4. Manual Validation
 
 ```bash
-# Validate the current schema
-cd backend/memory_extraction
+# Validate the current schema using Python checker
+cd backend/memory
 python check_grammar.py schema.gbnf
+
+# Validate using llama.cpp's native validator (recommended)
+cd backend/memory
+./validate_schema.sh
 
 # Test with a broken grammar (for testing)
 python check_grammar.py test_broken_grammar.gbnf
@@ -79,7 +114,7 @@ python check_grammar.py test_broken_grammar.gbnf
 
 ## Files
 
-- `schema.gbnf` - The main grammar file for memory extraction
+- `schema.gbnf` - The main grammar file for memory processing
 - `check_grammar.py` - Grammar validation script
 - `test_broken_grammar.gbnf` - Test case with intentional errors
 - `validate_grammar.py` - More comprehensive validator (experimental)
@@ -92,7 +127,7 @@ Add this to your GitHub Actions workflow:
 ```yaml
 - name: Validate GBNF Grammar
   run: |
-    cd backend/memory_extraction
+    cd backend/memory
     python check_grammar.py schema.gbnf
 ```
 
@@ -123,8 +158,8 @@ hex    ::= [0-9a-fA-F]
 When you update `schema.gbnf`, remember to rebuild the Docker container:
 
 ```bash
-# Rebuild the memory extraction service
-cd backend/memory_extraction
+# Rebuild the memory service
+cd backend/memory
 docker build -f Dockerfile.cpu -t geist-memory:latest .
 
 # Restart the Kubernetes deployment

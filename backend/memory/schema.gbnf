@@ -1,11 +1,6 @@
 # schema.gbnf
 root ::= ws "[" ws (obj (ws "," ws obj)*)? ws "]" ws
-obj  ::= "{" ws
-         "\"content\"" ws ":" ws string ws "," ws
-         "\"category\"" ws ":" ws category ws "," ws
-         "\"relevanceScore\"" ws ":" ws number ws "," ws
-         "\"originalContext\"" ws ":" ws string
-         ws "}"
+obj  ::= "{" ws "\"content\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws category ws "," ws "\"relevanceScore\"" ws ":" ws number ws "," ws "\"originalContext\"" ws ":" ws string ws "}"
 category ::= "\"personal\"" | "\"technical\"" | "\"preference\"" | "\"context\"" | "\"other\""
 string ::= "\"" char* "\""
 char ::= [^"\\] | "\\" escape

@@ -205,16 +205,16 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
     print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
 
     # Check if this is a memory extraction request
-    is_memory_extraction = (
+    is_memory = (
         "extract key facts" in chat_request.message.lower()
         and "json array" in chat_request.message.lower()
     )
 
-    if is_memory_extraction:
+    if is_memory:
         print(
             "[Backend] 🧠 Detected memory extraction request, using direct GPT service"
         )
-        return await handle_memory_extraction(chat_request)
+        return await handle_memory(chat_request)
 
     # Build messages array with conversation history
     if chat_request.messages:
@@ -259,7 +259,7 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-async def handle_memory_extraction(chat_request: ChatRequest):
+async def handle_memory(chat_request: ChatRequest):
     """Handle memory extraction requests with direct GPT service call"""
     print("[Backend] 🧠 Processing memory extraction request")
 
@@ -330,11 +330,11 @@ async def extract_memories(memory_request: MemoryExtractionRequest):
     print(
         f"[Backend] 🧠 Received memory extraction request: {memory_request.model_dump_json(indent=2)}"
     )
-    return await handle_memory_extraction(memory_request)
+    return await handle_memory(memory_request)
 
 
 @app.post("/api/memory-extraction")
-async def memory_extraction_proxy(request: Request):
+async def memory_proxy(request: Request):
     """Proxy requests to the memory extraction service at memory-extraction.geist.im/v1/chat/completions"""
     try:
         # Build the target URL
