@@ -145,29 +145,27 @@ class MemoryStorageService {
     const database = this.getDatabase();
 
     try {
-      await database.withTransactionAsync(async () => {
-        for (const memory of memories) {
-          const embeddingBuffer = new Float32Array(memory.embedding).buffer;
-          const embeddingBlob = new Uint8Array(embeddingBuffer);
+      for (const memory of memories) {
+        const embeddingBuffer = new Float32Array(memory.embedding).buffer;
+        const embeddingBlob = new Uint8Array(embeddingBuffer);
 
-          await database.runAsync(
-            `INSERT OR REPLACE INTO memories 
-             (id, chat_id, content, original_context, embedding, relevance_score, extracted_at, message_ids, category) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              memory.id,
-              memory.chatId,
-              memory.content,
-              memory.originalContext,
-              embeddingBlob,
-              memory.relevanceScore,
-              memory.extractedAt,
-              JSON.stringify(memory.messageIds),
-              memory.category,
-            ],
-          );
-        }
-      });
+        await database.runAsync(
+          `INSERT OR REPLACE INTO memories 
+           (id, chat_id, content, original_context, embedding, relevance_score, extracted_at, message_ids, category) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            memory.id,
+            memory.chatId,
+            memory.content,
+            memory.originalContext,
+            embeddingBlob,
+            memory.relevanceScore,
+            memory.extractedAt,
+            JSON.stringify(memory.messageIds),
+            memory.category,
+          ],
+        );
+      }
     } catch (error) {
       console.error('Failed to store memories:', error);
       throw error;
@@ -233,13 +231,34 @@ class MemoryStorageService {
   }
 
   /**
+   * Calculate cosine similarity between two vectors
+   */
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) return 0;
+
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    if (normA === 0 || normB === 0) return 0;
+
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+  }
+
+  /**
    * Search memories by similarity to a query embedding
    */
   async searchMemoriesBySimilarity(
     queryEmbedding: number[],
     excludeChatId?: number,
-    limit: number = 10,
-    threshold: number = 0.7,
+    limit: number = 5,
+    threshold: number = 0.3,
   ): Promise<MemorySearchResult[]> {
     const memories = excludeChatId
       ? await this.getAllMemoriesExcludingChat(excludeChatId)
@@ -247,11 +266,15 @@ class MemoryStorageService {
 
     const results: MemorySearchResult[] = [];
 
+    console.log(`🔍 [MemoryStorage] Searching ${memories.length} memories with threshold ${threshold}`);
+
     for (const memory of memories) {
       const similarity = this.cosineSimilarity(
         queryEmbedding,
         memory.embedding,
       );
+
+      console.log(`🔍 [MemoryStorage] Memory "${memory.content}" similarity: ${similarity.toFixed(3)}`);
 
       if (similarity >= threshold) {
         results.push({
@@ -262,7 +285,14 @@ class MemoryStorageService {
     }
 
     // Sort by similarity (descending) and limit results
-    return results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
+    const sortedResults = results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
+    
+    console.log(`🔍 [MemoryStorage] Found ${sortedResults.length} results above threshold ${threshold}`);
+    sortedResults.forEach((result, index) => {
+      console.log(`🔍 [MemoryStorage] Result ${index + 1}: "${result.memory.content}" (${result.similarity.toFixed(3)})`);
+    });
+
+    return sortedResults;
   }
 
   /**
@@ -383,27 +413,6 @@ class MemoryStorageService {
       messageIds: JSON.parse(row.message_ids),
       category: row.category,
     };
-  }
-
-  /**
-   * Calculate cosine similarity between two vectors
-   */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0;
-
-    let dotProduct = 0;
-    let normA = 0;
-    let normB = 0;
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-
-    if (normA === 0 || normB === 0) return 0;
-
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
   /**

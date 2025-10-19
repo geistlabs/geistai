@@ -1,21 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import { ChatMessage } from '../lib/api/chat';
-import { memoryService, Memory, MemorySearchResult } from '../lib/memoryService';
+import {
+  memoryService,
+  Memory,
+  MemorySearchResult,
+} from '../lib/memoryService';
 import { memoryStorage, MemoryStats } from '../lib/memoryStorage';
 
 export interface UseMemoryManagerOptions {
-  autoExtract?: boolean; // Automatically extract memories when chats end
   contextThreshold?: number; // Similarity threshold for context inclusion
+  searchThreshold?: number; // Similarity threshold for search results
   maxContextMemories?: number; // Max memories to include in context
 }
 
 export interface UseMemoryManagerReturn {
   // Memory operations
-  extractMemories: (
-    chatId: number,
-    messages: ChatMessage[],
-  ) => Promise<Memory[]>;
   searchMemories: (
     query: string,
     excludeChatId?: number,
@@ -45,10 +45,10 @@ export interface UseMemoryManagerReturn {
 export function useMemoryManager(
   options: UseMemoryManagerOptions = {},
 ): UseMemoryManagerReturn {
-  const {
-    autoExtract = false,
-    contextThreshold = 0.7,
-    maxContextMemories = 5,
+  const { 
+    contextThreshold = 0.7, 
+    searchThreshold = 0.3, 
+    maxContextMemories = 5 
   } = options;
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -75,68 +75,6 @@ export function useMemoryManager(
     initializeStorage();
   }, []);
 
-  /**
-   * Extract memories from a conversation
-   */
-  const extractMemories = useCallback(
-    async (chatId: number, messages: ChatMessage[]): Promise<Memory[]> => {
-      if (!isInitialized) {
-        throw new Error('Memory storage not initialized');
-      }
-
-      setIsExtracting(true);
-      setError(null);
-
-      try {
-        // Call backend to extract memories using LLM
-        const response = await memoryService.extractMemories({
-          chatId,
-          messages,
-          maxMemories: 10,
-        });
-
-        if (!response.success) {
-          throw new Error(response.error || 'Memory extraction failed');
-        }
-
-        // Generate embeddings and create full Memory objects
-        const memories: Memory[] = [];
-
-        for (const memoryData of response.memories) {
-          const embedding = await memoryService.getEmbedding(
-            memoryData.content,
-          );
-
-          if (embedding.length > 0) {
-            const memory: Memory = {
-              id: `${chatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              chatId: memoryData.chatId,
-              content: memoryData.content,
-              originalContext: memoryData.originalContext,
-              embedding,
-              relevanceScore: memoryData.relevanceScore,
-              extractedAt: Date.now(),
-              messageIds: memoryData.messageIds,
-              category: memoryData.category,
-            };
-
-            memories.push(memory);
-          }
-        }
-
-        return memories;
-      } catch (err) {
-        console.error('Failed to extract memories:', err);
-        setError(
-          err instanceof Error ? err.message : 'Failed to extract memories',
-        );
-        return [];
-      } finally {
-        setIsExtracting(false);
-      }
-    },
-    [isInitialized],
-  );
 
   /**
    * Search for relevant memories
@@ -154,21 +92,27 @@ export function useMemoryManager(
       setError(null);
 
       try {
+        console.log(`🔍 [MemoryManager] Searching for: "${query}"`);
+        console.log(`🔍 [MemoryManager] Using threshold: ${searchThreshold}`);
+        
         // Generate embedding for query
         const queryEmbedding = await memoryService.getEmbedding(query);
+        console.log(`🔍 [MemoryManager] Query embedding length: ${queryEmbedding.length}`);
 
         if (queryEmbedding.length === 0) {
+          console.log('🔍 [MemoryManager] ❌ Failed to generate query embedding');
           return [];
         }
 
-        // Search in local storage
+        // Search in local storage with low threshold for better recall
         const results = await memoryStorage.searchMemoriesBySimilarity(
           queryEmbedding,
           excludeChatId,
-          10,
-          contextThreshold,
+          5, // Return top 5 results
+          searchThreshold, // Use lower threshold (0.3) for search
         );
 
+        console.log(`🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`);
         return results;
       } catch (err) {
         console.error('Failed to search memories:', err);
@@ -180,7 +124,7 @@ export function useMemoryManager(
         setIsSearching(false);
       }
     },
-    [isInitialized, contextThreshold],
+    [isInitialized, searchThreshold],
   );
 
   /**
@@ -343,7 +287,6 @@ export function useMemoryManager(
 
   return {
     // Memory operations
-    extractMemories,
     searchMemories,
     getRelevantContext,
 
