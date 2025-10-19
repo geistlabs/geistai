@@ -204,18 +204,6 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
     """Non-streaming chat endpoint for simple requests"""
     print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
 
-    # Check if this is a memory extraction request
-    is_memory = (
-        "extract key facts" in chat_request.message.lower()
-        and "json array" in chat_request.message.lower()
-    )
-
-    if is_memory:
-        print(
-            "[Backend] 🧠 Detected memory extraction request, using direct GPT service"
-        )
-        return await handle_memory(chat_request)
-
     # Build messages array with conversation history
     if chat_request.messages:
         messages = [msg.dict() for msg in chat_request.messages]
@@ -322,15 +310,6 @@ async def handle_memory(chat_request: ChatRequest):
         raise HTTPException(
             status_code=500, detail=f"Memory extraction failed: {str(e)}"
         )
-
-
-@app.post("/api/memory/extract")
-async def extract_memories(memory_request: MemoryExtractionRequest):
-    """Dedicated endpoint for memory extraction"""
-    print(
-        f"[Backend] 🧠 Received memory extraction request: {memory_request.model_dump_json(indent=2)}"
-    )
-    return await handle_memory(memory_request)
 
 
 @app.post("/api/memory")
