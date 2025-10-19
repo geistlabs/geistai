@@ -8,5 +8,6 @@ obj  ::= "{" ws
          ws "}"
 string ::= "\"" chars* "\""
 chars  ::= ("\\" ["\\/bfnrt]) | ("\\u" hex hex hex hex) | [^"\\]
+hex    ::= [0-9a-fA-F]
 number ::= "-"? ( "0" | [1-9][0-9]* ) ("." [0-9]+)? ( [eE] [+-]? [0-9]+ )?
 ws ::= [ \t\n\r]*
