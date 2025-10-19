@@ -626,7 +626,7 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
     };
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/memory-extraction`, {
+      const response = await fetch(`${this.baseUrl}/api/memory`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -634,7 +634,7 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
         body: JSON.stringify(requestBody),
       });
 
-      console.log('🧠 [MemoryService] Memory extraction response status:', response.status);
+      console.log('🧠 [MemoryService] Memory response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();

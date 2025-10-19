@@ -333,13 +333,13 @@ async def extract_memories(memory_request: MemoryExtractionRequest):
     return await handle_memory(memory_request)
 
 
-@app.post("/api/memory-extraction")
+@app.post("/api/memory")
 async def memory_proxy(request: Request):
-    """Proxy requests to the memory extraction service at memory-extraction.geist.im/v1/chat/completions"""
+    """Proxy requests to the memory extraction service at memory.geist.im/v1/chat/completions"""
     try:
         # Build the target URL
         target_url = f"{config.MEMORY_EXTRACTION_URL}/v1/chat/completions"
-        logger.info(f"Proxying memory extraction request to: {target_url}")
+        logger.info(f"Proxying memory request to: {target_url}")
 
         # Get request body
         body = await request.body()

@@ -150,11 +150,11 @@
               "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a memory extraction assistant. Extract key facts and return them as a JSON array.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"I am a data scientist working on machine learning projects. I prefer Python over R and I live in San Francisco.\"\n    }\n  ],\n  \"temperature\": 0.1,\n  \"max_tokens\": 1000\n}"
             },
             "url": {
-              "raw": "{{router_base_url}}/api/memory-extraction",
+              "raw": "{{router_base_url}}/api/memory",
               "host": ["{{router_base_url}}"],
-              "path": ["api", "memory-extraction"]
+              "path": ["api", "memory"]
             },
-            "description": "Proxy requests to the memory extraction service"
+            "description": "Proxy requests to the memory service"
           }
         },
         {
