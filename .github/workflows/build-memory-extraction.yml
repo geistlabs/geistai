@@ -45,7 +45,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./backend/memory_extraction
-          file: ./backend/memory_extraction/Dockerfile.gpu
+          file: ./backend/memory_extraction/Dockerfile.cpu
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
