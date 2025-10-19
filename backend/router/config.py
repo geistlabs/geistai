@@ -59,6 +59,12 @@ MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")
 EMBEDDINGS_TIMEOUT = int(os.getenv("EMBEDDINGS_TIMEOUT", "60"))
 
+# Memory extraction service settings
+MEMORY_EXTRACTION_URL = os.getenv(
+    "MEMORY_EXTRACTION_URL", "https://memory-extraction.geist.im"
+)
+MEMORY_EXTRACTION_TIMEOUT = int(os.getenv("MEMORY_EXTRACTION_TIMEOUT", "60"))
+
 # Embeddings API URL configuration - this is the base route for all embeddings calls
 # Should be set to VITE_API_URL/embeddings (e.g., http://localhost:8000/embeddings)
 EMBEDDINGS_API_URL = os.getenv("EMBEDDINGS_API_URL", "http://localhost:8000/embeddings")

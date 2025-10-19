@@ -1,7 +1,7 @@
 import EventSource from 'react-native-sse';
 
-import { ApiClient } from './client';
 import { ENV } from '../config/environment';
+import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
@@ -287,7 +287,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_token:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse orchestrator_token:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -298,7 +303,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse sub_agent_event:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse sub_agent_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -309,7 +319,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse tool_call_event:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse tool_call_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -320,7 +335,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_start:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse orchestrator_start:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -331,7 +351,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_complete:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse orchestrator_complete:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -342,7 +367,12 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse final_response:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse final_response:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -358,7 +388,12 @@ export async function sendStreamingMessage(
           handlers.onError('Stream error occurred');
         }
       } catch (parseError) {
-        console.warn('Failed to parse error event:', parseError, 'Raw data:', event.data);
+        console.warn(
+          'Failed to parse error event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
@@ -370,9 +405,13 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn('Failed to parse end event data:', parseError, 'Raw data:', event.data);
-      }
-      
+        console.warn(
+          'Failed to parse end event data:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+
       handlers.onComplete();
       es.close();
       resolve();
@@ -383,7 +422,7 @@ export async function sendStreamingMessage(
     });
 
     // Handle connection errors
-    es.onerror = (error) => {
+    es.onerror = error => {
       console.error('EventSource error:', error);
       handlers.onError('Connection failed');
       es.close();

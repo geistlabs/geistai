@@ -59,7 +59,9 @@ export interface AgentConversation {
 }
 
 // Utility function to collect and deduplicate links from enhanced messages
-export function collectLinksFromEnhancedMessage(message: EnhancedMessage): CollectedLink[] {
+export function collectLinksFromEnhancedMessage(
+  message: EnhancedMessage,
+): CollectedLink[] {
   const links: CollectedLink[] = [];
   const seenUrls = new Set<string>();
 
@@ -75,7 +77,7 @@ export function collectLinksFromEnhancedMessage(message: EnhancedMessage): Colle
           source: citation.source,
           snippet: citation.snippet,
           agent: 'main',
-          type: 'citation'
+          type: 'citation',
         });
       }
     });
@@ -101,7 +103,7 @@ export function collectLinksFromEnhancedMessage(message: EnhancedMessage): Colle
                   title: `Link from ${agentConvo.agent}`,
                   source: agentConvo.agent,
                   agent: agentConvo.agent,
-                  type: 'citation'
+                  type: 'citation',
                 });
               }
             }
@@ -171,14 +173,15 @@ export function useChatWithStorage(
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
       id: '1',
-      content: 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
+      content:
+        'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
       role: 'assistant',
       timestamp: new Date(),
       isStreaming: false,
       agentConversations: [],
       toolCallEvents: [],
       collectedLinks: [],
-    }
+    },
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -206,7 +209,7 @@ export function useChatWithStorage(
 
   // Storage integration
   const storage = useChatStorage(options.chatId);
-  
+
   // Memory integration
   const memoryManager = useMemoryManager({
     autoExtract: true,
@@ -291,12 +294,15 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
-      
+
       // Get relevant memory context
       let memoryContext = '';
       if (memoryManager.isInitialized && currentChatId) {
         try {
-          memoryContext = await memoryManager.getRelevantContext(content, currentChatId);
+          memoryContext = await memoryManager.getRelevantContext(
+            content,
+            currentChatId,
+          );
         } catch (err) {
           console.warn('Failed to get memory context:', err);
         }
@@ -396,77 +402,94 @@ export function useChatWithStorage(
           collectedLinks: [],
         };
 
-        setEnhancedMessages(prev => [...prev, enhancedUserMessage, enhancedAssistantMessage]);
+        setEnhancedMessages(prev => [
+          ...prev,
+          enhancedUserMessage,
+          enhancedAssistantMessage,
+        ]);
 
         // Create event handlers object
         const eventHandlers: StreamEventHandlers = {
           onToken: (token: string) => {
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
-            
+
             // Update enhanced message content
-            setEnhancedMessages(prev => prev.map(msg => 
-              msg.id === enhancedAssistantMessageId 
-                ? { ...msg, content: msg.content + token }
-                : msg
-            ));
+            setEnhancedMessages(prev =>
+              prev.map(msg =>
+                msg.id === enhancedAssistantMessageId
+                  ? { ...msg, content: msg.content + token }
+                  : msg,
+              ),
+            );
           },
           onSubAgentEvent: agentEvent => {
             // Handle sub-agent events in enhanced messages
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                const agentConvos = msg.agentConversations || [];
-                const existingIdx = agentConvos.findIndex(convo => convo.agent === agentEvent.agent);
-                
-                let updatedAgentConvos;
-                if (existingIdx !== -1) {
-                  // Update existing agent conversation
-                  updatedAgentConvos = agentConvos.map((convo, idx) =>
-                    idx === existingIdx
-                      ? { 
-                          ...convo, 
-                          messages: convo.messages.length > 0
-                            ? [
-                                { 
-                                  ...convo.messages[0],
-                                  content: convo.messages[0].content + agentEvent.token,
-                                  isStreaming: agentEvent.isStreaming
-                                }, 
-                                ...convo.messages.slice(1)
-                              ]
-                            : [{ 
-                                id: agentEvent.token, 
-                                content: agentEvent.token, 
-                                role: 'assistant' as const, 
-                                timestamp: new Date(), 
-                                isStreaming: agentEvent.isStreaming 
-                              }]
-                        }
-                      : convo
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const agentConvos = msg.agentConversations || [];
+                  const existingIdx = agentConvos.findIndex(
+                    convo => convo.agent === agentEvent.agent,
                   );
-                } else {
-                  // Create new agent conversation
-                  const newAgentConvo: AgentConversation = {
-                    timestamp: new Date(),
-                    type: agentEvent.isStreaming ? 'start' : 'complete',
-                    agent: agentEvent.agent,
-                    task: agentEvent.task,
-                    context: agentEvent.context,
-                    messages: [{ 
-                      id: agentEvent.token, 
-                      content: agentEvent.token, 
-                      role: 'assistant' as const, 
-                      timestamp: new Date(), 
-                      isStreaming: agentEvent.isStreaming 
-                    }]
-                  };
-                  updatedAgentConvos = [...agentConvos, newAgentConvo];
+
+                  let updatedAgentConvos;
+                  if (existingIdx !== -1) {
+                    // Update existing agent conversation
+                    updatedAgentConvos = agentConvos.map((convo, idx) =>
+                      idx === existingIdx
+                        ? {
+                            ...convo,
+                            messages:
+                              convo.messages.length > 0
+                                ? [
+                                    {
+                                      ...convo.messages[0],
+                                      content:
+                                        convo.messages[0].content +
+                                        agentEvent.token,
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                    ...convo.messages.slice(1),
+                                  ]
+                                : [
+                                    {
+                                      id: agentEvent.token,
+                                      content: agentEvent.token,
+                                      role: 'assistant' as const,
+                                      timestamp: new Date(),
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                  ],
+                          }
+                        : convo,
+                    );
+                  } else {
+                    // Create new agent conversation
+                    const newAgentConvo: AgentConversation = {
+                      timestamp: new Date(),
+                      type: agentEvent.isStreaming ? 'start' : 'complete',
+                      agent: agentEvent.agent,
+                      task: agentEvent.task,
+                      context: agentEvent.context,
+                      messages: [
+                        {
+                          id: agentEvent.token,
+                          content: agentEvent.token,
+                          role: 'assistant' as const,
+                          timestamp: new Date(),
+                          isStreaming: agentEvent.isStreaming,
+                        },
+                      ],
+                    };
+                    updatedAgentConvos = [...agentConvos, newAgentConvo];
+                  }
+
+                  return { ...msg, agentConversations: updatedAgentConvos };
                 }
-                
-                return { ...msg, agentConversations: updatedAgentConvos };
-              }
-              return msg;
-            }));
+                return msg;
+              }),
+            );
 
             // Legacy event handling for backward compatibility
             const agentMessage: AgentMessage = {
@@ -494,41 +517,56 @@ export function useChatWithStorage(
           },
           onToolCallEvent: toolCallEvent => {
             // Handle tool call events in enhanced messages
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                const toolCallEvents = msg.toolCallEvents || [];
-                const eventId = `${toolCallEvent.toolName}-${Date.now()}-${Math.random()}`;
-                
-                if (toolCallEvent.type === 'start') {
-                  // Add new tool call event
-                  const newEvent: ToolCallEvent = {
-                    id: eventId,
-                    type: 'start',
-                    toolName: toolCallEvent.toolName,
-                    arguments: toolCallEvent.arguments,
-                    timestamp: new Date(),
-                    status: 'active'
-                  };
-                  return { ...msg, toolCallEvents: [...toolCallEvents, newEvent] };
-                } else if (toolCallEvent.type === 'complete' || toolCallEvent.type === 'error') {
-                  // Update existing tool call event
-                  const updatedEvents: ToolCallEvent[] = toolCallEvents.map(event => {
-                    if (event.toolName === toolCallEvent.toolName && event.status === 'active') {
-                        return {
-                          ...event,
-                          type: toolCallEvent.type as 'complete' | 'error',
-                          result: toolCallEvent.result,
-                          error: toolCallEvent.error,
-                          status: (toolCallEvent.type === 'complete' ? 'completed' : 'error') as 'completed' | 'error'
-                        };
-                    }
-                    return event;
-                  });
-                  return { ...msg, toolCallEvents: updatedEvents };
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const toolCallEvents = msg.toolCallEvents || [];
+                  const eventId = `${toolCallEvent.toolName}-${Date.now()}-${Math.random()}`;
+
+                  if (toolCallEvent.type === 'start') {
+                    // Add new tool call event
+                    const newEvent: ToolCallEvent = {
+                      id: eventId,
+                      type: 'start',
+                      toolName: toolCallEvent.toolName,
+                      arguments: toolCallEvent.arguments,
+                      timestamp: new Date(),
+                      status: 'active',
+                    };
+                    return {
+                      ...msg,
+                      toolCallEvents: [...toolCallEvents, newEvent],
+                    };
+                  } else if (
+                    toolCallEvent.type === 'complete' ||
+                    toolCallEvent.type === 'error'
+                  ) {
+                    // Update existing tool call event
+                    const updatedEvents: ToolCallEvent[] = toolCallEvents.map(
+                      event => {
+                        if (
+                          event.toolName === toolCallEvent.toolName &&
+                          event.status === 'active'
+                        ) {
+                          return {
+                            ...event,
+                            type: toolCallEvent.type as 'complete' | 'error',
+                            result: toolCallEvent.result,
+                            error: toolCallEvent.error,
+                            status: (toolCallEvent.type === 'complete'
+                              ? 'completed'
+                              : 'error') as 'completed' | 'error',
+                          };
+                        }
+                        return event;
+                      },
+                    );
+                    return { ...msg, toolCallEvents: updatedEvents };
+                  }
                 }
-              }
-              return msg;
-            }));
+                return msg;
+              }),
+            );
 
             // Legacy event handling for backward compatibility
             setToolCallEvents(prev => [...prev, toolCallEvent]);
@@ -538,19 +576,21 @@ export function useChatWithStorage(
             batcher.complete();
 
             // Mark enhanced message as complete and collect links
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                // Collect links from the completed message
-                const collectedLinks = collectLinksFromEnhancedMessage(msg);
-                
-                return { 
-                  ...msg, 
-                  isStreaming: false,
-                  collectedLinks: collectedLinks
-                };
-              }
-              return msg;
-            }));
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  // Collect links from the completed message
+                  const collectedLinks = collectLinksFromEnhancedMessage(msg);
+
+                  return {
+                    ...msg,
+                    isStreaming: false,
+                    collectedLinks: collectedLinks,
+                  };
+                }
+                return msg;
+              }),
+            );
 
             setIsStreaming(false);
             isStreamingRef.current = false;
@@ -579,14 +619,24 @@ export function useChatWithStorage(
 
               // Extract and store memories from the conversation asynchronously
               if (memoryManager.isInitialized) {
-                console.log('[Memory] 🧠 Starting memory extraction and storage process...');
-                const conversationMessages = [...messagesWithContext, finalAssistantMessage];
+                console.log(
+                  '[Memory] 🧠 Starting memory extraction and storage process...',
+                );
+                const conversationMessages = [
+                  ...messagesWithContext,
+                  finalAssistantMessage,
+                ];
                 memoryManager
                   .extractMemories(currentChatId, conversationMessages)
                   .then(memories => {
-                    console.log('[Memory] 🧠 Extraction completed, memories found:', memories.length);
+                    console.log(
+                      '[Memory] 🧠 Extraction completed, memories found:',
+                      memories.length,
+                    );
                     if (memories.length > 0) {
-                      console.log('[Memory] 🧠 Storing memories in local database...');
+                      console.log(
+                        '[Memory] 🧠 Storing memories in local database...',
+                      );
                       return memoryManager.storeMemories(memories);
                     } else {
                       console.log('[Memory] 🧠 No memories to store');
@@ -596,8 +646,15 @@ export function useChatWithStorage(
                     console.log('[Memory] 🧠 ✅ Memories stored successfully!');
                   })
                   .catch(err => {
-                    console.error('[Memory] 🧠 ❌ Failed to extract/store memories:', err);
-                    console.error('[Memory] 🧠 Error details:', err.message, err.stack);
+                    console.error(
+                      '[Memory] 🧠 ❌ Failed to extract/store memories:',
+                      err,
+                    );
+                    console.error(
+                      '[Memory] 🧠 Error details:',
+                      err.message,
+                      err.stack,
+                    );
                   });
               } else {
                 console.log('[Memory] 🧠 ❌ Memory manager not initialized');

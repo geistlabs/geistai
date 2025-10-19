@@ -1,0 +1,48 @@
+# CPU-only llama.cpp server
+FROM ghcr.io/ggml-org/llama.cpp:server
+
+# Create models directory for volume mount
+USER root
+RUN mkdir -p /models && chown 1000:1000 /models
+
+# Copy the grammar schema into the image (sits next to this Dockerfile)
+COPY schema.gbnf /app/schema.gbnf
+
+# Switch back to non-root user
+USER 1000
+
+EXPOSE 8080
+
+# Use Qwen2.5-7B-Instruct (q4_k_m, multi-part GGUF) with grammar forcing, CPU-only
+# Host path: /root/models/Qwen2.5-7B-Instruct-GGUF
+# Mount it to /models at runtime; point to the FIRST shard explicitly.
+CMD ["--model", "/models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf", \
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--ctx-size", "8192", \
+     "--threads", "8", \
+     "--batch-size", "256", \
+     "--ubatch-size", "256", \
+     "--parallel", "1", \
+     "--cont-batching", \
+     "--mlock", \
+     "--grammar-file", "/app/schema.gbnf", \
+     "--temp", "0.1", \
+     "--top-p", "0.9", \
+     "--jinja"]
+
+# ---- How to run (CPU) ----
+# docker build -t qwen2_5-7b-instruct-gguf-cpu .
+# docker run -d \
+#   --name qwen-cpu \
+#   -p 8080:8080 \
+#   -v /root/models/Qwen2.5-7B-Instruct-GGUF:/models:ro \
+#   qwen2_5-7b-instruct-gguf-cpu
+
+# Notes:
+# - The q4_k_m quant is a good speed/quality tradeoff for CPU inference.
+# - Multi-part GGUF: keep BOTH files present in /models:
+#     qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf
+#     qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf
+#   Point --model to the *-00001-of-00002.gguf file.
+# - The server exposes an OpenAI-compatible API at http://localhost:8080/v1/chat/completions

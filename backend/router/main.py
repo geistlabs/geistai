@@ -333,6 +333,82 @@ async def extract_memories(memory_request: MemoryExtractionRequest):
     return await handle_memory_extraction(memory_request)
 
 
+@app.post("/api/memory-extraction")
+async def memory_extraction_proxy(request: Request):
+    """Proxy requests to the memory extraction service at memory-extraction.geist.im/v1/chat/completions"""
+    try:
+        # Build the target URL
+        target_url = f"{config.MEMORY_EXTRACTION_URL}/v1/chat/completions"
+        logger.info(f"Proxying memory extraction request to: {target_url}")
+
+        # Get request body
+        body = await request.body()
+
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
+        # Forward the request to memory extraction service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                target_url,
+                headers=forward_headers,
+                content=body,
+                timeout=config.MEMORY_EXTRACTION_TIMEOUT,
+            )
+
+        logger.info(
+            f"Memory extraction service responded with status: {response.status_code}"
+        )
+
+        # Return the response with appropriate headers
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in skip_headers:
+                response_headers[key] = value
+
+        return StreamingResponse(
+            iter([response.content]),
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
+        )
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}",
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to memory extraction service: {str(e)}")
+        raise HTTPException(
+            status_code=504,
+            detail="Memory extraction service timeout",
+        )
+    except Exception as e:
+        logger.error(f"Error proxying memory extraction request: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to proxy request to memory extraction service",
+        )
+
+
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""

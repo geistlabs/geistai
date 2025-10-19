@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+
 import { Memory, MemorySearchResult } from './memoryService';
 
 // Database configuration
@@ -97,7 +98,9 @@ class MemoryStorageService {
    */
   private getDatabase(): SQLite.SQLiteDatabase {
     if (!this.db) {
-      throw new Error('Memory database not initialized. Call initDatabase() first.');
+      throw new Error(
+        'Memory database not initialized. Call initDatabase() first.',
+      );
     }
     return this.db;
   }
@@ -127,7 +130,7 @@ class MemoryStorageService {
           memory.extractedAt,
           JSON.stringify(memory.messageIds),
           memory.category,
-        ]
+        ],
       );
     } catch (error) {
       console.error('Failed to store memory:', error);
@@ -161,7 +164,7 @@ class MemoryStorageService {
               memory.extractedAt,
               JSON.stringify(memory.messageIds),
               memory.category,
-            ]
+            ],
           );
         }
       });
@@ -180,7 +183,7 @@ class MemoryStorageService {
     try {
       const rows = await database.getAllAsync(
         'SELECT * FROM memories WHERE chat_id = ? ORDER BY extracted_at DESC',
-        [chatId]
+        [chatId],
       );
 
       return rows.map((row: any) => this.rowToMemory(row));
@@ -193,13 +196,15 @@ class MemoryStorageService {
   /**
    * Get all memories excluding a specific chat
    */
-  async getAllMemoriesExcludingChat(excludeChatId: number): Promise<StoredMemory[]> {
+  async getAllMemoriesExcludingChat(
+    excludeChatId: number,
+  ): Promise<StoredMemory[]> {
     const database = this.getDatabase();
 
     try {
       const rows = await database.getAllAsync(
         'SELECT * FROM memories WHERE chat_id != ? ORDER BY relevance_score DESC, extracted_at DESC',
-        [excludeChatId]
+        [excludeChatId],
       );
 
       return rows.map((row: any) => this.rowToMemory(row));
@@ -217,7 +222,7 @@ class MemoryStorageService {
 
     try {
       const rows = await database.getAllAsync(
-        'SELECT * FROM memories ORDER BY extracted_at DESC'
+        'SELECT * FROM memories ORDER BY extracted_at DESC',
       );
 
       return rows.map((row: any) => this.rowToMemory(row));
@@ -234,17 +239,19 @@ class MemoryStorageService {
     queryEmbedding: number[],
     excludeChatId?: number,
     limit: number = 10,
-    threshold: number = 0.7
+    threshold: number = 0.7,
   ): Promise<MemorySearchResult[]> {
-    const memories = excludeChatId 
+    const memories = excludeChatId
       ? await this.getAllMemoriesExcludingChat(excludeChatId)
       : await this.getAllMemories();
 
     const results: MemorySearchResult[] = [];
 
     for (const memory of memories) {
-      const similarity = this.cosineSimilarity(queryEmbedding, memory.embedding);
-      
+      const similarity = this.cosineSimilarity(
+        queryEmbedding,
+        memory.embedding,
+
       if (similarity >= threshold) {
         results.push({
           memory,
@@ -254,9 +261,7 @@ class MemoryStorageService {
     }
 
     // Sort by similarity (descending) and limit results
-    return results
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, limit);
+    return results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
   }
 
   /**
@@ -266,7 +271,9 @@ class MemoryStorageService {
     const database = this.getDatabase();
 
     try {
-      await database.runAsync('DELETE FROM memories WHERE chat_id = ?', [chatId]);
+      await database.runAsync('DELETE FROM memories WHERE chat_id = ?', [
+        chatId,
+      ]);
     } catch (error) {
       console.error('Failed to delete memories by chat:', error);
       throw error;
@@ -296,35 +303,37 @@ class MemoryStorageService {
     try {
       // Total memories
       const totalResult = await database.getFirstAsync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM memories'
+        'SELECT COUNT(*) as count FROM memories',
       );
       const totalMemories = totalResult?.count || 0;
 
       // Memories by category
-      const categoryRows = await database.getAllAsync<{ category: string; count: number }>(
-        'SELECT category, COUNT(*) as count FROM memories GROUP BY category'
-      );
+      const categoryRows = await database.getAllAsync<{
+        category: string;
+        count: number;
+      }>('SELECT category, COUNT(*) as count FROM memories GROUP BY category');
       const memoriesByCategory: Record<string, number> = {};
       categoryRows.forEach(row => {
         memoriesByCategory[row.category] = row.count;
       });
 
       // Memories by chat
-      const chatRows = await database.getAllAsync<{ chat_id: number; count: number }>(
-        'SELECT chat_id, COUNT(*) as count FROM memories GROUP BY chat_id'
-      );
+      const chatRows = await database.getAllAsync<{
+        chat_id: number;
+        count: number;
+      }>('SELECT chat_id, COUNT(*) as count FROM memories GROUP BY chat_id');
       const memoriesByChat: Record<number, number> = {};
       chatRows.forEach(row => {
         memoriesByChat[row.chat_id] = row.count;
       });
 
       // Oldest and newest memories
-      const oldestResult = await database.getFirstAsync<{ extracted_at: number }>(
-        'SELECT MIN(extracted_at) as extracted_at FROM memories'
-      );
-      const newestResult = await database.getFirstAsync<{ extracted_at: number }>(
-        'SELECT MAX(extracted_at) as extracted_at FROM memories'
-      );
+      const oldestResult = await database.getFirstAsync<{
+        extracted_at: number;
+      }>('SELECT MIN(extracted_at) as extracted_at FROM memories');
+      const newestResult = await database.getFirstAsync<{
+        extracted_at: number;
+      }>('SELECT MAX(extracted_at) as extracted_at FROM memories');
 
       return {
         totalMemories,
@@ -380,19 +389,19 @@ class MemoryStorageService {
    */
   private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
-    
+
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
-    
+
     for (let i = 0; i < a.length; i++) {
       dotProduct += a[i] * b[i];
       normA += a[i] * a[i];
       normB += b[i] * b[i];
     }
-    
+
     if (normA === 0 || normB === 0) return 0;
-    
+
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 

@@ -12,6 +12,7 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
       - EMBEDDINGS_URL=http://embeddings:8001
+      - MEMORY_EXTRACTION_URL=https://memory-extraction.geist.im
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -69,6 +70,7 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference-gpu:8080
       - EMBEDDINGS_URL=http://embeddings:8001
+      - MEMORY_EXTRACTION_URL=https://memory-extraction.geist.im
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -124,6 +126,7 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://host.docker.internal:8080  # Connect to host inference
       - EMBEDDINGS_URL=http://embeddings:8001
+      - MEMORY_EXTRACTION_URL=https://memory-extraction.geist.im
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
