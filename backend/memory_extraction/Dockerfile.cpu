@@ -29,7 +29,9 @@ CMD ["--model", "/models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf", \
      "--grammar-file", "/app/schema.gbnf", \
      "--temp", "0.1", \
      "--top-p", "0.9", \
-     "--jinja"]
+     "--jinja", \
+		 "--log-level", "debug", \
+     "--verbose"]
 
 # ---- How to run (CPU) ----
 # docker build -t qwen2_5-7b-instruct-gguf-cpu .
