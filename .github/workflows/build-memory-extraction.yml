@@ -34,7 +34,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_USERNAME }}/memory-extraction
+          images: ${{ secrets.DOCKER_USERNAME }}/memory
           tags: |
             type=raw,value=${{ inputs.version }}
             type=raw,value=${{ inputs.environment }}-${{ inputs.version }}
@@ -58,7 +58,7 @@ jobs:
     needs: build_and_push
     uses: geistlabs/Geist-Workflows/.github/workflows/tag.yml@master
     with:
-      APP: memory-extraction
+      APP: memory
       VERSION: ${{ inputs.environment }}-${{ inputs.version }}
       ENVIRONMENT: ${{ inputs.environment }}
     secrets:
