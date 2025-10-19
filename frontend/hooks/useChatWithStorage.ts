@@ -13,6 +13,7 @@ import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
+import { memoryService, Memory } from '../lib/memoryService';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -294,6 +295,51 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
+
+      // Extract memories from the user question using the dedicated memory extraction endpoint
+      try {
+        console.log('🧠 [Chat] Extracting memories from user question...');
+        const extractedMemories = await memoryService.extractMemoriesFromQuestion(content);
+        
+        if (extractedMemories.length > 0) {
+          console.log('🧠 [Chat] ✅ Extracted memories from question:', extractedMemories);
+          
+          // Convert extracted memories to full Memory objects and store them
+          if (memoryManager.isInitialized && currentChatId) {
+            const memories: Memory[] = [];
+            
+            for (const memoryData of extractedMemories) {
+              const embedding = await memoryService.getEmbedding(memoryData.content);
+              
+              if (embedding.length > 0) {
+                const memory: Memory = {
+                  id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                  chatId: currentChatId,
+                  content: memoryData.content,
+                  originalContext: memoryData.originalContext || content,
+                  embedding,
+                  relevanceScore: memoryData.relevanceScore || 0.8,
+                  extractedAt: Date.now(),
+                  messageIds: [userMessage.id],
+                  category: memoryData.category || 'other',
+                };
+                
+                memories.push(memory);
+              }
+            }
+            
+            if (memories.length > 0) {
+              console.log('🧠 [Chat] Storing extracted memories:', memories.length);
+              await memoryManager.storeMemories(memories);
+              console.log('🧠 [Chat] ✅ Memories stored successfully');
+            }
+          }
+        } else {
+          console.log('🧠 [Chat] No memories extracted from question');
+        }
+      } catch (err) {
+        console.warn('🧠 [Chat] Failed to extract memories from question:', err);
+      }
 
       // Get relevant memory context
       let memoryContext = '';

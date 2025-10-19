@@ -580,6 +580,141 @@ CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning
   }
 
   /**
+   * Extract memories from a single user question using the dedicated memory extraction endpoint
+   */
+  async extractMemoriesFromQuestion(
+    question: string,
+    systemPrompt?: string,
+  ): Promise<any[]> {
+    console.log('🧠 [MemoryService] Extracting memories from user question...');
+    console.log('🧠 [MemoryService] Question:', question.substring(0, 100) + '...');
+
+    const defaultSystemPrompt = `You are a memory extraction assistant. Your job is to extract key facts from user questions and return ONLY a valid JSON array. 
+
+Extract key facts, preferences, and contextual information from the following user input that would be useful to remember for future conversations. Focus on:
+
+1. Personal information (name, location, job, interests, etc.)
+2. Technical preferences (tools, languages, frameworks, etc.)
+3. User preferences (communication style, specific needs, etc.)
+4. Important context (current projects, goals, constraints, etc.)
+
+For each fact, provide:
+- A concise summary (1-2 sentences max)
+- A category (personal, technical, preference, context, other)
+- A relevance score (0.0-1.0)
+- Original context from the user input
+
+Return ONLY a JSON array with this exact format:
+[{"content": "fact summary", "category": "category", "relevanceScore": 0.8, "originalContext": "relevant snippet from user input"}]
+
+CRITICAL: Return ONLY the JSON array. Do not include any explanations, reasoning, or other text before or after the JSON array. Start your response with [ and end with ].`;
+
+    const requestBody = {
+      model: 'llama3.1',
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt || defaultSystemPrompt,
+        },
+        {
+          role: 'user',
+          content: question,
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: 1000,
+    };
+
+    try {
+      const response = await fetch(`${this.baseUrl}/api/memory-extraction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log('🧠 [MemoryService] Memory extraction response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('🧠 [MemoryService] ❌ Memory extraction error:', errorText);
+        throw new Error(`Memory extraction failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('🧠 [MemoryService] Raw memory extraction result:', result);
+
+      // Extract the content from the response
+      let content = '';
+      if (result.choices && result.choices[0] && result.choices[0].message) {
+        content = result.choices[0].message.content;
+      } else if (result.response) {
+        content = result.response;
+      } else if (typeof result === 'string') {
+        content = result;
+      } else {
+        console.log('🧠 [MemoryService] ❌ Unexpected response format:', result);
+        return [];
+      }
+
+      console.log('🧠 [MemoryService] Extracted content:', content);
+
+      // Parse the JSON array from the response
+      try {
+        const jsonContent = content.trim();
+        const startIndex = jsonContent.indexOf('[');
+        const endIndex = jsonContent.lastIndexOf(']');
+
+        if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
+          console.log('🧠 [MemoryService] ❌ No valid JSON array found in response');
+          return [];
+        }
+
+        const jsonArrayString = jsonContent.substring(startIndex, endIndex + 1);
+        const memories = JSON.parse(jsonArrayString);
+
+        if (!Array.isArray(memories)) {
+          console.log('🧠 [MemoryService] ❌ Parsed result is not an array');
+          return [];
+        }
+
+        console.log('🧠 [MemoryService] ✅ Successfully extracted memories:', memories);
+        return memories;
+      } catch (parseError) {
+        console.log('🧠 [MemoryService] ❌ JSON parsing failed:', parseError);
+        console.log('🧠 [MemoryService] Content that failed to parse:', content);
+        return [];
+      }
+    } catch (error) {
+      console.log('🧠 [MemoryService] ❌ Memory extraction from question failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Test memory extraction from a question
+   */
+  async testMemoryExtractionFromQuestion(): Promise<void> {
+    console.log('🧠 [MemoryService] 🔧 Testing memory extraction from question...');
+    
+    const testQuestion = "I'm a software engineer working with React Native and I prefer TypeScript. I'm currently building a mobile app for iOS.";
+    
+    try {
+      const memories = await this.extractMemoriesFromQuestion(testQuestion);
+      
+      if (memories.length > 0) {
+        console.log('🧠 [MemoryService] ✅ Memory extraction test successful!');
+        console.log('🧠 [MemoryService] 🔧 Extracted memories:', memories);
+      } else {
+        console.log('🧠 [MemoryService] ⚠️ No memories extracted from test question');
+      }
+    } catch (error) {
+      console.log('🧠 [MemoryService] ❌ Memory extraction test failed:', error);
+    }
+  }
+
+  /**
    * Test the API endpoint with a simple request
    */
   async testApiEndpoint(): Promise<void> {
