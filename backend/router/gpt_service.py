@@ -172,7 +172,6 @@ class GptService:
 
             try:
                 # Validate URL
-                print(f"Fetching URL: {url}")
                 parsed_url = urlparse(str(url))
                 if not parsed_url.scheme or not parsed_url.netloc:
                     return {"error": "Invalid URL format"}
@@ -189,15 +188,14 @@ class GptService:
 
                 # Use the first available fetch tool
                 fetch_tool_name = fetch_tools[0]
-                print(f"🔍 Using MCP fetch tool: {fetch_tool_name}")
-
+             
                 # Prepare arguments for the MCP fetch tool
                 fetch_args = {"url": url}
 
                 # Try to add recursive flag if the tool supports it
                 fetch_args["max_length"] = 10000
-                fetch_args["markdown"] = True
-                fetch_args["html"] = False
+                fetch_args["html"] = True,
+                
                 fetch_args["include_links"] = True
                 fetch_args["include_tables"] = True
                 fetch_args["include_code"] = True
@@ -205,14 +203,19 @@ class GptService:
 
                 # Execute the MCP fetch tool
                 result = await self._execute_tool(fetch_tool_name, fetch_args)
-
                 if "error" in result:
                     return {"error": f"MCP fetch failed: {result['error']}"}
-
-                # Extract content from the result
+                # INSERT_YOUR_CODE
+                # Use tiktoken if available for accurate token counting, else fallback to word count
                 content = result.get("content", str(result))
-                print(f"🔍 MCP Fetch Output for {url}:")
-
+                try:
+                    import tiktoken
+                    enc = tiktoken.get_encoding("cl100k_base")
+                    token_count = len(enc.encode(content))
+                except Exception:
+                    # If tiktoken is not installed, do a rough word-based fallback
+                    token_count = len(content.split())
+             
                 # Count URLs processed (simple heuristic)
                 url_count = content.count("http://") + content.count("https://")
                 if url_count == 0:
@@ -220,14 +223,15 @@ class GptService:
                 query = args.get("query")
                 if not query:
                     query = "What is the main content of the page?"
-                relevant_text = "Hi how are you?"
-                try: 
-                    relevant_text = extract_relevant_text(content, query,max_chars=1000, max_blocks=1000)
-                except Exception as e:
-                    print(f"Failed to extract relevant text: {e}")
-                    relevant_text = "Failed to extract relevant text"
+                relevant_text = content
+                if token_count > 10000:
+                    try: 
+                        relevant_text = extract_relevant_text(content, query,max_chars=1000, max_blocks=1000)
+                    except Exception as e:
+                        relevant_text = "Failed to extract relevant text"
+                
 
-                print("This is what I found relevant: ", relevant_text)
+
                 return {
                     "urls_processed": url_count,
                     "status": "success",
@@ -243,7 +247,7 @@ class GptService:
         # Register the MCP fetch tool
         self._register_tool(
             name="custom_mcp_fetch",
-            description="Fetch content from URLs using MCP fetch Docker container. Recursively fetches all content from the given URL and returns a summary.",
+            description="Fetch relevant content from URLs using mcp tools. Uses embeddings to extract relevant text for finding textual information. Prefer this option if webpages are too big to read.",
             input_schema={
                 "type": "object",
                 "properties": {
@@ -253,7 +257,7 @@ class GptService:
                     },
                     "query": {
                         "type": "string",
-                        "description": "Search terms as descriptive keywords and concepts, not questions. Use 3-7 key terms."
+                        "description": "Example of the data you'd like to recieve to answer users question."
                     }
                 },
                 "required": ["url", "query"]
@@ -510,8 +514,8 @@ class GptService:
 
     def get_chat_completion_params(self) -> tuple:
         headers = {}
-        if self.config.OPENAI_KEY:
-            headers["Authorization"] = f"Bearer {self.config.OPENAI_KEY}"
+        if self.config.REMOTE_INFERENCE_KEY:
+            headers["Authorization"] = f"Bearer {self.config.REMOTE_INFERENCE_KEY}"
 
         if self.config.USE_REMOTE_INFERENCE:
             url = self.config.REMOTE_INFERENCE_URL
@@ -586,7 +590,8 @@ class GptService:
                     "top_p": 1.0,
                     "max_tokens": self.config.MAX_TOKENS,
                     "stream": False,
-                    "model": model
+                    "model": model,
+                    "reasoning_effort": "medium",
                 },
                 headers=headers,
                 timeout=self.config.INFERENCE_TIMEOUT
@@ -660,12 +665,11 @@ class GptService:
                     print(f"⚡ Using increased max_tokens: {max_tokens_to_use} (multi-tool scenario detected)")
 
             request_data = {
-                "messages": msgs,
-                "temperature": 1.0,
-                "top_p": 1.0,
-                "max_tokens": max_tokens_to_use,
+                "messages": msgs, 
+                "max_tokens": 32767,
                 "stream": True,
-                "model": model
+                "model": model,
+                "reasoning_effort": "low",
             }
 
             # Add tools if available
@@ -695,13 +699,15 @@ class GptService:
                         if resp.status_code != 200:
                             error_body = await resp.aread()
                             error_text = error_body.decode(errors='replace')
+                            print(f"error text {error_text}")
 
                             # Parse error details if JSON
                             try:
                                 error_json = json.loads(error_text)
+                                print(f"Error text: {error_text}")
                                 error_msg = error_json.get("message", error_text)
                                 if "context" in error_msg.lower():
-                                    print(f"⚠️  Context limit exceeded - {len(msgs)} messages may be too many")
+                                    print(f"⚠️  Context limit exceeded - {len(msgs)} messages may be too many")                                
                             except json.JSONDecodeError:
                                 pass
 
@@ -720,7 +726,8 @@ class GptService:
                                 break
 
                             try:
-                                payload = json.loads(line[6:])  # Remove "data: " prefix
+                                payload = json.loads(line[6:]) 
+
                                 yield payload
                             except json.JSONDecodeError:
                                 continue
@@ -788,6 +795,7 @@ CRITICAL - Handle Contradictions:
 - If the search results show information that contradicts the user's question (e.g., they ask for 'president' but the country has 'prime minister'), CLARIFY the distinction in your answer.
 - If a title or term in the question doesn't match reality, explain what the correct term is and provide the accurate information.
 - Example: If asked "who is the president of Spain", clarify that Spain has a Prime Minister (not a president) and provide both the Prime Minister's name and the King's name.
+- Never use the following formatting: |, ---, or any advanced markdown features in your responses.
 
 Important: This is your FINAL response to the user - make it complete, accurate, and actionable."""
                     })
@@ -798,16 +806,15 @@ Important: This is your FINAL response to the user - make it complete, accurate,
             async def llm_stream_final(msgs: List[dict]):
                 """Final LLM call without tools"""
                 request_data = {
-                    "messages": msgs,
-                    "temperature": 1.0,
-                    "top_p": 1.0,
-                    "max_tokens": min(4000, self.config.MAX_TOKENS * 4),
-                    "stream": True,
-                    "model": model,
-                    "reasoning_effort": "medium"  # Better quality for final user-facing responses
-                    # NO tools in this request
-                }
-
+                "messages": msgs,
+                "max_tokens": 32767,
+                "top_p": 1.0,
+                "temperature": 1.0,
+                "reasoning_effort": "medium",                
+                "stream": True,
+                "model": model
+            }  
+                print(f"Calling with request data {request_data}")
                 if self.can_log:
                     print(f"📤 Final synthesis request")
 

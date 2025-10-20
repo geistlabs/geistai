@@ -17,10 +17,11 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-
-      - OPENAI_URL=https://api.openai.com
+      - REMOTE_INFERENCE_URL=https://api.studio.nebius.com
+      - RATING_INFERENCE_URL=https://api.openai.com
       - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
       - OPENAI_KEY=${OPENAI_KEY}
+      - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
       - USE_REMOTE_INFERENCE=true
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_BRAVE_URL=http://mcp-brave:8080

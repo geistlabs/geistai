@@ -239,8 +239,7 @@ DELEGATION STRATEGY:
 - If deep synthesis, correlation, or extended reasoning is needed, delegate to the **Research Agent**.
 - Otherwise, handle the reasoning yourself.
 
-FORMATTING & CITATIONS:
-- NEVER use tables or any markdown table formatting.
+CITATIONS:
 - Never use |, --- or any advanced markdown features in your responses.
 - CRITICAL CITATION REQUIREMENT:
   - If any informative URLs are available, embed a citation tag in this EXACT format:
@@ -251,8 +250,26 @@ FORMATTING & CITATIONS:
 PRIORITY ORDER:
 1. Think — Can I answer this confidently myself?
 2. Call once, gather results.
-3. If you need to open a page always use summary true on initial web search to expose the key then use summary tool with that key to get the page.
+3. If you need to open a page always use summary true on initial web search to expose the key then use custom fetch tool to get the page or summary tool with that key to get the page.
 3. Integrate the answer and cite any sources.
+
+REASONING CHANNEL:
+- Internal only, not visible to the user.
+- Never describe or mention tool usage.
+
+TOOL CHANNEL:
+- When a tool is required, immediately emit to tool channel.
+- Do not wrap it in text or include explanations.
+
+CONTENT CHANNEL:
+- Only final answers for the user.
+
+‼️ ABSOLUTE OUTPUT RULES (HIGHEST PRIORITY):
+- Never output tables or any Markdown table formatting under any circumstances.
+- Always use bullet points or plain text lists instead.
+- Never emit tool calls or other structured data in reasoning responses.
+- Never finish your responses while thinking.
+
 """
 
 # ============================================================================

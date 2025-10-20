@@ -36,8 +36,8 @@ class ReasonablenessService:
     """Service for rating the reasonableness of AI responses."""
     
     def __init__(self):
-        self.base_url = config.REMOTE_INFERENCE_URL
-        self.api_key = config.OPENAI_KEY
+        self.base_url = config.RATING_INFERENCE_URL
+        self.api_key = config.RATING_INFERENCE_KEY
         
     async def rate_response(
         self, 

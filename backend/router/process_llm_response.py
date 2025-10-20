@@ -84,11 +84,11 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     """
     tool_name = tool_call["function"]["name"]
     tool_args_str = tool_call["function"]["arguments"]
-    print("Calling tool: ", tool_name, "with arguments: ", tool_args_str)
     local_conversation = []
 
     # Validate required fields
     if not tool_name or not tool_args_str:
+        print(f"   ❌ Missing tool_name or tool_args_str")
         return ToolCallResponse(
             success=False,
             new_conversation_entries=[],
@@ -98,6 +98,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
     try:
         # Parse tool arguments from JSON string
         tool_args = json.loads(tool_args_str)
+
         # Add assistant's tool call to conversation
         local_conversation.append({
             "role": "assistant",
@@ -119,6 +120,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
             result
         )
 
+        # Add tool result to conversation
         local_conversation.append(tool_call_result)
 
         print(f"   ✅ Tool call succeeded: {tool_name}")
@@ -130,6 +132,7 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         )
 
     except json.JSONDecodeError as e:
+        print(f"   ❌ JSON parsing error: {str(e)}")
         error_result = {"error": f"Invalid JSON arguments: {str(e)}"}
         local_conversation.append(
             format_tool_result_for_llm(
@@ -234,7 +237,9 @@ async def process_llm_response_with_tools(
     current_tool_calls = []
     saw_tool_call = False
 
-  
+    print(f"🔍 [agent: {agent_name}] === Starting process_llm_response_with_tools ===")
+    print(f"🔍 [agent: {agent_name}] Conversation history has {len(conversation)} messages")
+
     # Stream one LLM response
     delta_count = 0
     content_deltas_count = 0  # Track actual content (not just reasoning markers)

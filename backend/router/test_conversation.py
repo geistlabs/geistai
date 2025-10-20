@@ -57,32 +57,32 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
 
     }
 
-async def test_parallel_conversation():
-    """Run multiple conversations in parallel"""
-    print(f"🔄 Running {len(short_conversations)} conversations in parallel...")
-    
-    # Run test_conversation once on each array within short_conversations
-    tasks = [
-        asyncio.create_task(test_conversation(conversation))
-        for conversation in short_conversations
-    ]
-    
+async def test_parallel_conversation(long_conversations):
+    """Run multiple conversations with a max of 3 in parallel"""
+    print(f"🔄 Running {len(long_conversations)} conversations with concurrency=3...")
+
+    semaphore = asyncio.Semaphore(10)
+
+    async def run_with_limit(idx: int, conversation):
+        async with semaphore:
+            try:
+                result = await test_conversation(conversation)
+                print(f"✅ Conversation {idx+1} completed successfully")
+                return result
+            except Exception as e:
+                print(f"❌ Conversation {idx+1} failed: {e}")
+                return e
+
+    tasks = [asyncio.create_task(run_with_limit(i, conv)) for i, conv in enumerate(long_conversations)]
+
     try:
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        successful = 0
-        failed = 0
-        
-        for i, (conversation, result) in enumerate(zip(short_conversations, results)):
-            if isinstance(result, Exception):
-                print(f"❌ Conversation {i+1} failed: {result}")
-                failed += 1
-            else:
-                print(f"✅ Conversation {i+1} completed successfully")
-                successful += 1
-        
+
+        successful = sum(1 for r in results if not isinstance(r, Exception))
+        failed = len(results) - successful
+
         print(f"\n📊 Results: {successful} successful, {failed} failed")
-        
+
     except Exception as e:
         print(f"❌ Error in parallel execution: {e}")
         raise
@@ -335,7 +335,7 @@ async def main():
         # Default: run short conversations in parallel
         print("🚀 Starting conversation tests...")
         print(f"📋 Running {len(short_conversations)} conversation(s)")
-        await test_parallel_conversation()
+        await test_parallel_conversation(long_conversations)
         print("✅ All conversation tests completed!")
         
     except Exception as e:

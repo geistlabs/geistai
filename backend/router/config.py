@@ -38,15 +38,18 @@ REASONING_EFFORT = os.getenv(
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
-REMOTE_INFERENCE_URL = "https://api.openai.com"
-USE_REMOTE_INFERENCE = False#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+RATING_INFERENCE_URL = "https://api.openai.com"
+REMOTE_INFERENCE_URL="https://api.studio.nebius.com"
+REMOTE_INFERENCE_KEY=os.getenv("REMOTE_INFERENCE_KEY", "")
+USE_REMOTE_INFERENCE = True#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 INFERENCE_URL = "https://inference.geist.im"
-OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+RATING_INFERENCE_KEY = os.getenv("OPENAI_KEY", "")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000") + "/mcp/"
 MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000") + "/mcp/"
 MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]
+OPENAI_MODEL="openai/gpt-oss-20b"
 # ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")
