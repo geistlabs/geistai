@@ -143,6 +143,7 @@ services:
       - USE_REMOTE_INFERENCE=false
       - OPENAI_KEY=${OPENAI_KEY}
       - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - MCP_FETCH_URL=http://mcp-fetch:8000
 
       # SSL Configuration (uncomment to enable)
       # - SSL_ENABLED=true
@@ -207,6 +208,28 @@ services:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
     depends_on:
       - mcp-brave
+  mcp-fetch:
+    image: mcp/fetch:latest
+    entrypoint: ["sh", "-c"]
+    command: [". /app/.venv/bin/activate && pip install mcp-http-bridge && mcp-http-bridge --command 'python -m mcp_server_fetch' --port 8000 --host 0.0.0.0"]
+    environment:
+    - PORT=8000
+    - FETCH_MCP_TRANSPORT=http
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=http
+    ports:
+      - "3002:8000"  # Expose MCP service on port 3002
+    networks: 
+      - geist-network
+ 
 
 
   mcp-brave:
