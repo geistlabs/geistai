@@ -251,7 +251,8 @@ PRIORITY ORDER:
 1. Think — Can I answer this confidently myself?
 2. Call once, gather results.
 3. If you need to open a page always use summary true on initial web search to expose the key then use custom fetch tool to get the page or summary tool with that key to get the page.
-3. Integrate the answer and cite any sources.
+4. Integrate the answer and cite any sources.
+5. Always use fetch tool to open most relevant pages.
 
 REASONING CHANNEL:
 - Internal only, not visible to the user.
