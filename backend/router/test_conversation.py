@@ -57,14 +57,14 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
 
     }
 
-async def test_parallel_conversation():
+async def test_parallel_conversation(long_conversations):
     """Run multiple conversations in parallel"""
-    print(f"🔄 Running {len(short_conversations)} conversations in parallel...")
+    print(f"🔄 Running {len(long_conversations)} conversations in parallel...")
     
     # Run test_conversation once on each array within short_conversations
     tasks = [
         asyncio.create_task(test_conversation(conversation))
-        for conversation in short_conversations
+        for conversation in long_conversations
     ]
     
     try:
@@ -73,7 +73,7 @@ async def test_parallel_conversation():
         successful = 0
         failed = 0
         
-        for i, (conversation, result) in enumerate(zip(short_conversations, results)):
+        for i, (conversation, result) in enumerate(zip(long_conversations, results)):
             if isinstance(result, Exception):
                 print(f"❌ Conversation {i+1} failed: {result}")
                 failed += 1
@@ -335,7 +335,7 @@ async def main():
         # Default: run short conversations in parallel
         print("🚀 Starting conversation tests...")
         print(f"📋 Running {len(short_conversations)} conversation(s)")
-        await test_parallel_conversation()
+        await test_parallel_conversation(long_conversations)
         print("✅ All conversation tests completed!")
         
     except Exception as e:
