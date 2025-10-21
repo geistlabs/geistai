@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict, List, Callable, Union
 import json
-
+from constants import MAX_FAILED_COMPLETIONS
 
 
 
@@ -236,6 +236,11 @@ async def process_llm_response_with_tools(
     """
     current_tool_calls = []
     saw_tool_call = False
+    
+    # Accumulate content for logging
+    accumulated_content = ""
+    accumulated_reasoning = ""
+    accumulated_tool_calls = []
 
     print(f"🔍 [agent: {agent_name}] === Starting process_llm_response_with_tools ===")
     print(f"🔍 [agent: {agent_name}] Conversation history has {len(conversation)} messages")
@@ -245,6 +250,7 @@ async def process_llm_response_with_tools(
     content_deltas_count = 0  # Track actual content (not just reasoning markers)
     reasoning_deltas_count = 0  # Track reasoning_content deltas
     max_deltas_without_content = 500  # Safety limit for final synthesis (plenty of room for medium reasoning)
+    failed_tool_calls = 0
     async for delta in llm_stream_once(conversation):
         delta_count += 1
 
@@ -257,7 +263,6 @@ async def process_llm_response_with_tools(
         # Accumulate tool calls
         if "tool_calls" in delta_obj:
             saw_tool_call = True
-            print(f"🔍 [agent: {agent_name}] 🛠️  TOOL CALL DETECTED")
 
             for tc_delta in delta_obj["tool_calls"]:
                 tc_index = tc_delta.get("index", 0)
@@ -280,12 +285,16 @@ async def process_llm_response_with_tools(
                         current_tool_calls[tc_index]["function"]["name"] += func["name"]
                     if "arguments" in func:
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
+                
+                # Log tool call accumulation
+
 
         # Stream content to client and print reasoning as it happens
         # HARMONY FORMAT FIX: GPT-OSS streams to "reasoning_content" after tool calls
         # We need to capture both "content" and "reasoning_content" channels
         elif "content" in delta_obj and delta_obj["content"]:
             content_deltas_count += 1
+            accumulated_content += delta_obj["content"]
             # Yield with explicit channel identification for frontend as a tuple
             yield ({
                 "channel": "content",
@@ -293,6 +302,8 @@ async def process_llm_response_with_tools(
             }, None)
         elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
             reasoning_deltas_count += 1
+            accumulated_reasoning += delta_obj["reasoning_content"]
+        
             # Yield with explicit channel identification for frontend as a tuple
             yield ({
                 "channel": "reasoning",
@@ -313,6 +324,18 @@ async def process_llm_response_with_tools(
 
             if finish_reason == "tool_calls" and current_tool_calls:
                 print(f"🔍 [agent: {agent_name}] ✅ EXECUTING {len(current_tool_calls)} TOOL(S)")
+               
+                # Lo    g accumulated content and reasoning before tool execution
+                if accumulated_content:
+                    print(f"🔍 [agent: {agent_name}] 📄 ACCUMULATED CONTENT: '{accumulated_content}'")
+                if accumulated_reasoning:
+                    print(f"🔍 [agent: {agent_name}] 🧠 ACCUMULATED REASONING: '{accumulated_reasoning}'")
+                
+                # Log all tool calls being executed
+                for i, tool_call in enumerate(current_tool_calls):
+                    print(f"🔍 [agent: {agent_name}] 🛠️  TOOL CALL {i+1}: {tool_call}")
+                    accumulated_tool_calls.append(tool_call)
+                
                 # Execute tool calls concurrently
 
                 # Create tasks for concurrent execution
@@ -337,6 +360,7 @@ async def process_llm_response_with_tools(
 
                 # Process all results
                 has_error = False
+                # handle tool call result and then continue
                 for i, result in enumerate(results):
                     if isinstance(result, BaseException):
                         print(f"🔍 [agent: {agent_name}] ❌ Tool error: {result}")
@@ -347,27 +371,60 @@ async def process_llm_response_with_tools(
 
                 if has_error:
                     yield (None, "stop")
-                    return
+                    print("Returning at tool call error")
 
-                print(f"🔍 [agent: {agent_name}] 🔄 Continuing with next LLM turn")
-                yield (None, "continue")
-                return
+                print(f"🔍 [agent: {agent_name}] 🔄 Returning 'continue' status to continue")               
+                yield (None, "continue") 
 
             elif finish_reason == "stop":
+                
                 # Normal completion, we're done
+                print(f"Just finished, based on {choice} {delta}")
+
                 print(f"🔍 [agent: {agent_name}] ✅ NORMAL COMPLETION - finish_reason='stop'")
+                
+                # Log final accumulated content and reasoning
+                if not accumulated_content and not accumulated_tool_calls:
+                    if failed_tool_calls >= MAX_FAILED_COMPLETIONS or "_final" in agent_name:
+                        print(f"🔍 [agent: {agent_name}] 🛑 MAX FAILED COMPLETIONS REACHED: {MAX_FAILED_COMPLETIONS}")
+                        print(f"Reasoning: {accumulated_reasoning}")
+                        print(f"Content: {accumulated_content}")
+                        yield (None, "stop")
+                    else:
+                        developer_message = (
+                            "Oops! Looks like you sent your tool call to the reasoning channel, try again."
+                        )
+                        print(f"🔍 [agent: {agent_name}] 🛑 DEV MESSAGE: {developer_message}")
+                        print(f"Reasoning: {accumulated_reasoning}")
+                        print(f"Content: {accumulated_content}")
+                        conversation.append({"role": "system", "content": developer_message})
+                        failed_tool_calls += 1
+
+                        yield (None, "break")
+                # Only log the first 10 characters (as per instruction "cars")
+                print(f"🔍 [agent: {agent_name}] 📄 FINAL CONTENT: '{accumulated_content[:10]}'")
+   
+                print(f"🔍 [agent: {agent_name}] 🧠 FINAL REASONING: '{accumulated_reasoning}'")
+
+                print(f"🔍 [agent: {agent_name}] 🛠️  TOTAL TOOL CALLS: {len(accumulated_tool_calls)}")
+                
                 print(f"🔍 [agent: {agent_name}] 🛑 RETURNING 'stop' status to exit")
                 yield (None, "stop")
-                return
 
             elif finish_reason == "length":
                 # Token limit reached - treat as stop
                 print(f"🔍 [agent: {agent_name}] ⚠️  Token limit reached, stopping")
                 yield (None, "stop")
-                return
 
 
 
     # This shouldn't happen, but just in case
     print(f"🔍 [agent: {agent_name}] ⚠️  Stream ended without finish_reason (no tool calls were made)")
+    
+    # Log any accumulated content even if stream ended unexpectedly
+    if accumulated_content:
+        print(f"🔍 [agent: {agent_name}] 📄 UNEXPECTED END - CONTENT: '{accumulated_content}'")
+    if accumulated_reasoning:
+        print(f"🔍 [agent: {agent_name}] 🧠 UNEXPECTED END - REASONING: '{accumulated_reasoning}'")
+    
     yield (None, "stop")

@@ -10,7 +10,7 @@ import asyncio
 import json
 import sys
 from reasonableness_service import reasonableness_service
-from initial_test_cases import short_conversations, long_conversations
+from initial_test_cases import  long_conversations
 
 
 async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float) -> dict:
@@ -318,7 +318,7 @@ async def main():
                 return
             elif sys.argv[1] == "--single":
                 print("🚀 Running single conversation test...")
-                await test_conversation(short_conversations[0])
+                await test_conversation(long_conversations[0])
                 print("✅ Single conversation test completed!")
                 return
             elif sys.argv[1] == "--long":
@@ -334,7 +334,7 @@ async def main():
         
         # Default: run short conversations in parallel
         print("🚀 Starting conversation tests...")
-        print(f"📋 Running {len(short_conversations)} conversation(s)")
+        print(f"📋 Running {len(long_conversations)} conversation(s)")
         await test_parallel_conversation(long_conversations)
         print("✅ All conversation tests completed!")
         

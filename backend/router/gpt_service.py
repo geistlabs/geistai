@@ -16,6 +16,7 @@ ARCHITECTURE:
 import json
 from datetime import datetime
 from typing import Dict, List,  Callable, Optional
+from constants import MAX_TOOL_CALLS
 import httpx
 from response_schema import AgentResponse
 from process_llm_response import execute_single_tool_call, process_llm_response_with_tools
@@ -30,7 +31,8 @@ from simple_mcp_client import SimpleMCPClient
 
 
 # Maximum number of tool calls in a single conversation turn
-MAX_TOOL_CALLS = 3  # Increased to allow more tool calls before synthesis (with 8K context we have room)
+
+
 
 
 class GptService:
@@ -224,7 +226,7 @@ class GptService:
                 if not query:
                     query = "What is the main content of the page?"
                 relevant_text = content
-                if token_count > 10000:
+                if token_count > 2000:
                     try: 
                         relevant_text = extract_relevant_text(content, query,max_chars=1000, max_blocks=1000)
                     except Exception as e:
@@ -671,6 +673,7 @@ class GptService:
                 "model": model,
                 "reasoning_effort": "low",
             }
+       
 
             # Add tools if available
             if tools_for_llm:
@@ -751,6 +754,7 @@ class GptService:
         exited_via_stop = False
 
         while tool_call_count < MAX_TOOL_CALLS:
+           
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -770,6 +774,8 @@ class GptService:
                     tool_call_count += 1
                     print(f"🔧 Tool call #{tool_call_count} completed")
                     break  # Exit the inner loop to continue the outer loop
+                elif status == "break":
+                    break
 
             # If we got a stop status, exit the tool-calling loop
             if exited_via_stop:
@@ -788,6 +794,9 @@ class GptService:
                     final_conversation.append({
                         "role": "system",
                         "content": """You are Geist AI. The user asked a question and you've gathered information using tools.
+                        YOU NO LONGER HAVE ACCESS TO TOOLS.
+                        YOU NO LONGER HAVE ACCESS TO TOOLS.
+                        YOU NO LONGER HAVE ACCESS TO TOOLS.
 
 Now provide a clear, complete answer to their question using the search results. Include relevant facts, data, and citations. Be direct and helpful.
 
@@ -809,12 +818,12 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 "messages": msgs,
                 "max_tokens": 32767,
                 "top_p": 1.0,
-                "temperature": 1.0,
+                "temperature": .7,
                 "reasoning_effort": "medium",                
                 "stream": True,
-                "model": model
+                "model": model,
+                "tool_choice": "none",
             }  
-                print(f"Calling with request data {request_data}")
                 if self.can_log:
                     print(f"📤 Final synthesis request")
 
@@ -825,6 +834,7 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                             f"{url}/v1/chat/completions",
                             headers=headers,
                             json=request_data,
+                            
                             timeout=self.config.INFERENCE_TIMEOUT
                         ) as resp:
                             if resp.status_code != 200:
