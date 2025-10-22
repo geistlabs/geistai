@@ -669,9 +669,11 @@ class GptService:
             request_data = {
                 "messages": msgs, 
                 "max_tokens": 32767,
+                "max_output_tokens": 32767,
                 "stream": True,
                 "model": model,
                 "reasoning_effort": "low",
+                "temperature": .9,
             }
        
 
@@ -774,7 +776,7 @@ class GptService:
                     tool_call_count += 1
                     print(f"🔧 Tool call #{tool_call_count} completed")
                     break  # Exit the inner loop to continue the outer loop
-                elif status == "break":
+                elif status == "empty":
                     break
 
             # If we got a stop status, exit the tool-calling loop
@@ -793,12 +795,10 @@ class GptService:
                     # Replace system prompt for final synthesis
                     final_conversation.append({
                         "role": "system",
-                        "content": """You are Geist AI. The user asked a question and you've gathered information using tools.
-                        YOU NO LONGER HAVE ACCESS TO TOOLS.
-                        YOU NO LONGER HAVE ACCESS TO TOOLS.
+                        "content": """You are Geist AI. The user asked a question and you've gathered information.
                         YOU NO LONGER HAVE ACCESS TO TOOLS.
 
-Now provide a clear, complete answer to their question using the search results. Include relevant facts, data, and citations. Be direct and helpful.
+Now provide a clear, complete answer to their the context you have. Include relevant facts, data, and citations. Be direct and helpful.
 
 CRITICAL - Handle Contradictions:
 - If the search results show information that contradicts the user's question (e.g., they ask for 'president' but the country has 'prime minister'), CLARIFY the distinction in your answer.
@@ -817,8 +817,9 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 request_data = {
                 "messages": msgs,
                 "max_tokens": 32767,
+                "max_output_tokens": 32767,
                 "top_p": 1.0,
-                "temperature": .7,
+                "temperature": .9,
                 "reasoning_effort": "medium",                
                 "stream": True,
                 "model": model,
@@ -863,15 +864,35 @@ Important: This is your FINAL response to the user - make it complete, accurate,
 
             # Use process_llm_response_with_tools for proper streaming and handling
             final_synthesis_content = []
-            async for content_chunk, status in process_llm_response_with_tools(
-                self._execute_tool,
-                llm_stream_final,
-                final_conversation,
-                agent_name + "_final"
-            ):
+            async def stream_with_retry(retry_count=0, max_retries=10):
+                """Helper to stream responses with retry on empty status (max 3 retries)"""
+                if retry_count > max_retries:
+                    print(f"⚠️  Max retries ({max_retries}) exceeded, stopping")
+                    return
+                
+                async for content_chunk, status in process_llm_response_with_tools(
+                    self._execute_tool,
+                    llm_stream_final,
+                    final_conversation,
+                    agent_name + "_final"
+                ):
+                    if content_chunk:
+                        yield content_chunk, status
+                    elif status == "empty":
+                        # Recursively retry with incremented counter
+                        print(f"🔄 Retrying process_llm_response_with_tools (attempt {retry_count + 1}/{max_retries})")
+                        async for retry_chunk, retry_status in stream_with_retry(retry_count + 1, max_retries):
+                            yield retry_chunk, retry_status
+                        return
+                    else:
+                        yield content_chunk, status
+
+            async for content_chunk, status in stream_with_retry():
                 if content_chunk:
                     final_synthesis_content.append(content_chunk)
                     yield content_chunk
+                
+                
                 if status == "stop":
                     # Print tool call statistics at the end
                     if self.can_log:

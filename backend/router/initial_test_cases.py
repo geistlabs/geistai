@@ -308,11 +308,3 @@ long_conversations = [
         "Based on that itinerary, what kind of clothing and gear would you recommend I pack?"
     ]
 ]
-vancouver_trip_conversation =    [
-        "I'm planning a 7-day trip to British Columbia in August. Can you create a high-level itinerary that includes both Vancouver and hiking on Vancouver Island?",
-        "This looks great. For the Tofino part of the trip, can you find me three mid-range hotel options and two must-do hiking trails?",
-        "Those hotels are a bit pricey. Can you look for three options that are under $300 a night, even if they are inns or B&Bs?"
-    ]
-ten_x_vancouver_trip_conversation =    [vancouver_trip_conversation] * 6
-
-long_conversations = ten_x_vancouver_trip_conversation

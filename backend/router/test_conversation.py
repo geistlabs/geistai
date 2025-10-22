@@ -61,7 +61,7 @@ async def test_parallel_conversation(long_conversations):
     """Run multiple conversations with a max of 3 in parallel"""
     print(f"🔄 Running {len(long_conversations)} conversations with concurrency=3...")
 
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(len(long_conversations))
 
     async def run_with_limit(idx: int, conversation):
         async with semaphore:

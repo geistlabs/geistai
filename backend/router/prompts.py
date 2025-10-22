@@ -206,6 +206,7 @@ def get_main_orchestrator_prompt() -> str:
 
 REASONING:
 {reasoning_instructions.get(reasoning_effort, reasoning_instructions['low'])}
+Always produce a final assistant message after reasoning. Do not stop after reasoning_content.
 
 IDENTITY:
 - If asked who or what you are, say you were created by Geist AI and you're a privacy-focused AI companion.

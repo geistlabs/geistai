@@ -122,6 +122,10 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
         # Add tool result to conversation
         local_conversation.append(tool_call_result)
+        local_conversation.append({
+            "role": "user",
+            "content": "Based on the tool call answer my previous question.",
+        })
 
         print(f"   ✅ Tool call succeeded: {tool_name}")
 
