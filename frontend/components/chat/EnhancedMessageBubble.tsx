@@ -1,10 +1,23 @@
 import * as Clipboard from 'expo-clipboard';
 import React, { useState } from 'react';
-import { Alert, Share, Text, TouchableOpacity, View, ScrollView } from 'react-native';
+import {
+  Alert,
+  Share,
+  Text,
+  TouchableOpacity,
+  View,
+  ScrollView,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import {
+  EnhancedMessage,
+  ToolCallEvent,
+  AgentConversation,
+  CollectedLink,
+} from '../../hooks/useChatWithStorage';
+
 import { LoadingIndicator } from './LoadingIndicator';
-import { EnhancedMessage, ToolCallEvent, AgentConversation, CollectedLink } from '../../hooks/useChatWithStorage';
 
 const CopyIcon = ({ color = 'currentColor', size = 16 }) => (
   <Svg
@@ -121,36 +134,52 @@ const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
 };
 
 // Tool Call Event Component
-const ToolCallEventComponent: React.FC<{ event: ToolCallEvent }> = ({ event }) => {
+const ToolCallEventComponent: React.FC<{ event: ToolCallEvent }> = ({
+  event,
+}) => {
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return '#3b82f6';
-      case 'completed': return '#10b981';
-      case 'error': return '#ef4444';
-      default: return '#6b7280';
+      case 'active':
+        return '#3b82f6';
+      case 'completed':
+        return '#10b981';
+      case 'error':
+        return '#ef4444';
+      default:
+        return '#6b7280';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'active': return '🔄';
-      case 'completed': return '✅';
-      case 'error': return '❌';
-      default: return '🔧';
+      case 'active':
+        return '🔄';
+      case 'completed':
+        return '✅';
+      case 'error':
+        return '❌';
+      default:
+        return '🔧';
     }
   };
 
   return (
-    <View style={{
-      backgroundColor: '#f9fafb',
-      padding: 8,
-      borderRadius: 6,
-      marginVertical: 2,
-      borderLeftWidth: 3,
-      borderLeftColor: getStatusColor(event.status),
-    }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-        <Text style={{ fontSize: 12, marginRight: 6 }}>{getStatusIcon(event.status)}</Text>
+    <View
+      style={{
+        backgroundColor: '#f9fafb',
+        padding: 8,
+        borderRadius: 6,
+        marginVertical: 2,
+        borderLeftWidth: 3,
+        borderLeftColor: getStatusColor(event.status),
+      }}
+    >
+      <View
+        style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
+      >
+        <Text style={{ fontSize: 12, marginRight: 6 }}>
+          {getStatusIcon(event.status)}
+        </Text>
         <Text style={{ fontSize: 12, fontWeight: '600', color: '#374151' }}>
           {event.toolName}
         </Text>
@@ -178,16 +207,20 @@ const ToolCallEventComponent: React.FC<{ event: ToolCallEvent }> = ({ event }) =
 };
 
 // Agent Conversation Component
-const AgentConversationComponent: React.FC<{ conversation: AgentConversation }> = ({ conversation }) => {
+const AgentConversationComponent: React.FC<{
+  conversation: AgentConversation;
+}> = ({ conversation }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <View style={{
-      backgroundColor: '#f3f4f6',
-      padding: 8,
-      borderRadius: 6,
-      marginVertical: 2,
-    }}>
+    <View
+      style={{
+        backgroundColor: '#f3f4f6',
+        padding: 8,
+        borderRadius: 6,
+        marginVertical: 2,
+      }}
+    >
       <TouchableOpacity
         onPress={() => setIsExpanded(!isExpanded)}
         style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
@@ -202,44 +235,53 @@ const AgentConversationComponent: React.FC<{ conversation: AgentConversation }> 
           {isExpanded ? '▼' : '▶'}
         </Text>
       </TouchableOpacity>
-      
+
       {conversation.task && (
         <Text style={{ fontSize: 10, color: '#6b7280', marginBottom: 2 }}>
           Task: {conversation.task}
         </Text>
       )}
-      
-      {isExpanded && conversation.messages && conversation.messages.length > 0 && (
-        <View style={{ marginTop: 4 }}>
-          {conversation.messages.map((msg, index) => (
-            <View key={index} style={{
-              backgroundColor: '#ffffff',
-              padding: 6,
-              borderRadius: 4,
-              marginVertical: 2,
-            }}>
-              <SimpleMarkdownText text={msg.content} isUser={false} />
-            </View>
-          ))}
-        </View>
-      )}
+
+      {isExpanded &&
+        conversation.messages &&
+        conversation.messages.length > 0 && (
+          <View style={{ marginTop: 4 }}>
+            {conversation.messages.map((msg, index) => (
+              <View
+                key={index}
+                style={{
+                  backgroundColor: '#ffffff',
+                  padding: 6,
+                  borderRadius: 4,
+                  marginVertical: 2,
+                }}
+              >
+                <SimpleMarkdownText text={msg.content} isUser={false} />
+              </View>
+            ))}
+          </View>
+        )}
     </View>
   );
 };
 
 // Collected Links Component
-const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({ links }) => {
+const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({
+  links,
+}) => {
   if (!links || links.length === 0) return null;
 
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <View style={{
-      backgroundColor: '#fef3c7',
-      padding: 8,
-      borderRadius: 6,
-      marginTop: 8,
-    }}>
+    <View
+      style={{
+        backgroundColor: '#fef3c7',
+        padding: 8,
+        borderRadius: 6,
+        marginTop: 8,
+      }}
+    >
       <TouchableOpacity
         onPress={() => setIsExpanded(!isExpanded)}
         style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}
@@ -251,7 +293,7 @@ const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({ links }
           {isExpanded ? '▼' : '▶'}
         </Text>
       </TouchableOpacity>
-      
+
       {isExpanded && (
         <ScrollView style={{ maxHeight: 200 }}>
           {links.map((link, index) => (
@@ -266,14 +308,19 @@ const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({ links }
                 borderLeftColor: '#f59e0b',
               }}
             >
-              <Text style={{ fontSize: 10, fontWeight: '600', color: '#92400e' }}>
+              <Text
+                style={{ fontSize: 10, fontWeight: '600', color: '#92400e' }}
+              >
                 {link.title || link.source || 'Untitled'}
               </Text>
               <Text style={{ fontSize: 9, color: '#6b7280' }} numberOfLines={1}>
                 {link.url}
               </Text>
               {link.snippet && (
-                <Text style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }} numberOfLines={2}>
+                <Text
+                  style={{ fontSize: 9, color: '#6b7280', marginTop: 2 }}
+                  numberOfLines={2}
+                >
                   {link.snippet}
                 </Text>
               )}
@@ -417,7 +464,14 @@ export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
           {/* Tool Call Events */}
           {message.toolCallEvents && message.toolCallEvents.length > 0 && (
             <View style={{ marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  fontWeight: '600',
+                  color: '#374151',
+                  marginBottom: 4,
+                }}
+              >
                 🔧 Tool Activity
               </Text>
               {message.toolCallEvents.map((event, index) => (
@@ -427,16 +481,27 @@ export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
           )}
 
           {/* Agent Conversations */}
-          {message.agentConversations && message.agentConversations.length > 0 && (
-            <View style={{ marginBottom: 8 }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: '#374151', marginBottom: 4 }}>
-                🤖 Agent Activity
-              </Text>
-              {message.agentConversations.map((conversation, index) => (
-                <AgentConversationComponent key={index} conversation={conversation} />
-              ))}
-            </View>
-          )}
+          {message.agentConversations &&
+            message.agentConversations.length > 0 && (
+              <View style={{ marginBottom: 8 }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: '600',
+                    color: '#374151',
+                    marginBottom: 4,
+                  }}
+                >
+                  🤖 Agent Activity
+                </Text>
+                {message.agentConversations.map((conversation, index) => (
+                  <AgentConversationComponent
+                    key={index}
+                    conversation={conversation}
+                  />
+                ))}
+              </View>
+            )}
 
           {/* Collected Links */}
           {message.collectedLinks && message.collectedLinks.length > 0 && (

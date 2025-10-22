@@ -12,6 +12,8 @@ import { ENV } from '../lib/config/environment';
 import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
+import { useMemoryManager } from './useMemoryManager';
+import { memoryService, Memory } from '../lib/memoryService';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -58,7 +60,9 @@ export interface AgentConversation {
 }
 
 // Utility function to collect and deduplicate links from enhanced messages
-export function collectLinksFromEnhancedMessage(message: EnhancedMessage): CollectedLink[] {
+export function collectLinksFromEnhancedMessage(
+  message: EnhancedMessage,
+): CollectedLink[] {
   const links: CollectedLink[] = [];
   const seenUrls = new Set<string>();
 
@@ -74,7 +78,7 @@ export function collectLinksFromEnhancedMessage(message: EnhancedMessage): Colle
           source: citation.source,
           snippet: citation.snippet,
           agent: 'main',
-          type: 'citation'
+          type: 'citation',
         });
       }
     });
@@ -100,7 +104,7 @@ export function collectLinksFromEnhancedMessage(message: EnhancedMessage): Colle
                   title: `Link from ${agentConvo.agent}`,
                   source: agentConvo.agent,
                   agent: agentConvo.agent,
-                  type: 'citation'
+                  type: 'citation',
                 });
               }
             }
@@ -170,14 +174,15 @@ export function useChatWithStorage(
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
       id: '1',
-      content: 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
+      content:
+        'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
       role: 'assistant',
       timestamp: new Date(),
       isStreaming: false,
       agentConversations: [],
       toolCallEvents: [],
       collectedLinks: [],
-    }
+    },
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -205,6 +210,13 @@ export function useChatWithStorage(
 
   // Storage integration
   const storage = useChatStorage(options.chatId);
+
+  // Memory integration
+  const memoryManager = useMemoryManager({
+    autoExtract: true,
+    contextThreshold: 0.7,
+    maxContextMemories: 5,
+  });
 
   // Keep isStreamingRef in sync with isStreaming state
   useEffect(() => {
@@ -283,13 +295,101 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
+      
+      // Get current chat ID from ref
+      const currentChatId = currentChatIdRef.current;
 
-      // Update local state immediately
+      // Update local state immediately - show user message right away
       setMessages(prev => [...prev, userMessage]);
+
+      // 1. IMMEDIATELY extract memories from the question using /api/memory
+      console.log('🧠 [Chat] STEP 1: Extracting memories from user question...');
+      const memoryExtractionPromise = memoryService.extractMemoriesFromQuestion(content);
+
+      // Save user message to storage asynchronously (don't block streaming)
+      if (currentChatId && storage.addMessage) {
+        storage.addMessage(convertToLegacyMessage(userMessage), currentChatId)
+          .then(() => console.log('🧠 [Chat] ✅ User message saved to storage'))
+          .catch(err => console.error('[Chat] Failed to save user message:', err));
+      }
+
+      // Store assistant message saving function for later sequential execution
+      const saveAssistantMessageAsync = async (assistantMessage: ChatMessage) => {
+        try {
+          if (currentChatId && storage.addMessage) {
+            await storage.addMessage(convertToLegacyMessage(assistantMessage), currentChatId);
+            console.log('🧠 [Chat] ✅ Assistant message saved to storage');
+          }
+        } catch (err) {
+          console.error('[Chat] Failed to save assistant message:', err);
+        }
+      };
+
+      // 3. When /api/memory returns, store the memories asynchronously
+      memoryExtractionPromise.then(async (extractedMemories) => {
+        try {
+          if (extractedMemories.length > 0) {
+            console.log('🧠 [Chat] STEP 3: ✅ Extracted memories from /api/memory:', extractedMemories);
+            
+            // Convert extracted memories to full Memory objects and store them
+            if (memoryManager.isInitialized && currentChatId) {
+              const memories: Memory[] = [];
+              
+              for (const memoryData of extractedMemories) {
+                const embedding = await memoryService.getEmbedding(memoryData.content);
+                
+                if (embedding.length > 0) {
+                  const memory: Memory = {
+                    id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    chatId: currentChatId,
+                    content: memoryData.content,
+                    originalContext: memoryData.originalContext || content,
+                    embedding,
+                    relevanceScore: memoryData.relevanceScore || 0.8,
+                    extractedAt: Date.now(),
+                    messageIds: [parseInt(userMessage.id)],
+                    category: memoryData.category || 'other',
+                  };
+                  
+                  memories.push(memory);
+                }
+              }
+              
+              if (memories.length > 0) {
+                console.log('🧠 [Chat] Storing extracted memories:', memories.length);
+                await memoryManager.storeMemories(memories);
+                console.log('🧠 [Chat] ✅ Memories stored successfully');
+              }
+            }
+          } else {
+            console.log('🧠 [Chat] No memories extracted from question');
+          }
+        } catch (err) {
+          console.warn('🧠 [Chat] Failed to store memories:', err);
+        }
+      }).catch(err => {
+        console.error('🧠 [Chat] Memory extraction failed:', err);
+      });
+
+      // Get relevant memory context asynchronously (don't block streaming)
+      let memoryContext = '';
+      const getMemoryContextAsync = async () => {
+        if (memoryManager.isInitialized && currentChatId) {
+          try {
+            return await memoryManager.getRelevantContext(content, currentChatId);
+          } catch (err) {
+            console.warn('Failed to get memory context:', err);
+            return '';
+          }
+        }
+        return '';
+      };
+
+      // Start memory context retrieval but don't wait for it
+      const memoryContextPromise = getMemoryContextAsync();
 
       // Save user message to storage asynchronously (don't block UI)
       // Use the current chat ID from the ref, which is kept up to date
-      const currentChatId = currentChatIdRef.current;
       if (currentChatId && storage.addMessage) {
         storage
           .addMessage(convertToLegacyMessage(userMessage), currentChatId)
@@ -378,77 +478,94 @@ export function useChatWithStorage(
           collectedLinks: [],
         };
 
-        setEnhancedMessages(prev => [...prev, enhancedUserMessage, enhancedAssistantMessage]);
+        setEnhancedMessages(prev => [
+          ...prev,
+          enhancedUserMessage,
+          enhancedAssistantMessage,
+        ]);
 
         // Create event handlers object
         const eventHandlers: StreamEventHandlers = {
           onToken: (token: string) => {
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
-            
+
             // Update enhanced message content
-            setEnhancedMessages(prev => prev.map(msg => 
-              msg.id === enhancedAssistantMessageId 
-                ? { ...msg, content: msg.content + token }
-                : msg
-            ));
+            setEnhancedMessages(prev =>
+              prev.map(msg =>
+                msg.id === enhancedAssistantMessageId
+                  ? { ...msg, content: msg.content + token }
+                  : msg,
+              ),
+            );
           },
           onSubAgentEvent: agentEvent => {
             // Handle sub-agent events in enhanced messages
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                const agentConvos = msg.agentConversations || [];
-                const existingIdx = agentConvos.findIndex(convo => convo.agent === agentEvent.agent);
-                
-                let updatedAgentConvos;
-                if (existingIdx !== -1) {
-                  // Update existing agent conversation
-                  updatedAgentConvos = agentConvos.map((convo, idx) =>
-                    idx === existingIdx
-                      ? { 
-                          ...convo, 
-                          messages: convo.messages.length > 0
-                            ? [
-                                { 
-                                  ...convo.messages[0],
-                                  content: convo.messages[0].content + agentEvent.token,
-                                  isStreaming: agentEvent.isStreaming
-                                }, 
-                                ...convo.messages.slice(1)
-                              ]
-                            : [{ 
-                                id: agentEvent.token, 
-                                content: agentEvent.token, 
-                                role: 'assistant' as const, 
-                                timestamp: new Date(), 
-                                isStreaming: agentEvent.isStreaming 
-                              }]
-                        }
-                      : convo
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const agentConvos = msg.agentConversations || [];
+                  const existingIdx = agentConvos.findIndex(
+                    convo => convo.agent === agentEvent.agent,
                   );
-                } else {
-                  // Create new agent conversation
-                  const newAgentConvo: AgentConversation = {
-                    timestamp: new Date(),
-                    type: agentEvent.isStreaming ? 'start' : 'complete',
-                    agent: agentEvent.agent,
-                    task: agentEvent.task,
-                    context: agentEvent.context,
-                    messages: [{ 
-                      id: agentEvent.token, 
-                      content: agentEvent.token, 
-                      role: 'assistant' as const, 
-                      timestamp: new Date(), 
-                      isStreaming: agentEvent.isStreaming 
-                    }]
-                  };
-                  updatedAgentConvos = [...agentConvos, newAgentConvo];
+
+                  let updatedAgentConvos;
+                  if (existingIdx !== -1) {
+                    // Update existing agent conversation
+                    updatedAgentConvos = agentConvos.map((convo, idx) =>
+                      idx === existingIdx
+                        ? {
+                            ...convo,
+                            messages:
+                              convo.messages.length > 0
+                                ? [
+                                    {
+                                      ...convo.messages[0],
+                                      content:
+                                        convo.messages[0].content +
+                                        agentEvent.token,
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                    ...convo.messages.slice(1),
+                                  ]
+                                : [
+                                    {
+                                      id: agentEvent.token,
+                                      content: agentEvent.token,
+                                      role: 'assistant' as const,
+                                      timestamp: new Date(),
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                  ],
+                          }
+                        : convo,
+                    );
+                  } else {
+                    // Create new agent conversation
+                    const newAgentConvo: AgentConversation = {
+                      timestamp: new Date(),
+                      type: agentEvent.isStreaming ? 'start' : 'complete',
+                      agent: agentEvent.agent,
+                      task: agentEvent.task,
+                      context: agentEvent.context,
+                      messages: [
+                        {
+                          id: agentEvent.token,
+                          content: agentEvent.token,
+                          role: 'assistant' as const,
+                          timestamp: new Date(),
+                          isStreaming: agentEvent.isStreaming,
+                        },
+                      ],
+                    };
+                    updatedAgentConvos = [...agentConvos, newAgentConvo];
+                  }
+
+                  return { ...msg, agentConversations: updatedAgentConvos };
                 }
-                
-                return { ...msg, agentConversations: updatedAgentConvos };
-              }
-              return msg;
-            }));
+                return msg;
+              }),
+            );
 
             // Legacy event handling for backward compatibility
             const agentMessage: AgentMessage = {
@@ -476,41 +593,56 @@ export function useChatWithStorage(
           },
           onToolCallEvent: toolCallEvent => {
             // Handle tool call events in enhanced messages
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                const toolCallEvents = msg.toolCallEvents || [];
-                const eventId = `${toolCallEvent.toolName}-${Date.now()}-${Math.random()}`;
-                
-                if (toolCallEvent.type === 'start') {
-                  // Add new tool call event
-                  const newEvent: ToolCallEvent = {
-                    id: eventId,
-                    type: 'start',
-                    toolName: toolCallEvent.toolName,
-                    arguments: toolCallEvent.arguments,
-                    timestamp: new Date(),
-                    status: 'active'
-                  };
-                  return { ...msg, toolCallEvents: [...toolCallEvents, newEvent] };
-                } else if (toolCallEvent.type === 'complete' || toolCallEvent.type === 'error') {
-                  // Update existing tool call event
-                  const updatedEvents: ToolCallEvent[] = toolCallEvents.map(event => {
-                    if (event.toolName === toolCallEvent.toolName && event.status === 'active') {
-                        return {
-                          ...event,
-                          type: toolCallEvent.type as 'complete' | 'error',
-                          result: toolCallEvent.result,
-                          error: toolCallEvent.error,
-                          status: (toolCallEvent.type === 'complete' ? 'completed' : 'error') as 'completed' | 'error'
-                        };
-                    }
-                    return event;
-                  });
-                  return { ...msg, toolCallEvents: updatedEvents };
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const toolCallEvents = msg.toolCallEvents || [];
+                  const eventId = `${toolCallEvent.toolName}-${Date.now()}-${Math.random()}`;
+
+                  if (toolCallEvent.type === 'start') {
+                    // Add new tool call event
+                    const newEvent: ToolCallEvent = {
+                      id: eventId,
+                      type: 'start',
+                      toolName: toolCallEvent.toolName,
+                      arguments: toolCallEvent.arguments,
+                      timestamp: new Date(),
+                      status: 'active',
+                    };
+                    return {
+                      ...msg,
+                      toolCallEvents: [...toolCallEvents, newEvent],
+                    };
+                  } else if (
+                    toolCallEvent.type === 'complete' ||
+                    toolCallEvent.type === 'error'
+                  ) {
+                    // Update existing tool call event
+                    const updatedEvents: ToolCallEvent[] = toolCallEvents.map(
+                      event => {
+                        if (
+                          event.toolName === toolCallEvent.toolName &&
+                          event.status === 'active'
+                        ) {
+                          return {
+                            ...event,
+                            type: toolCallEvent.type as 'complete' | 'error',
+                            result: toolCallEvent.result,
+                            error: toolCallEvent.error,
+                            status: (toolCallEvent.type === 'complete'
+                              ? 'completed'
+                              : 'error') as 'completed' | 'error',
+                          };
+                        }
+                        return event;
+                      },
+                    );
+                    return { ...msg, toolCallEvents: updatedEvents };
+                  }
                 }
-              }
-              return msg;
-            }));
+                return msg;
+              }),
+            );
 
             // Legacy event handling for backward compatibility
             setToolCallEvents(prev => [...prev, toolCallEvent]);
@@ -520,19 +652,21 @@ export function useChatWithStorage(
             batcher.complete();
 
             // Mark enhanced message as complete and collect links
-            setEnhancedMessages(prev => prev.map(msg => {
-              if (msg.id === enhancedAssistantMessageId) {
-                // Collect links from the completed message
-                const collectedLinks = collectLinksFromEnhancedMessage(msg);
-                
-                return { 
-                  ...msg, 
-                  isStreaming: false,
-                  collectedLinks: collectedLinks
-                };
-              }
-              return msg;
-            }));
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  // Collect links from the completed message
+                  const collectedLinks = collectLinksFromEnhancedMessage(msg);
+
+                  return {
+                    ...msg,
+                    isStreaming: false,
+                    collectedLinks: collectedLinks,
+                  };
+                }
+                return msg;
+              }),
+            );
 
             setIsStreaming(false);
             isStreamingRef.current = false;
@@ -541,23 +675,17 @@ export function useChatWithStorage(
             options.onStreamEnd?.();
 
             // Save final assistant message to storage asynchronously (don't block completion)
-            const currentChatId = currentChatIdRef.current;
             if (currentChatId && storage.addMessage && accumulatedContent) {
               const finalAssistantMessage = {
                 ...assistantMessage,
                 content: accumulatedContent,
               };
-              storage
-                .addMessage(
-                  convertToLegacyMessage(finalAssistantMessage),
-                  currentChatId,
-                )
-                .catch(err => {
-                  console.error(
-                    '[Chat] Failed to save assistant message:',
-                    err,
-                  );
-                });
+              // Save assistant message sequentially to avoid transaction conflicts
+              saveAssistantMessageAsync(finalAssistantMessage);
+
+              // Memory extraction is now handled in real-time during user input
+              // No need for post-conversation extraction since we extract from each question immediately
+              console.log('[Memory] 🧠 Memory extraction handled during user input - no post-processing needed');
             }
           },
           onError: (error: string) => {
@@ -571,8 +699,37 @@ export function useChatWithStorage(
           },
         };
 
-        // Use the new sendStreamingMessage function
-        await sendStreamingMessage(content, currentMessages, eventHandlers);
+        // Prepare messages with memory context
+        const messagesWithContext = [...currentMessages];
+        
+        // Wait for memory context to be retrieved (if it finishes quickly)
+        // But don't wait more than 500ms to avoid blocking streaming
+        try {
+          const contextWithTimeout = await Promise.race([
+            memoryContextPromise,
+            new Promise<string>(resolve => setTimeout(() => resolve(''), 500))
+          ]);
+          
+          if (contextWithTimeout) {
+            // Insert memory context as a system message at the beginning
+            messagesWithContext.unshift({
+              id: 'memory-context',
+              role: 'system',
+              content: contextWithTimeout,
+              timestamp: Date.now(),
+            });
+            console.log('🧠 [Chat] ✅ Added memory context to request');
+            console.log('🧠 [Chat] Memory context content:', contextWithTimeout);
+          } else {
+            console.log('🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)');
+          }
+        } catch (err) {
+          console.warn('🧠 [Chat] ❌ Memory context retrieval timed out or failed:', err);
+        }
+
+        // 2. Start streaming to /api/stream
+        console.log('🧠 [Chat] STEP 2: Starting streaming to /api/stream...');
+        await sendStreamingMessage(content, messagesWithContext, eventHandlers);
       } catch (err) {
         console.error('[Chat] Error sending message:', err);
         const error =

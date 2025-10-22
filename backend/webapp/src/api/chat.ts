@@ -416,11 +416,7 @@ export function getAgentDisplayName(agentName: string): string {
 }
 
 // Health check function
-export async function checkHealth(): Promise<{
-  status: string;
-  ssl_enabled: boolean;
-  ssl_status: string;
-}> {
+export async function checkHealth(): Promise<{ status: string }> {
   try {
     const response = await fetch(`${API_BASE_URL}/health`);
 

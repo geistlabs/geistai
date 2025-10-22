@@ -1,7 +1,7 @@
 import EventSource from 'react-native-sse';
 
-import { ApiClient } from './client';
 import { ENV } from '../config/environment';
+import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
@@ -262,6 +262,29 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
+  // 🔍 DEBUG: Log the FULL prompt being sent to backend
+  console.log(
+    '🚀 [Chat API] ===== FULL PROMPT BEING SENT TO /api/stream =====',
+  );
+  console.log('🚀 [Chat API] User Message:', message);
+  console.log(
+    '🚀 [Chat API] Conversation History Length:',
+    conversationHistory.length,
+  );
+  console.log(
+    '🚀 [Chat API] Full Request Body:',
+    JSON.stringify(requestBody, null, 2),
+  );
+
+  // Log each message in the conversation history for debugging
+  conversationHistory.forEach((msg, index) => {
+    console.log(
+      `🚀 [Chat API] Message ${index + 1} [${msg.role}]:`,
+      msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''),
+    );
+  });
+  console.log('🚀 [Chat API] ============================================');
+
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
 
@@ -282,68 +305,137 @@ export async function sendStreamingMessage(
     // Handle different event types
     es.addEventListener('orchestrator_token', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_token:', parseError);
+        console.warn(
+          'Failed to parse orchestrator_token:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('sub_agent_event', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse sub_agent_event:', parseError);
+        console.warn(
+          'Failed to parse sub_agent_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('tool_call_event', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse tool_call_event:', parseError);
+        console.warn(
+          'Failed to parse tool_call_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('orchestrator_start', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_start:', parseError);
+        console.warn(
+          'Failed to parse orchestrator_start:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('orchestrator_complete', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse orchestrator_complete:', parseError);
+        console.warn(
+          'Failed to parse orchestrator_complete:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('final_response', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
       } catch (parseError) {
-        console.warn('Failed to parse final_response:', parseError);
+        console.warn(
+          'Failed to parse final_response:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('error', (event: any) => {
       try {
-        const data = JSON.parse(event.data);
-        eventProcessor.processEvent(data);
+        // Only try to parse if event.data exists and is a string
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        } else {
+          // Handle error events without data
+          console.warn('Error event received without valid data:', event);
+          handlers.onError('Stream error occurred');
+        }
       } catch (parseError) {
-        console.warn('Failed to parse error event:', parseError);
+        console.warn(
+          'Failed to parse error event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
       }
     });
 
     es.addEventListener('end', (event: any) => {
+      try {
+        // Check if there's any data to process before completing
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse end event data:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+
       handlers.onComplete();
       es.close();
       resolve();
@@ -354,7 +446,7 @@ export async function sendStreamingMessage(
     });
 
     // Handle connection errors
-    es.onerror = (error) => {
+    es.onerror = error => {
       console.error('EventSource error:', error);
       handlers.onError('Connection failed');
       es.close();
@@ -421,8 +513,6 @@ export function getAgentDisplayName(agentName: string): string {
 // Health check function
 export async function checkHealth(): Promise<{
   status: string;
-  ssl_enabled: boolean;
-  ssl_status: string;
 }> {
   try {
     const response = await fetch(`${ENV.API_URL}/health`);

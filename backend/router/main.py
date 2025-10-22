@@ -2,7 +2,6 @@ from events import EventEmitter
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-import gpt_service
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -28,14 +27,20 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckResponse(BaseModel):
     status: str
-    ssl_enabled: bool
-    ssl_status: str
 
 
 
 class ChatRequest(BaseModel):
     message: str
     messages: Optional[List[ChatMessage]] = None
+
+
+class MemoryExtractionRequest(BaseModel):
+    message: str
+    messages: Optional[List[ChatMessage]] = None
+    extract_memories: bool = (
+        True  # Flag to indicate this is a memory extraction request
+    )
 
 
 app = FastAPI(title="Geist Router")
@@ -71,18 +76,7 @@ stt_service = WhisperSTTClient(whisper_service_url)
 
 logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
 
-# Validate SSL configuration on startup
-ssl_valid, ssl_message = config.validate_ssl_config()
-if config.SSL_ENABLED and not ssl_valid:
-    logger.error(f"SSL configuration error: {ssl_message}")
-    raise RuntimeError(f"SSL configuration error: {ssl_message}")
-elif config.SSL_ENABLED:
-    logger.info(f"SSL enabled: {ssl_message}")
-else:
-    logger.info("SSL disabled - running in HTTP mode")
-
-# Global GptService instance (initialized once at startup)
-gpt_service_instance = None
+gpt_service_instance: GptService | None = None
 
 async def get_gpt_service():
     """
@@ -114,61 +108,12 @@ async def startup_event():
     """Initialize GptService on server startup"""
     await get_gpt_service()
     logger.info("Server startup complete - GptService initialized")
-
 @app.get("/health")
 def health_check():
-    """Health check endpoint that includes SSL status."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
+    """Health check endpoint."""
     return {
         "status": "healthy",
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_status": ssl_message,
     }
-
-
-
-
-@app.get("/ssl/info")
-def ssl_info():
-    """Get SSL configuration and certificate information."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
-
-    info = {
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_valid": ssl_valid,
-        "ssl_status": ssl_message,
-        "cert_path": config.SSL_CERT_PATH,
-        "key_path": config.SSL_KEY_PATH,
-    }
-
-    if config.SSL_ENABLED and ssl_valid:
-        try:
-            import ssl
-            import socket
-            from datetime import datetime
-
-            # Load certificate and get basic info
-            with open(config.SSL_CERT_PATH, "rb") as f:
-                cert_data = f.read()
-
-            # Parse certificate (basic info)
-            cert_lines = cert_data.decode("utf-8").split("\n")
-            cert_info = {}
-
-            for line in cert_lines:
-                if "BEGIN CERTIFICATE" in line:
-                    cert_info["format"] = "PEM"
-                    break
-
-            info["certificate"] = {
-                "format": cert_info.get("format", "Unknown"),
-                "size_bytes": len(cert_data),
-            }
-
-        except Exception as e:
-            info["certificate"] = {"error": f"Could not read certificate: {str(e)}"}
-
-    return info
 
 
 # ============================================================================
@@ -180,7 +125,7 @@ def ssl_info():
 # Nested Orchestrator Factory Functions
 # ============================================================================
 
-def create_nested_research_system(config, EventEmitter):
+def create_nested_research_system(config):
     """
     Create a nested orchestrator system using your existing agents at the top level:
 
@@ -222,6 +167,204 @@ def create_nested_research_system(config, EventEmitter):
     return main_orchestrator
 
 
+@app.post("/api/chat")
+async def chat_with_orchestrator(chat_request: ChatRequest):
+    """Non-streaming chat endpoint for simple requests"""
+    print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
+
+    # Build messages array with conversation history
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    try:
+        # Create a nested orchestrator structure
+        orchestrator = create_nested_research_system(config)
+
+        # Initialize the orchestrator with the main GPT service
+        if gpt_service_instance is None:
+            current_gpt_service = await get_gpt_service()
+        else:
+            current_gpt_service = gpt_service_instance
+        await orchestrator.initialize(current_gpt_service, config)
+
+        # Configure available tools (only sub-agents) if tool calls are enabled
+        if config.ENABLE_TOOL_CALLS:
+            sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
+            all_tools = list(current_gpt_service._tool_registry.keys())
+            available_tool_names = [
+                tool for tool in all_tools if tool in sub_agent_names
+            ]
+            orchestrator.available_tools = available_tool_names
+        else:
+            orchestrator.available_tools = []
+        orchestrator.gpt_service = current_gpt_service
+
+        # Run the orchestrator and get the final response
+        chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+        final_response = await orchestrator.run(chat_messages)
+
+        return {
+            "response": final_response.text,
+            "status": final_response.status,
+            "meta": final_response.meta,
+        }
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+async def handle_memory(chat_request: ChatRequest):
+    """Handle memory extraction requests with direct GPT service call"""
+    print("[Backend] 🧠 Processing memory extraction request")
+
+    # Build messages array
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    try:
+        if gpt_service_instance is None:
+            current_gpt_service = await get_gpt_service()
+        else:
+            current_gpt_service = gpt_service_instance
+        # Use direct GPT service call without orchestrator for clean response
+        response_text = await current_gpt_service.process_chat_request(
+            messages=messages,
+            reasoning_effort="low",  # Use low reasoning for cleaner output
+            system_prompt="You are a memory extraction assistant. Your job is to extract key facts from conversations and return ONLY a valid JSON array. Do not include any reasoning, explanations, or other text. Return only the JSON array starting with [ and ending with ].",
+        )
+
+        print(f"[Backend] 🧠 Raw GPT response: {response_text[:200]}...")
+
+        # Extract JSON array from response
+        json_start = response_text.find("[")
+        json_end = response_text.rfind("]")
+
+        if json_start != -1 and json_end != -1 and json_start < json_end:
+            json_array = response_text[json_start : json_end + 1]
+            print(f"[Backend] 🧠 Extracted JSON: {json_array}")
+
+            import json as json_lib
+            # Validate JSON
+            try:
+
+                parsed = json_lib.loads(json_array)
+                if isinstance(parsed, list):
+                    return {
+                        "response": json_array,
+                        "status": "success",
+                        "meta": {"extracted_memories": len(parsed)},
+                    }
+                else:
+                    print(
+                        f"[Backend] 🧠 ❌ Parsed result is not an array: {type(parsed)}"
+                    )
+            except json_lib.JSONDecodeError as e:
+                print(f"[Backend] 🧠 ❌ JSON parsing error: {e}")
+
+        # Fallback: return the raw response if JSON extraction fails
+        print("[Backend] 🧠 ❌ Failed to extract valid JSON, returning raw response")
+        return {
+            "response": response_text,
+            "status": "success",
+            "meta": {"warning": "Could not extract clean JSON array"},
+        }
+
+    except Exception as e:
+        print(f"[Backend] 🧠 ❌ Memory extraction error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Memory extraction failed: {str(e)}"
+        )
+
+
+@app.post("/api/memory")
+async def memory_proxy(request: Request):
+    """Proxy requests to the memory extraction service at memory.geist.im/v1/chat/completions"""
+    try:
+        # Build the target URL
+        target_url = f"{config.MEMORY_EXTRACTION_URL}/v1/chat/completions"
+        logger.info(f"Proxying memory request to: {target_url}")
+
+        # Get request body
+        body = await request.body()
+
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
+        # Forward the request to memory extraction service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                target_url,
+                headers=forward_headers,
+                content=body,
+                timeout=config.MEMORY_EXTRACTION_TIMEOUT,
+            )
+
+        logger.info(
+            f"Memory extraction service responded with status: {response.status_code}"
+        )
+
+        # Return the response with appropriate headers
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in skip_headers:
+                response_headers[key] = value
+
+        return StreamingResponse(
+            iter([response.content]),
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
+        )
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}",
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to memory extraction service: {str(e)}")
+        raise HTTPException(
+            status_code=504,
+            detail="Memory extraction service timeout",
+        )
+    except Exception as e:
+        logger.error(f"Error proxying memory extraction request: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to proxy request to memory extraction service",
+        )
+
+
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
@@ -239,8 +382,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
         try:
             # Create a nested orchestrator structure
-            event_emitter = EventEmitter()
-            orchestrator = create_nested_research_system(config, event_emitter)
+            orchestrator = create_nested_research_system(config)
 
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
@@ -631,28 +773,8 @@ if __name__ == "__main__":
     import sys
 
     try:
-        if config.SSL_ENABLED:
-            logger.info(
-                f"Starting server with SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            logger.info(f"SSL Certificate: {config.SSL_CERT_PATH}")
-            logger.info(f"SSL Private Key: {config.SSL_KEY_PATH}")
-
-            uvicorn.run(
-                app,
-                host=config.API_HOST,
-                port=config.API_PORT,
-                ssl_keyfile=config.SSL_KEY_PATH,
-                ssl_certfile=config.SSL_CERT_PATH,
-                log_level="info",
-            )
-        else:
-            logger.info(
-                f"Starting server without SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            uvicorn.run(
-                app, host=config.API_HOST, port=config.API_PORT, log_level="info"
-            )
+        logger.info(f"Starting server on {config.API_HOST}:{config.API_PORT}")
+        uvicorn.run(app, host=config.API_HOST, port=config.API_PORT, log_level="info")
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         sys.exit(1)

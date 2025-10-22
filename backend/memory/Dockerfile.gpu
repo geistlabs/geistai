@@ -1,0 +1,35 @@
+FROM ghcr.io/ggml-org/llama.cpp:server-cuda
+
+# Create models directory for volume mount
+USER root
+RUN mkdir -p /models && chown 1000:1000 /models
+
+# Copy the grammar schema into the image
+COPY schema.gbnf /app/schema.gbnf
+
+# Switch back to non-root user
+USER 1000
+
+EXPOSE 8080
+
+# Use Llama 3.1 8B Instruct with grammar forcing
+# Model file should be mounted at /models/Meta-Llama-3.1-8B-Instruct-Q4_K_S.gguf
+CMD ["--model", "/models/Meta-Llama-3.1-8B-Instruct-Q4_K_S.gguf", \
+     "--host", "0.0.0.0", \
+     "--port", "8080", \
+     "--ctx-size", "8192", \
+     "--threads", "4", \
+     "--batch-size", "512", \
+     "--ubatch-size", "512", \
+     "--parallel", "1", \
+     "--cont-batching", \
+     "--mlock", \
+     "--n-gpu-layers", "8", \
+     "--grammar-file", "/app/schema.gbnf", \
+     "--temp", "0.1", \
+     "--top-p", "0.9", \
+     "--jinja"]
+		 
+# Notes:
+# - schema.gbnf ensures valid JSON output for your memory extractor.
+# - Make sure to place Meta-Llama-3.1-8B-Instruct-Q4_K_S.gguf in /root/models before running.

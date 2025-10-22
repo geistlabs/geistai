@@ -28,8 +28,6 @@ from extract_relevant_from_webpage import extract_relevant_text
 from simple_mcp_client import SimpleMCPClient
 
 
-
-
 # Maximum number of tool calls in a single conversation turn
 
 
@@ -127,15 +125,13 @@ class GptService:
     # Tool Registration & Management
     # ------------------------------------------------------------------------
 
-
-
     def _register_tool(
         self,
         name: str,
         description: str,
         input_schema: dict,
         executor: Callable,
-        tool_type: str = "custom"
+        tool_type: str = "custom",
     ):
         """
         Register a tool in the registry
@@ -151,7 +147,7 @@ class GptService:
             "description": description,
             "input_schema": input_schema,
             "executor": executor,
-            "type": tool_type
+            "type": tool_type,
         }
 
     async def _register_custom_tools(self):
@@ -268,15 +264,13 @@ class GptService:
             tool_type="custom"
         )
 
-
-
-
         from agent_registry import register_predefined_agents
+
         await register_predefined_agents(self, self.config)
 
         # Example: Register only specific agents
-        #from agent_registry import register_specific_agents
-        #await register_specific_agents(self, config=None, agent_names=["research_agent", "creative_agent"])
+        # from agent_registry import register_specific_agents
+        # await register_specific_agents(self, config=None, agent_names=["research_agent", "creative_agent"])
 
         # Example: Register a custom agent
         # from agent_registry import register_custom_agent
@@ -332,7 +326,7 @@ class GptService:
 
             # Register each MCP tool
             for tool in tools:
-                tool_name = tool['name']
+                tool_name = tool["name"]
 
                 # Create executor that calls MCP
                 async def mcp_executor(args: dict, tn=tool_name) -> dict:
@@ -354,7 +348,7 @@ class GptService:
                     description=description,
                     input_schema=input_schema,
                     executor=mcp_executor,
-                    tool_type="mcp"
+                    tool_type="mcp",
                 )
 
         except Exception as e:
@@ -408,6 +402,10 @@ class GptService:
         Initialize all tools (MCP and custom)
         Call this once at startup
         """
+        # Skip tool initialization if tool calls are disabled
+        if not self.config.ENABLE_TOOL_CALLS:
+            print("🚫 Tool calls disabled via ENABLE_TOOL_CALLS environment variable")
+            return
 
         
 
@@ -502,17 +500,19 @@ class GptService:
 
             # Only include tools with valid schemas
             if input_schema and "properties" in input_schema:
-                tools.append({
-                    "type": "function",
-                    "function": {
-                        "name": tool_name,
-                        "description": tool_info.get("description", f"Tool: {tool_name}"),
-                        "parameters": input_schema
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "description": tool_info.get(
+                                "description", f"Tool: {tool_name}"
+                            ),
+                            "parameters": input_schema,
+                        },
                     }
-                })
+                )
         return tools
-
-
 
     def get_chat_completion_params(self) -> tuple:
         headers = {}
@@ -532,7 +532,12 @@ class GptService:
     # Message Preparation
     # ------------------------------------------------------------------------
 
-    def prepare_conversation_messages(self, messages: List[dict], reasoning_effort: str = "low", system_prompt: str = "") -> List[dict]:
+    def prepare_conversation_messages(
+        self,
+        messages: List[dict],
+        reasoning_effort: str = "low",
+        system_prompt: str = "",
+    ) -> List[dict]:
         """
         Prepare messages for the LLM with optional system prompt injection.
 
@@ -571,7 +576,7 @@ class GptService:
         self,
         messages: List[dict],
         reasoning_effort: str = "low",
-        system_prompt: str = ""
+        system_prompt: str = "",
     ) -> str:
         """
         Process a non-streaming chat request (no tool calling)
@@ -579,7 +584,9 @@ class GptService:
         Returns:
             AI response as string
         """
-        conversation = self.prepare_conversation_messages(messages, reasoning_effort, system_prompt)
+        conversation = self.prepare_conversation_messages(
+            messages, reasoning_effort, system_prompt
+        )
 
         headers, model, url = self.get_chat_completion_params()
         print(f"🔍 agent_name:  conversation: {conversation}")
@@ -596,7 +603,7 @@ class GptService:
                     "reasoning_effort": "medium",
                 },
                 headers=headers,
-                timeout=self.config.INFERENCE_TIMEOUT
+                timeout=self.config.INFERENCE_TIMEOUT,
             )
 
         result = response.json()
@@ -625,8 +632,7 @@ class GptService:
         permitted_tools: List[str],
         reasoning_effort: str = "low",
         agent_name: str = "orchestrator",
-        agent_prompt: str = ""
-
+        agent_prompt: str = "",
     ):
         """
         Stream chat request with tool calling support
@@ -634,16 +640,17 @@ class GptService:
         Yields:
             str: Content chunks to stream to client
         """
-        # Initialize tools if not already done
-        if not self._tool_registry:
+        # Initialize tools if not already done and tool calls are enabled
+        if self.config.ENABLE_TOOL_CALLS and not self._tool_registry:
             await self.init_tools()
 
         conversation = self.prepare_conversation_messages(messages, reasoning_effort, agent_prompt)
         headers, model, url = self.get_chat_completion_params()
 
-        # Get permitted tools for this request
-        tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
-
+        # Get permitted tools for this request (only if tool calls are enabled)
+        tools_for_llm = []
+        if self.config.ENABLE_TOOL_CALLS:
+            tools_for_llm = self._get_permitted_tools_for_llm(permitted_tools)
 
         async def llm_stream_once(msgs: List[dict], use_increased_tokens: bool = False):
             """Make a single streaming LLM call
@@ -692,13 +699,16 @@ class GptService:
                 print(f"📤 Sending request with {len(msgs)} messages")
 
             try:
-                async with httpx.AsyncClient(timeout=self.config.INFERENCE_TIMEOUT) as client:
+                print(f"🔍 agent_name: {agent_name} request data: {request_data}")
+                async with httpx.AsyncClient(
+                    timeout=self.config.INFERENCE_TIMEOUT
+                ) as client:
                     async with client.stream(
                         "POST",
                         f"{url}/v1/chat/completions",
                         headers=headers,
                         json=request_data,
-                        timeout=self.config.INFERENCE_TIMEOUT
+                        timeout=self.config.INFERENCE_TIMEOUT,
                     ) as resp:
                         # Handle HTTP errors
                         if resp.status_code != 200:
@@ -760,10 +770,7 @@ class GptService:
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
-                self._execute_tool,
-                llm_stream_once,
-                conversation,
-                agent_name
+                self._execute_tool, llm_stream_once, conversation, agent_name
             ):
                 # Stream content to client if available
                 if content_chunk:

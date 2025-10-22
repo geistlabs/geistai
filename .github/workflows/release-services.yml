@@ -8,6 +8,7 @@ on:
       - "webapp-*-*.*.*"
       - "router-*-*.*.*"
       - "whisper-*-*.*.*"
+      - "memory-*-*.*.*"
 
 jobs:
   extract_info:
@@ -81,6 +82,16 @@ jobs:
     needs: extract_info
     if: needs.extract_info.outputs.SERVICE == 'whisper'
     uses: ./.github/workflows/build-whisper-stt.yml
+    with:
+      environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
+      version: ${{ needs.extract_info.outputs.VERSION }}
+    secrets: inherit
+
+  build_release_memory:
+    name: Build and Release Memory
+    needs: extract_info
+    if: needs.extract_info.outputs.SERVICE == 'memory'
+    uses: ./.github/workflows/build-memory.yml
     with:
       environment: ${{ needs.extract_info.outputs.ENVIRONMENT }}
       version: ${{ needs.extract_info.outputs.VERSION }}
