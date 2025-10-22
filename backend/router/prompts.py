@@ -367,6 +367,10 @@ def get_rubrics_prompt() -> str:
         "OPTIONAL CONTEXT:\n{context}\n"
     )
 
+def get_summarizer_prompt() -> str:
+    """Get the system prompt for the summarizer"""
+    return """The preceeding messages are a conversation between a user and an assistant. Summarize the conversation into a concise summary,  two three sentences max."""
+
 
     
 PROMPTS = {

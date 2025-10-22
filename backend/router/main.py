@@ -2,6 +2,7 @@ from events import EventEmitter
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+import gpt_service
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -14,7 +15,7 @@ import config
 from gpt_service import GptService
 from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
-from prompts import get_prompt
+from prompts import get_prompt, get_summarizer_prompt
 from chat_types import ChatMessage
 
 from whisper_client import WhisperSTTClient
@@ -384,6 +385,38 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
     return EventSourceResponse(orchestrator_event_stream())
 
+@app.post("/api/summarize")
+async def summarize_conversation(conversation_dict: List[dict]):
+    """Summarize text using the orchestrator"""
+    summarizer_prompt = get_summarizer_prompt()
+    conversation_json = json.dumps(conversation_dict, ensure_ascii=False)
+    content = f"{summarizer_prompt}\n\n[CONVERSATION_JSON]:\n{conversation_json}\n"
+    conversation_dict = [{"role": "user", "content": content}]
+    
+    gpt_service = await get_gpt_service()  
+    headers, model, url = gpt_service.get_chat_completion_params()
+    async with httpx.AsyncClient() as client:
+       response = await client.post(
+        f"{url}/v1/chat/completions",
+        json={
+            "messages": conversation_dict,
+            "temperature": 1.0,
+            "top_p": 1.0,
+            "max_tokens": 32767,
+            "stream": False,
+            "model": model,
+            "reasoning_effort": "medium",
+        },
+        headers=headers,
+        timeout=config.INFERENCE_TIMEOUT
+    )
+    result = response.json()
+
+        # Validate response structure
+    if "choices" not in result or not result["choices"]:
+        raise ValueError(f"Invalid response from inference service: {result}")
+    choice = result["choices"][0]
+    return choice["message"]["content"]
 
 @app.post("/api/speech-to-text")
 async def transcribe_audio(
