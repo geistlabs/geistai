@@ -116,6 +116,8 @@ class StreamEventProcessor {
       if (data.finished === true) {
         // eslint-disable-next-line no-console
         console.log('🏁 Stream finished');
+        // Call onComplete to clear loading state
+        this.handlers.onComplete?.();
         return;
       }
 
