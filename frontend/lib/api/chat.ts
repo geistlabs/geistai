@@ -233,21 +233,31 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorStart(data: any): void {
-    console.log('🎯 Orchestrator started:', data.data?.agent);
+    const orchestratorName = data.data?.orchestrator || 'unknown';
+    const input = data.data?.input || '';
+    // eslint-disable-next-line no-console
+    console.log(`🎯 Orchestrator started: ${orchestratorName}`, { input });
   }
 
   private handleOrchestratorComplete(data: any): void {
-    console.log('✅ Orchestrator completed:', data.data?.agent);
+    const orchestratorName = data.data?.orchestrator || 'unknown';
+    const status = data.data?.status || 'unknown';
+    // eslint-disable-next-line no-console
+    console.log(`✅ Orchestrator completed: ${orchestratorName}`, { status });
   }
 
   private handleFinalResponse(data: any): void {
-    console.log('📄 Final response received');
-    console.log('Citations:', data.citations?.length || 0);
+    const text = data.text || data.data?.text || 'no response';
+    const status = data.status || data.data?.status || 'unknown';
+    // eslint-disable-next-line no-console
+    console.log('📄 Final response received', { status, length: text.length });
   }
 
   private handleError(data: any): void {
-    console.error('❌ Stream error:', data.message);
-    this.handlers.onError(data.message || 'Unknown error');
+    const message = data.message || data.data?.message || 'Unknown error';
+    // eslint-disable-next-line no-console
+    console.error('❌ Stream error:', message);
+    this.handlers.onError(message);
   }
 }
 
@@ -310,7 +320,9 @@ export async function sendStreamingMessage(
           }
           resolve();
         } catch (error) {
-          reject(new Error('Failed to read response: ' + (error as Error).message));
+          reject(
+            new Error('Failed to read response: ' + (error as Error).message),
+          );
         }
         return;
       }
@@ -466,85 +478,87 @@ export class ChatAPI {
         return controller;
       }
 
-    // Manual SSE parsing
-    const reader = response.body?.getReader();
-    if (!reader) {
-      // Fallback: Try to get response as text for non-streaming responses
-      try {
-        const text = await response.text();
-        console.log('Response text:', text);
-        // Try to parse as SSE format
-        const lines = text.split('\n');
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.data?.content) {
-                onChunk(parsed.data.content);
-              } else if (parsed.text) {
-                onChunk(parsed.text);
-              }
-            } catch {
-              // Skip non-JSON lines
-            }
-          }
-        }
-        onComplete?.();
-      } catch (error) {
-        onError?.(new Error('Failed to read response: ' + (error as Error).message));
-      }
-      return controller;
-    }
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    const readChunk = async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            onComplete?.();
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
+      // Manual SSE parsing
+      const reader = response.body?.getReader();
+      if (!reader) {
+        // Fallback: Try to get response as text for non-streaming responses
+        try {
+          const text = await response.text();
+          console.log('Response text:', text);
+          // Try to parse as SSE format
+          const lines = text.split('\n');
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
-              if (data === '[DONE]') {
-                onComplete?.();
-                return;
-              }
               try {
                 const parsed = JSON.parse(data);
-                // Handle different event types
                 if (parsed.data?.content) {
                   onChunk(parsed.data.content);
                 } else if (parsed.text) {
-                  // Handle final_response
                   onChunk(parsed.text);
-                } else if (typeof parsed === 'string') {
-                  onChunk(parsed);
                 }
               } catch {
                 // Skip non-JSON lines
               }
             }
           }
+          onComplete?.();
+        } catch (error) {
+          onError?.(
+            new Error('Failed to read response: ' + (error as Error).message),
+          );
         }
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          onError?.(error as Error);
-        }
+        return controller;
       }
-    };
 
-    readChunk();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const readChunk = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              onComplete?.();
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6);
+                if (data === '[DONE]') {
+                  onComplete?.();
+                  return;
+                }
+                try {
+                  const parsed = JSON.parse(data);
+                  // Handle different event types
+                  if (parsed.data?.content) {
+                    onChunk(parsed.data.content);
+                  } else if (parsed.text) {
+                    // Handle final_response
+                    onChunk(parsed.text);
+                  } else if (typeof parsed === 'string') {
+                    onChunk(parsed);
+                  }
+                } catch {
+                  // Skip non-JSON lines
+                }
+              }
+            }
+          }
+        } catch (error) {
+          if ((error as Error).name !== 'AbortError') {
+            onError?.(error as Error);
+          }
+        }
+      };
+
+      readChunk();
     } catch (error) {
       if ((error as Error).name !== 'AbortError') {
         onError?.(error as Error);
