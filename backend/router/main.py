@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
@@ -14,6 +14,7 @@ from gpt_service import GptService
 from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
 from prompts import get_prompt
+from revenuecat_auth import require_premium, get_user_id
 
 from whisper_client import WhisperSTTClient
 
@@ -233,8 +234,13 @@ def create_nested_research_system(config):
 
 
 @app.post("/api/stream")
-async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
+async def stream_with_orchestrator(
+    chat_request: ChatRequest,
+    request: Request,
+    user_id: str = Depends(require_premium)
+):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
+    logger.info(f"[Premium User: {user_id}] Processing chat request")
     print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
 
     # Build messages array with conversation history
@@ -351,7 +357,9 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
 @app.post("/api/speech-to-text")
 async def transcribe_audio(
-    audio_file: UploadFile = File(...), language: Optional[str] = Form(None)
+    audio_file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    user_id: str = Depends(require_premium)
 ):
     """
     Transcribe audio using Whisper.cpp
@@ -359,10 +367,12 @@ async def transcribe_audio(
     Args:
         audio_file: Audio file to transcribe (WAV format preferred)
         language: Optional language code (e.g., 'en', 'es', 'fr') for forced language detection
+        user_id: Verified premium user ID
 
     Returns:
         JSON response with transcription results
     """
+    logger.info(f"[Premium User: {user_id}] Processing audio transcription")
     if not stt_service:
         raise HTTPException(
             status_code=503,
@@ -427,8 +437,9 @@ async def embeddings_health():
 
 
 @app.post("/embeddings/embed")
-async def embeddings_embed(request: Request):
+async def embeddings_embed(request: Request, user_id: str = Depends(require_premium)):
     """Proxy embed requests to embeddings service"""
+    logger.info(f"[Premium User: {user_id}] Creating embeddings")
     try:
         # Log the target URL for debugging
         target_url = f"{config.EMBEDDINGS_URL}/embed"

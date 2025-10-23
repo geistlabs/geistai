@@ -175,6 +175,16 @@ class RevenueCatService {
       console.error('❌ Failed to save negotiated price:', error);
     }
   }
+
+  async getAppUserId(): Promise<string> {
+    try {
+      const customerInfo = await Purchases.getCustomerInfo();
+      return customerInfo.originalAppUserId;
+    } catch (error) {
+      console.error('❌ Failed to get app user ID:', error);
+      return 'anonymous';
+    }
+  }
 }
 
 export const revenuecat = new RevenueCatService();
