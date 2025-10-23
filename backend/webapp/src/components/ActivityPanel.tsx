@@ -48,7 +48,7 @@ const ActivityPanel: React.FC<ActivityPanelProps> = ({
           error: event.error
         },
         icon: toolIcon,
-        description: getToolDescription(event.toolName, event.arguments)
+        description: getToolDescription(event.toolName, event.arguments, event.result)
       });
     });
 
@@ -119,21 +119,42 @@ const ActivityPanel: React.FC<ActivityPanelProps> = ({
     return '🔧';
   };
 
-  const getToolDescription = (toolName: string, arguments?: any): string => {
-    if (!arguments) return 'Processing...';
+  const getToolDescription = (toolName: string, toolArguments?: any, toolResult?: any): string => {
+    if (!toolArguments) return 'Processing...';
     
     if (toolName.includes('search')) {
-      const query = arguments.query || arguments.q || arguments.search_term;
+      const query = toolArguments.query || toolArguments.q || toolArguments.search_term;
       return query ? `Searching for: "${query}"` : 'Performing search...';
     }
     
     if (toolName === 'fetch') {
-      const url = arguments.url;
+      const url = toolArguments.url;
       return url ? `Fetching content from: ${new URL(url).hostname}` : 'Fetching content...';
     }
     
+    if (toolName === 'brave_summarizer') {
+      // If we have a result with content, show a preview of the summary
+      if (toolResult && toolResult.content) {
+        const content = toolResult.content;
+        const preview = content.length > 100 ? content.substring(0, 100) + '...' : content;
+        return `Summary: ${preview}`;
+      }
+      // If no result yet, show what we're summarizing
+      const key = toolArguments.key;
+      if (key) {
+        try {
+          const parsedKey = JSON.parse(key);
+          const query = parsedKey.query;
+          return query ? `Summarizing results for: "${query}"` : 'Generating summary...';
+        } catch {
+          return 'Generating summary...';
+        }
+      }
+      return 'Generating summary...';
+    }
+    
     if (toolName.includes('agent')) {
-      const task = arguments.task;
+      const task = toolArguments.task;
       return task ? `Working on: "${task.substring(0, 50)}${task.length > 50 ? '...' : ''}"` : 'Processing request...';
     }
     
@@ -371,6 +392,30 @@ const ActivityPanel: React.FC<ActivityPanelProps> = ({
                     marginBottom: '4px'
                   }}>
                     {activity.description}
+                    {activity.type === 'tool' && activity.details?.result?.content && activity.name === 'Content Summarizer' && (
+                      <div style={{
+                        marginTop: '8px',
+                        padding: '8px',
+                        background: 'rgba(255,215,0,0.1)',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(255,215,0,0.2)',
+                        fontSize: '11px',
+                        color: '#ddd',
+                        lineHeight: '1.5'
+                      }}>
+                        <div style={{ 
+                          fontWeight: '600', 
+                          color: '#FFD700', 
+                          marginBottom: '4px',
+                          fontSize: '10px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          Summary Result:
+                        </div>
+                        {activity.details.result.content}
+                      </div>
+                    )}
                   </div>
                   
                   <div style={{

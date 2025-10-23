@@ -21,11 +21,8 @@ def _load_openai_key_from_env():
 
         if env_file.exists():
             load_dotenv(env_file)
-            print(f"Loaded OpenAI key from: {env_file}")
     except ImportError:
         pass  # python-dotenv not installed, silently continue
-    except Exception as e:
-        print(f"Error loading .env file: {e}")
 
 
 # Load OpenAI key from .env if needed
@@ -38,22 +35,27 @@ REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # "low", "medium", "hig
 # Note: Always using nested orchestrator (can handle single-layer or multi-layer scenarios)
 
 # External service settings
-INFERENCE_URL = os.getenv("INFERENCE_URL", "https://inference.geist.im")
+INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
-REMOTE_INFERENCE_URL = "https://api.openai.com"
-USE_REMOTE_INFERENCE = os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
-if USE_REMOTE_INFERENCE:
-    {print("Using remote inference")}
-else:
-    {print("Using local inference")}
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+REMOTE_INFERENCE_URL="https://api.studio.nebius.com"
+REMOTE_INFERENCE_KEY="eyJhbGciOiJIUzI1NiIsImtpZCI6IlV6SXJWd1h0dnprLVRvdzlLZWstc0M1akptWXBvX1VaVkxUZlpnMDRlOFUiLCJ0eXAiOiJKV1QifQ.eyJzdWIiOiJnb29nbGUtb2F1dGgyfDExMjg1NDM5NDk1NTk4NzM3MjI0MiIsInNjb3BlIjoib3BlbmlkIG9mZmxpbmVfYWNjZXNzIiwiaXNzIjoiYXBpX2tleV9pc3N1ZXIiLCJhdWQiOlsiaHR0cHM6Ly9uZWJpdXMtaW5mZXJlbmNlLmV1LmF1dGgwLmNvbS9hcGkvdjIvIl0sImV4cCI6MTkxODY1MzkyNSwidXVpZCI6IjAxOWEwMjNiLWJiNTktNzE1MS04MmNmLTdlN2JlNmY5NTI1YyIsIm5hbWUiOiJnZWlzdC10ZXN0IiwiZXhwaXJlc19hdCI6IjIwMzAtMTAtMTlUMTU6MjU6MjUrMDAwMCJ9.dwUqqNtQN2MF9I1kPnHT550V6h1aqeCV1GQ8Mw484iE"
+USE_REMOTE_INFERENCE = True#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 
-OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+RATING_INFERENCE_URL = "https://api.openai.com"
+
+if USE_REMOTE_INFERENCE:
+    print("Using remote inference")
+else:
+    print("Using local inference")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+INFERENCE_URL = "https://inference.geist.im"
+RATING_INFERENCE_KEY = os.getenv("OPENAI_KEY", "")
 BRAVE_API_KEY = os.getenv("BRAVE_API_KEY", "")
 MCP_BRAVE_URL = os.getenv("MCP_BRAVE_URL", "http://mcp-brave:3000") + "/mcp/"
 MCP_FETCH_URL = os.getenv("MCP_FETCH_URL", "http://mcp-fetch:8000") + "/mcp/"
 MCP_URLS = [MCP_BRAVE_URL, MCP_FETCH_URL]
+OPENAI_MODEL="openai/gpt-oss-20b"
 # ... rest of your existing config
 # Embeddings service settings
 EMBEDDINGS_URL = os.getenv("EMBEDDINGS_URL", "http://embeddings:8001")

@@ -17,14 +17,14 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-
-      - OPENAI_URL=https://api.openai.com
+      - REMOTE_INFERENCE_URL=https://api.studio.nebius.com
+      - RATING_INFERENCE_URL=https://api.openai.com
       - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
       - OPENAI_KEY=${OPENAI_KEY}
+      - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
       - USE_REMOTE_INFERENCE=true
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_BRAVE_URL=http://mcp-brave:8080
-      - MCP_FETCH_URL=http://mcp-fetch:8000
 
     volumes:
       # Mount source code for live reloading
@@ -40,7 +40,6 @@ services:
     depends_on:
       - inference
       - mcp-brave
-      - mcp-fetch
       - embeddings
     healthcheck:
       # Use HTTP for healthcheck in local development
@@ -76,7 +75,6 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
-      - MCP_FETCH_URL=http://mcp-fetch:8000
       - OPENAI_URL=https://api.openai.com
       - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
       - OPENAI_KEY=${OPENAI_KEY}
@@ -97,7 +95,6 @@ services:
     depends_on:
       - inference
       - mcp-brave
-      - mcp-fetch
     healthcheck:
       # Use HTTP for healthcheck in local development
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -132,11 +129,11 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
-      - MCP_FETCH_URL=http://mcp-fetch:8000
       - OPENAI_URL=https://api.openai.com
       - USE_REMOTE_INFERENCE=false
       - OPENAI_KEY=${OPENAI_KEY}
       - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - MCP_FETCH_URL=http://mcp-fetch:8000
 
     volumes:
       # Mount source code for live reloading
@@ -151,7 +148,6 @@ services:
       ]
     depends_on:
       - mcp-brave
-      - mcp-fetch
       - embeddings
     healthcheck:
       # Use HTTP for healthcheck in local development
@@ -176,7 +172,7 @@ services:
       - "9011:9011"
     command:
       - --transport=http
-      - --servers=brave,fetch
+      - --servers=brave
       - --verbose=true
       - --port=9011
       - --static=true
@@ -197,7 +193,47 @@ services:
       - BRAVE_API_KEY=${BRAVE_API_KEY}
     depends_on:
       - mcp-brave
-      - mcp-fetch
+  mcp-fetch:
+    image: mcp/fetch:latest
+    entrypoint: ["sh", "-c"]
+    command: [". /app/.venv/bin/activate && pip install mcp-http-bridge && mcp-http-bridge --command 'python -m mcp_server_fetch' --port 8000 --host 0.0.0.0"]
+    environment:
+    - PORT=8000
+    - FETCH_MCP_TRANSPORT=http
+    init: true
+    cpus: 1
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges
+    labels:
+      - docker-mcp=true
+      - docker-mcp-tool-type=mcp
+      - docker-mcp-name=fetch
+      - docker-mcp-transport=http
+    ports:
+      - "3002:8000"  # Expose MCP service on port 3002
+    networks: 
+      - geist-network
+ 
+  postgresdb:
+    image: postgres:15.5
+    user: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: test-storage # Database for GeistAI application
+      POSTGRES_PASSWORD: password
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./000-create-multiple-pg-databases.sql:/docker-entrypoint-initdb.d/000-create-multiple-pg-databases.sql
+    ports:
+      - 5433:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 5432"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    attach: false
 
 
   mcp-brave:
@@ -220,28 +256,6 @@ services:
       - docker-mcp-transport=http
     ports:
       - "3001:8080"  # Expose MCP service on port 3001
-    networks:
-      - geist-network
-
-  mcp-fetch:
-    image: mcp/fetch:latest
-    entrypoint: ["sh", "-c"]
-    command: [". /app/.venv/bin/activate && pip install mcp-http-bridge && mcp-http-bridge --command 'python -m mcp_server_fetch' --port 8000 --host 0.0.0.0"]
-    environment:
-    - PORT=8000
-    - FETCH_MCP_TRANSPORT=http
-    init: true
-    cpus: 1
-    mem_limit: 2g
-    security_opt:
-      - no-new-privileges
-    labels:
-      - docker-mcp=true
-      - docker-mcp-tool-type=mcp
-      - docker-mcp-name=fetch
-      - docker-mcp-transport=http
-    ports:
-      - "3002:8000"  # Expose MCP service on port 3002
     networks:
       - geist-network
 
@@ -453,6 +467,8 @@ services:
 
 volumes:
   embeddings-models:
+    driver: local
+  postgres_data:
     driver: local
 
 networks:
