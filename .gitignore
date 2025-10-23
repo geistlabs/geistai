@@ -5,6 +5,8 @@ rick-notes.md
 backend/inference/llama.cpp/
 backend/inference/model/
 
+**/llama.cpp/
+
 # Frontend/Expo specific
 frontend/.expo/
 frontend/dist/
