@@ -112,6 +112,13 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
+      // Handle end event specially (doesn't have type field)
+      if (data.finished === true) {
+        // eslint-disable-next-line no-console
+        console.log('🏁 Stream finished');
+        return;
+      }
+
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
@@ -135,7 +142,10 @@ class StreamEventProcessor {
           this.handleError(data);
           break;
         default:
-          console.warn('Unknown event type:', data.type);
+          if (data.type !== undefined) {
+            // eslint-disable-next-line no-console
+            console.warn('Unknown event type:', data.type);
+          }
       }
     } catch (error) {
       console.error('Error processing event:', error);
