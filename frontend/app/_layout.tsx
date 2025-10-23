@@ -9,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 
+import { DebugMenu } from '@/components/DebugMenu';
 import { PremiumGate } from '@/components/PremiumGate';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { initializeDatabase } from '@/lib/chatStorage';
@@ -39,6 +40,7 @@ export default function RootLayout() {
         // Initialize RevenueCat
         await revenuecat.initialize();
       } catch (error) {
+        // eslint-disable-next-line no-console
         console.error('App-level initialization failed:', error);
         setDbError(
           error instanceof Error ? error.message : 'App initialization failed',
@@ -73,6 +75,7 @@ export default function RootLayout() {
           <Stack.Screen name='+not-found' />
         </Stack>
       </PremiumGate>
+      <DebugMenu />
       <StatusBar style='auto' />
     </ThemeProvider>
   );
