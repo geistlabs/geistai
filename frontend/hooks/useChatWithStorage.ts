@@ -489,7 +489,6 @@ export function useChatWithStorage(
           onToken: (token: string) => {
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
-
             // Update enhanced message content
             setEnhancedMessages(prev =>
               prev.map(msg =>

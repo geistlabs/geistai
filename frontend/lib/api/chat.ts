@@ -112,6 +112,7 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
+  
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
@@ -135,7 +136,6 @@ class StreamEventProcessor {
           this.handleError(data);
           break;
         default:
-          console.warn('Unknown event type:', data.type);
       }
     } catch (error) {
       console.error('Error processing event:', error);
@@ -143,8 +143,9 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    if (data.data?.content) {
-      this.handlers.onToken(data.data.content);
+    print('whatch me handle token pal',data.data?.data)
+    if (data.data?.channel === "content") {
+      this.handlers.onToken(data.data.data);
     }
   }
 
@@ -233,11 +234,11 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorStart(data: any): void {
-    console.log('🎯 Orchestrator started:', data.data?.agent);
+    console.log('🎯 Orchestrator started:', data.data.orchestrator);
   }
 
   private handleOrchestratorComplete(data: any): void {
-    console.log('✅ Orchestrator completed:', data.data?.agent);
+    console.log('✅ Orchestrator completed:', data.data.orchestrator);
   }
 
   private handleFinalResponse(data: any): void {

@@ -519,7 +519,7 @@ class GptService:
         if self.config.REMOTE_INFERENCE_KEY:
             headers["Authorization"] = f"Bearer {self.config.REMOTE_INFERENCE_KEY}"
 
-        if self.config.USE_REMOTE_INFERENCE:
+        if False:
             url = self.config.REMOTE_INFERENCE_URL
             model = self.config.OPENAI_MODEL
         else:
@@ -685,6 +685,7 @@ class GptService:
        
 
             # Add tools if available
+            print(f"tools_for_llm: {tools_for_llm}")
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"

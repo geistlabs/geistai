@@ -404,7 +404,7 @@ async def process_llm_response_with_tools(
                         conversation.append({"role": "system", "content": developer_message})
                         failed_tool_calls += 1
 
-                        yield (None, "break")
+                        yield (None, "empty")
                 # Only log the first 10 characters (as per instruction "cars")
                 print(f"🔍 [agent: {agent_name}] 📄 FINAL CONTENT: '{accumulated_content[:10]}'")
    
