@@ -52,6 +52,10 @@
       "router": {},
       "eas": {
         "projectId": "1d37b7f9-b989-4c5c-af7d-6a4dc03b9a28"
+      },
+      "revenuecat": {
+        "test": "test_KWoKSNKRwCVgtwxTRwDXTOFVNLb",
+        "production": "appl_xxxxxxxxxxxxxxxxx"
       }
     },
     "owner": "chris-work"

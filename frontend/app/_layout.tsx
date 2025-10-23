@@ -7,10 +7,12 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { PremiumGate } from '@/components/PremiumGate';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { initializeDatabase } from '@/lib/chatStorage';
+import { revenuecat } from '@/lib/revenuecat';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -26,22 +28,24 @@ export default function RootLayout() {
   const [dbReady, setDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
-  // Initialize database on app start
+  // Initialize database and RevenueCat on app start
   useEffect(() => {
-    const initDb = async () => {
+    const initApp = async () => {
       try {
+        // Initialize database
         await initializeDatabase();
         setDbReady(true);
+
+        // Initialize RevenueCat
+        await revenuecat.initialize();
       } catch (error) {
-        console.error('App-level database initialization failed:', error);
+        console.error('App-level initialization failed:', error);
         setDbError(
-          error instanceof Error
-            ? error.message
-            : 'Database initialization failed',
+          error instanceof Error ? error.message : 'App initialization failed',
         );
       }
     };
-    initDb();
+    initApp();
   }, []);
 
   if (!loaded) {
@@ -62,11 +66,13 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name='index' options={{ headerShown: false }} />
-        <Stack.Screen name='storage' options={{ headerShown: false }} />
-        <Stack.Screen name='+not-found' />
-      </Stack>
+      <PremiumGate>
+        <Stack>
+          <Stack.Screen name='index' options={{ headerShown: false }} />
+          <Stack.Screen name='storage' options={{ headerShown: false }} />
+          <Stack.Screen name='+not-found' />
+        </Stack>
+      </PremiumGate>
       <StatusBar style='auto' />
     </ThemeProvider>
   );
