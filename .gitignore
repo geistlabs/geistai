@@ -47,6 +47,10 @@ htmlcov/
 *.orig.*
 .kotlin/
 
+# iOS auto-generated files
+frontend/ios/Podfile.lock
+frontend/ios/GeistAI.xcodeproj/project.pbxproj
+
 # SSL Certificates
 *.pem
 *.crt
