@@ -6,8 +6,8 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { usePremium } from '../hooks/usePremium';
 import { revenuecat } from '../lib/revenuecat';
 
+import { NegotiationChat } from './NegotiationChat';
 import { PaywallScreen } from './PaywallScreen';
-import { PriceNegotiationScreen } from './PriceNegotiationScreen';
 
 interface PremiumGateProps {
   children: React.ReactNode;
@@ -37,6 +37,31 @@ export function PremiumGate({ children }: PremiumGateProps) {
     loadPreference();
   }, []);
 
+  // When premium status changes, reset negotiation flow
+  useEffect(() => {
+    if (isPremium) {
+      // User is premium - no need to show negotiation
+      return;
+    }
+
+    // User lost premium - reset negotiation to show form again
+    const resetNegotiation = async () => {
+      try {
+        // Clear the "skipped" flag so negotiation shows again
+        await AsyncStorage.removeItem('negotiation_skipped');
+        setShowNegotiation(true);
+        setNegotiatedPrice(null);
+        // eslint-disable-next-line no-console
+        console.log('🔄 Premium lost - resetting negotiation flow');
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to reset negotiation:', error);
+      }
+    };
+
+    resetNegotiation();
+  }, [isPremium]);
+
   // Show loading state
   if (isLoading || isLoadingPreference) {
     return (
@@ -55,8 +80,8 @@ export function PremiumGate({ children }: PremiumGateProps) {
   // Show negotiation first
   if (showNegotiation && !negotiatedPrice) {
     return (
-      <PriceNegotiationScreen
-        onComplete={async price => {
+      <NegotiationChat
+        onPriceAgreed={async price => {
           await revenuecat.setNegotiatedPrice(price);
           setNegotiatedPrice(price);
           setShowNegotiation(false);

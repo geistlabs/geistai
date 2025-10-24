@@ -15,6 +15,7 @@ from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
 from prompts import get_prompt
 from revenuecat_auth import require_premium, get_user_id
+from agent_tool import create_pricing_agent
 
 from whisper_client import WhisperSTTClient
 
@@ -353,6 +354,94 @@ async def stream_with_orchestrator(
             }
 
     return EventSourceResponse(orchestrator_event_stream())
+
+
+@app.post("/api/negotiate")
+async def negotiate_pricing(
+    chat_request: ChatRequest,
+    request: Request,
+    user_id: str = Depends(get_user_id),
+):
+    """
+    Streaming endpoint for price negotiation using LLM pricing agent
+
+    Returns: Server-Sent Events with negotiation messages
+    """
+    try:
+        logger.info(f"[Negotiate] Starting negotiation for user: {user_id}")
+
+        # Create pricing agent
+        pricing_agent = create_pricing_agent(config)
+        await pricing_agent.initialize(gpt_service, config)
+
+        async def event_generator():
+            try:
+                # Build full conversation context
+                conversation_context = ""
+                if chat_request.messages:
+                    # Convert messages to context string for the agent
+                    for msg in chat_request.messages:
+                        conversation_context += f"{msg.role.upper()}: {msg.content}\n"
+
+                # Run the agent with streaming events
+                events_captured = []
+
+                def capture_event(event_type):
+                    def handler(data):
+                        events_captured.append({
+                            "type": event_type,
+                            "data": data
+                        })
+                    return handler
+
+                # Register event listeners BEFORE running the agent
+                pricing_agent.on("agent_start", capture_event("agent_start"))
+                pricing_agent.on("agent_token", capture_event("agent_token"))
+                pricing_agent.on("agent_complete", capture_event("agent_complete"))
+                pricing_agent.on("agent_error", capture_event("agent_error"))
+
+                # Run the pricing agent
+                logger.info(f"[Negotiate] Running pricing agent with message: {chat_request.message}")
+                final_response = await pricing_agent.run(
+                    chat_request.message,
+                    context=conversation_context
+                )
+                logger.info(f"[Negotiate] Pricing agent completed: {final_response.status}")
+
+                # Send all captured events
+                for event in events_captured:
+                    if await request.is_disconnected():
+                        return
+
+                    yield json.dumps(event)
+
+                # Send final response
+                final_response_event = {
+                    'type': 'final_response',
+                    'text': final_response.text,
+                    'status': final_response.status,
+                    'agent': final_response.agent_name,
+                    'meta': final_response.meta
+                }
+                yield json.dumps(final_response_event)
+
+                # Send end event
+                yield json.dumps({'finished': True})
+
+            except Exception as e:
+                logger.error(f"[Negotiate] Error in stream: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                yield json.dumps({'error': str(e)})
+
+        return EventSourceResponse(
+            event_generator(),
+            media_type="text/event-stream"
+        )
+
+    except Exception as e:
+        logger.error(f"[Negotiate] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/speech-to-text")

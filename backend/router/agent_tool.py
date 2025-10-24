@@ -362,6 +362,16 @@ def create_summary_agent(config) -> AgentTool:
     )
 
 
+def create_pricing_agent(config) -> AgentTool:
+    """Create a pricing negotiation agent"""
+    return AgentTool(
+        config,
+        name="pricing_agent",
+        description="A specialized agent for negotiating subscription pricing. Engages in natural conversation to find a fair price for the user.",
+        system_prompt=get_prompt("pricing_agent"),
+        available_tools=[],  # No external tools needed for negotiation
+        reasoning_effort="medium"
+    )
 
 
 # ============================================================================
@@ -376,7 +386,7 @@ def get_predefined_agents(config) -> List[AgentTool]:
         create_creative_agent(config),
         create_technical_agent(config),
         create_summary_agent(config),
-
+        create_pricing_agent(config),  # NEW
     ]
 
 

@@ -140,9 +140,7 @@ class StreamEventProcessor {
         case 'final_response':
           this.handleFinalResponse(data);
           break;
-        case 'error':
-          this.handleError(data);
-          break;
+
         default:
           if (data.type !== undefined) {
             // eslint-disable-next-line no-console
@@ -271,6 +269,102 @@ class StreamEventProcessor {
     console.error('❌ Stream error:', message);
     this.handlers.onError(message);
   }
+}
+
+// Send a streaming message to the negotiation API
+export async function sendNegotiationMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  // Create event processor
+  const eventProcessor = new StreamEventProcessor(handlers);
+
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      console.log(`[Negotiate] Sending to ${ENV.API_URL}/api/negotiate`);
+
+      // Get user ID for premium verification
+      const userId = await revenuecat.getAppUserId();
+
+      const response = await fetch(`${ENV.API_URL}/api/negotiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          'X-User-ID': userId,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        reject(new Error(`HTTP ${response.status}: ${errorText}`));
+        return;
+      }
+
+      // Manual SSE parsing
+      const reader = response.body?.getReader();
+      if (!reader) {
+        // Fallback: Try to get response as text for non-streaming responses
+        try {
+          const text = await response.text();
+          console.log('Response text:', text);
+          // Try to parse as SSE format
+          const lines = text.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              try {
+                const parsed = JSON.parse(data);
+                eventProcessor.processEvent(parsed);
+              } catch {
+                // Skip non-JSON lines
+              }
+            }
+          }
+          resolve();
+        } catch (error) {
+          reject(
+            new Error('Failed to read response: ' + (error as Error).message),
+          );
+        }
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              eventProcessor.processEvent(data);
+            } catch {
+              // Skip non-JSON lines
+            }
+          }
+        }
+      }
+
+      resolve();
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 // Send a streaming message to the chat API
