@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  AgentMessage,
+  sendNegotiationMessage as apiSendNegotiationMessage,
   ChatAPI,
   ChatMessage,
   sendStreamingMessage,
-  AgentMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
 import { ApiClient, ApiConfig } from '../lib/api/client';
 import { ENV } from '../lib/config/environment';
+import { Memory, memoryService } from '../lib/memoryService';
 import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
-import { memoryService, Memory } from '../lib/memoryService';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -134,6 +135,7 @@ export interface UseChatWithStorageReturn {
   isStreaming: boolean;
   error: Error | null;
   sendMessage: (content: string) => Promise<void>;
+  sendNegotiationMessage: (content: string) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
   retryLastMessage: () => Promise<void>;
@@ -295,7 +297,7 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
-      
+
       // Get current chat ID from ref
       const currentChatId = currentChatIdRef.current;
 
@@ -303,21 +305,32 @@ export function useChatWithStorage(
       setMessages(prev => [...prev, userMessage]);
 
       // 1. IMMEDIATELY extract memories from the question using /api/memory
-      console.log('🧠 [Chat] STEP 1: Extracting memories from user question...');
-      const memoryExtractionPromise = memoryService.extractMemoriesFromQuestion(content);
+      console.log(
+        '🧠 [Chat] STEP 1: Extracting memories from user question...',
+      );
+      const memoryExtractionPromise =
+        memoryService.extractMemoriesFromQuestion(content);
 
       // Save user message to storage asynchronously (don't block streaming)
       if (currentChatId && storage.addMessage) {
-        storage.addMessage(convertToLegacyMessage(userMessage), currentChatId)
+        storage
+          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
           .then(() => console.log('🧠 [Chat] ✅ User message saved to storage'))
-          .catch(err => console.error('[Chat] Failed to save user message:', err));
+          .catch(err =>
+            console.error('[Chat] Failed to save user message:', err),
+          );
       }
 
       // Store assistant message saving function for later sequential execution
-      const saveAssistantMessageAsync = async (assistantMessage: ChatMessage) => {
+      const saveAssistantMessageAsync = async (
+        assistantMessage: ChatMessage,
+      ) => {
         try {
           if (currentChatId && storage.addMessage) {
-            await storage.addMessage(convertToLegacyMessage(assistantMessage), currentChatId);
+            await storage.addMessage(
+              convertToLegacyMessage(assistantMessage),
+              currentChatId,
+            );
             console.log('🧠 [Chat] ✅ Assistant message saved to storage');
           }
         } catch (err) {
@@ -326,57 +339,70 @@ export function useChatWithStorage(
       };
 
       // 3. When /api/memory returns, store the memories asynchronously
-      memoryExtractionPromise.then(async (extractedMemories) => {
-        try {
-          if (extractedMemories.length > 0) {
-            console.log('🧠 [Chat] STEP 3: ✅ Extracted memories from /api/memory:', extractedMemories);
-            
-            // Convert extracted memories to full Memory objects and store them
-            if (memoryManager.isInitialized && currentChatId) {
-              const memories: Memory[] = [];
-              
-              for (const memoryData of extractedMemories) {
-                const embedding = await memoryService.getEmbedding(memoryData.content);
-                
-                if (embedding.length > 0) {
-                  const memory: Memory = {
-                    id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    chatId: currentChatId,
-                    content: memoryData.content,
-                    originalContext: memoryData.originalContext || content,
-                    embedding,
-                    relevanceScore: memoryData.relevanceScore || 0.8,
-                    extractedAt: Date.now(),
-                    messageIds: [parseInt(userMessage.id)],
-                    category: memoryData.category || 'other',
-                  };
-                  
-                  memories.push(memory);
+      memoryExtractionPromise
+        .then(async extractedMemories => {
+          try {
+            if (extractedMemories.length > 0) {
+              console.log(
+                '🧠 [Chat] STEP 3: ✅ Extracted memories from /api/memory:',
+                extractedMemories,
+              );
+
+              // Convert extracted memories to full Memory objects and store them
+              if (memoryManager.isInitialized && currentChatId) {
+                const memories: Memory[] = [];
+
+                for (const memoryData of extractedMemories) {
+                  const embedding = await memoryService.getEmbedding(
+                    memoryData.content,
+                  );
+
+                  if (embedding.length > 0) {
+                    const memory: Memory = {
+                      id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                      chatId: currentChatId,
+                      content: memoryData.content,
+                      originalContext: memoryData.originalContext || content,
+                      embedding,
+                      relevanceScore: memoryData.relevanceScore || 0.8,
+                      extractedAt: Date.now(),
+                      messageIds: [parseInt(userMessage.id)],
+                      category: memoryData.category || 'other',
+                    };
+
+                    memories.push(memory);
+                  }
+                }
+
+                if (memories.length > 0) {
+                  console.log(
+                    '🧠 [Chat] Storing extracted memories:',
+                    memories.length,
+                  );
+                  await memoryManager.storeMemories(memories);
+                  console.log('🧠 [Chat] ✅ Memories stored successfully');
                 }
               }
-              
-              if (memories.length > 0) {
-                console.log('🧠 [Chat] Storing extracted memories:', memories.length);
-                await memoryManager.storeMemories(memories);
-                console.log('🧠 [Chat] ✅ Memories stored successfully');
-              }
+            } else {
+              console.log('🧠 [Chat] No memories extracted from question');
             }
-          } else {
-            console.log('🧠 [Chat] No memories extracted from question');
+          } catch (err) {
+            console.warn('🧠 [Chat] Failed to store memories:', err);
           }
-        } catch (err) {
-          console.warn('🧠 [Chat] Failed to store memories:', err);
-        }
-      }).catch(err => {
-        console.error('🧠 [Chat] Memory extraction failed:', err);
-      });
+        })
+        .catch(err => {
+          console.error('🧠 [Chat] Memory extraction failed:', err);
+        });
 
       // Get relevant memory context asynchronously (don't block streaming)
-      let memoryContext = '';
+      const memoryContext = '';
       const getMemoryContextAsync = async () => {
         if (memoryManager.isInitialized && currentChatId) {
           try {
-            return await memoryManager.getRelevantContext(content, currentChatId);
+            return await memoryManager.getRelevantContext(
+              content,
+              currentChatId,
+            );
           } catch (err) {
             console.warn('Failed to get memory context:', err);
             return '';
@@ -684,7 +710,9 @@ export function useChatWithStorage(
 
               // Memory extraction is now handled in real-time during user input
               // No need for post-conversation extraction since we extract from each question immediately
-              console.log('[Memory] 🧠 Memory extraction handled during user input - no post-processing needed');
+              console.log(
+                '[Memory] 🧠 Memory extraction handled during user input - no post-processing needed',
+              );
             }
           },
           onError: (error: string) => {
@@ -700,15 +728,15 @@ export function useChatWithStorage(
 
         // Prepare messages with memory context
         const messagesWithContext = [...currentMessages];
-        
+
         // Wait for memory context to be retrieved (if it finishes quickly)
         // But don't wait more than 500ms to avoid blocking streaming
         try {
           const contextWithTimeout = await Promise.race([
             memoryContextPromise,
-            new Promise<string>(resolve => setTimeout(() => resolve(''), 500))
+            new Promise<string>(resolve => setTimeout(() => resolve(''), 500)),
           ]);
-          
+
           if (contextWithTimeout) {
             // Insert memory context as a system message at the beginning
             messagesWithContext.unshift({
@@ -718,12 +746,20 @@ export function useChatWithStorage(
               timestamp: Date.now(),
             });
             console.log('🧠 [Chat] ✅ Added memory context to request');
-            console.log('🧠 [Chat] Memory context content:', contextWithTimeout);
+            console.log(
+              '🧠 [Chat] Memory context content:',
+              contextWithTimeout,
+            );
           } else {
-            console.log('🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)');
+            console.log(
+              '🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)',
+            );
           }
         } catch (err) {
-          console.warn('🧠 [Chat] ❌ Memory context retrieval timed out or failed:', err);
+          console.warn(
+            '🧠 [Chat] ❌ Memory context retrieval timed out or failed:',
+            err,
+          );
         }
 
         // 2. Start streaming to /api/stream
@@ -735,6 +771,371 @@ export function useChatWithStorage(
           err instanceof Error ? err : new Error('Failed to send message');
         setError(error);
         options.onError?.(error);
+
+        // Remove empty assistant message if streaming failed
+        setMessages(prev => prev.filter(msg => msg.id !== assistantMessage.id));
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [isLoading, isStreaming, options, storage.addMessage],
+  );
+
+  const sendNegotiationMessage = useCallback(
+    async (content: string) => {
+      if (isLoading || isStreaming) return;
+
+      setError(null);
+      setIsLoading(true);
+      lastUserMessageRef.current = content;
+
+      // Clear rich event data for new message
+      setToolCallEvents([]);
+      setAgentEvents([]);
+      setOrchestratorStatus({ isActive: false });
+
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content,
+        timestamp: Date.now(),
+      };
+
+      // Get current messages before updating state for passing to API
+      const currentMessages = messages;
+
+      // Get current chat ID from ref
+      const currentChatId = currentChatIdRef.current;
+
+      // Update local state immediately - show user message right away
+      setMessages(prev => [...prev, userMessage]);
+
+      // Save user message to storage asynchronously (don't block streaming)
+      if (currentChatId && storage.addMessage) {
+        storage
+          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
+          .then(() =>
+            console.log('🧠 [Negotiate] ✅ User message saved to storage'),
+          )
+          .catch(err =>
+            console.error('[Negotiate] Failed to save user message:', err),
+          );
+      }
+
+      // Store assistant message saving function for later sequential execution
+      const saveAssistantMessageAsync = async (
+        assistantMessage: ChatMessage,
+      ) => {
+        try {
+          if (currentChatId && storage.addMessage) {
+            await storage.addMessage(
+              convertToLegacyMessage(assistantMessage),
+              currentChatId,
+            );
+            console.log('🧠 [Negotiate] ✅ Assistant message saved to storage');
+          }
+        } catch (err) {
+          console.error('[Negotiate] Failed to save assistant message:', err);
+        }
+      };
+
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+      };
+
+      try {
+        options.onStreamStart?.();
+
+        // Set streaming state FIRST to prevent storage sync conflicts
+        setIsStreaming(true);
+        isStreamingRef.current = true;
+        setIsLoading(false);
+
+        setMessages(prev => [...prev, assistantMessage]);
+
+        let accumulatedContent = '';
+        tokenCountRef.current = 0;
+
+        // Create token batcher for optimized streaming
+        const batcher = new TokenBatcher({
+          batchSize: 10, // Batch 10 tokens before updating UI
+          flushInterval: 100, // Or flush every 100ms
+          onBatch: (batchedTokens: string) => {
+            accumulatedContent += batchedTokens;
+
+            // Update UI with batched tokens
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastMessage = newMessages[newMessages.length - 1];
+              if (lastMessage && lastMessage.role === 'assistant') {
+                lastMessage.content = accumulatedContent;
+              }
+              return newMessages;
+            });
+
+            if (batcher.getTokenCount() % 100 === 0) {
+              options.onTokenCount?.(batcher.getTokenCount());
+            }
+          },
+          onComplete: () => {
+            tokenCountRef.current = batcher.getTokenCount();
+          },
+        });
+
+        // Create enhanced user message
+        const enhancedUserMessage: EnhancedMessage = {
+          id: Date.now().toString(),
+          content: content,
+          role: 'user',
+          timestamp: new Date(),
+          isStreaming: false,
+          agentConversations: [],
+          toolCallEvents: [],
+          collectedLinks: [],
+        };
+
+        // Create enhanced assistant message for rich event tracking
+        const enhancedAssistantMessageId = (Date.now() + 1).toString();
+        const enhancedAssistantMessage: EnhancedMessage = {
+          id: enhancedAssistantMessageId,
+          content: '',
+          role: 'assistant',
+          timestamp: new Date(),
+          isStreaming: true,
+          agentConversations: [],
+          toolCallEvents: [],
+          collectedLinks: [],
+        };
+
+        setEnhancedMessages(prev => [
+          ...prev,
+          enhancedUserMessage,
+          enhancedAssistantMessage,
+        ]);
+
+        // Create event handlers object
+        const eventHandlers: StreamEventHandlers = {
+          onToken: (token: string) => {
+            // Add token to batcher instead of processing immediately
+            batcher.addToken(token);
+
+            // Update enhanced message content
+            setEnhancedMessages(prev =>
+              prev.map(msg =>
+                msg.id === enhancedAssistantMessageId
+                  ? { ...msg, content: msg.content + token }
+                  : msg,
+              ),
+            );
+          },
+          onSubAgentEvent: agentEvent => {
+            // Handle sub-agent events in enhanced messages
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const agentConvos = msg.agentConversations || [];
+                  const existingIdx = agentConvos.findIndex(
+                    convo => convo.agent === agentEvent.agent,
+                  );
+
+                  let updatedAgentConvos;
+                  if (existingIdx !== -1) {
+                    // Update existing agent conversation
+                    updatedAgentConvos = agentConvos.map((convo, idx) =>
+                      idx === existingIdx
+                        ? {
+                            ...convo,
+                            messages:
+                              convo.messages.length > 0
+                                ? [
+                                    {
+                                      ...convo.messages[0],
+                                      content:
+                                        convo.messages[0].content +
+                                        agentEvent.token,
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                    ...convo.messages.slice(1),
+                                  ]
+                                : [
+                                    {
+                                      id: agentEvent.token,
+                                      content: agentEvent.token,
+                                      role: 'assistant' as const,
+                                      timestamp: new Date(),
+                                      isStreaming: agentEvent.isStreaming,
+                                    },
+                                  ],
+                          }
+                        : convo,
+                    );
+                  } else {
+                    // Create new agent conversation
+                    const newAgentConvo: AgentConversation = {
+                      timestamp: new Date(),
+                      type: agentEvent.isStreaming ? 'start' : 'complete',
+                      agent: agentEvent.agent,
+                      task: agentEvent.task,
+                      context: agentEvent.context,
+                      messages: [
+                        {
+                          id: agentEvent.token,
+                          content: agentEvent.token,
+                          role: 'assistant' as const,
+                          timestamp: new Date(),
+                          isStreaming: agentEvent.isStreaming,
+                        },
+                      ],
+                    };
+                    updatedAgentConvos = [...agentConvos, newAgentConvo];
+                  }
+
+                  return { ...msg, agentConversations: updatedAgentConvos };
+                }
+                return msg;
+              }),
+            );
+
+            // Legacy event handling for backward compatibility
+            const agentMessage: AgentMessage = {
+              agent: agentEvent.agent,
+              content: agentEvent.token,
+              timestamp: Date.now(),
+              type: agentEvent.isStreaming ? 'start' : 'complete',
+              status: agentEvent.isStreaming ? 'active' : 'completed',
+            };
+            setAgentEvents(prev => [...prev, agentMessage]);
+
+            // Update orchestrator status based on sub-agent events
+            if (agentEvent.isStreaming) {
+              setOrchestratorStatus(prev => ({
+                ...prev,
+                currentAgent: agentEvent.agent,
+                status: 'agent_active',
+              }));
+            } else {
+              setOrchestratorStatus(prev => ({
+                ...prev,
+                status: 'agent_completed',
+              }));
+            }
+          },
+          onToolCallEvent: toolCallEvent => {
+            // Handle tool call events in enhanced messages
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  const toolCallEvents = msg.toolCallEvents || [];
+                  const eventId = `${toolCallEvent.toolName}-${Date.now()}-${Math.random()}`;
+
+                  if (toolCallEvent.type === 'start') {
+                    // Add new tool call event
+                    const newEvent: ToolCallEvent = {
+                      id: eventId,
+                      type: 'start',
+                      toolName: toolCallEvent.toolName,
+                      arguments: toolCallEvent.arguments,
+                      timestamp: new Date(),
+                      status: 'active',
+                    };
+                    return {
+                      ...msg,
+                      toolCallEvents: [...toolCallEvents, newEvent],
+                    };
+                  } else if (
+                    toolCallEvent.type === 'complete' ||
+                    toolCallEvent.type === 'error'
+                  ) {
+                    // Update existing tool call event
+                    const updatedEvents: ToolCallEvent[] = toolCallEvents.map(
+                      event => {
+                        if (
+                          event.toolName === toolCallEvent.toolName &&
+                          event.status === 'active'
+                        ) {
+                          return {
+                            ...event,
+                            type: toolCallEvent.type as 'complete' | 'error',
+                            result: toolCallEvent.result,
+                            error: toolCallEvent.error,
+                            status: (toolCallEvent.type === 'complete'
+                              ? 'completed'
+                              : 'error') as 'completed' | 'error',
+                          };
+                        }
+                        return event;
+                      },
+                    );
+                    return { ...msg, toolCallEvents: updatedEvents };
+                  }
+                }
+                return msg;
+              }),
+            );
+
+            // Legacy event handling for backward compatibility
+            setToolCallEvents(prev => [...prev, toolCallEvent]);
+          },
+          onComplete: () => {
+            // Mark enhanced message as complete and collect links
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                if (msg.id === enhancedAssistantMessageId) {
+                  // Collect links from the completed message
+                  const collectedLinks = collectLinksFromEnhancedMessage(msg);
+
+                  return {
+                    ...msg,
+                    isStreaming: false,
+                    collectedLinks: collectedLinks,
+                  };
+                }
+                return msg;
+              }),
+            );
+
+            setIsStreaming(false);
+            isStreamingRef.current = false;
+            setIsLoading(false);
+
+            // Save final assistant message to storage asynchronously (don't block completion)
+            if (currentChatId && storage.addMessage && accumulatedContent) {
+              const finalAssistantMessage = {
+                ...assistantMessage,
+                content: accumulatedContent,
+              };
+              // Save assistant message sequentially to avoid transaction conflicts
+              saveAssistantMessageAsync(finalAssistantMessage);
+            }
+
+            options.onStreamEnd?.();
+          },
+          onError: (error: string) => {
+            console.error('[Negotiate] Stream error:', error);
+            setError(new Error(error));
+            setIsStreaming(false);
+            isStreamingRef.current = false;
+            setIsLoading(false);
+            options.onStreamEnd?.();
+          },
+        };
+
+        // Use the negotiation endpoint
+        await apiSendNegotiationMessage(
+          content,
+          currentMessages,
+          eventHandlers,
+        );
+      } catch (err) {
+        console.error('[Negotiate] Error sending message:', err);
+        setError(
+          err instanceof Error ? err : new Error('Failed to send message'),
+        );
 
         // Remove empty assistant message if streaming failed
         setMessages(prev => prev.filter(msg => msg.id !== assistantMessage.id));
@@ -841,6 +1242,7 @@ export function useChatWithStorage(
     isStreaming,
     error,
     sendMessage,
+    sendNegotiationMessage,
     stopStreaming,
     clearMessages,
     retryLastMessage,

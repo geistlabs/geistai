@@ -127,6 +127,8 @@ services:
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # Testing flags
+      - DISABLE_PREMIUM_CHECK=true
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
       - OPENAI_URL=https://api.openai.com
@@ -212,9 +214,9 @@ services:
       - docker-mcp-transport=http
     ports:
       - "3002:8000"  # Expose MCP service on port 3002
-    networks: 
+    networks:
       - geist-network
- 
+
   postgresdb:
     image: postgres:15.5
     user: postgres
