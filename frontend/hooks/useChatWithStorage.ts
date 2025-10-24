@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  AgentMessage,
   ChatAPI,
   ChatMessage,
+  sendNegotiationMessage,
   sendStreamingMessage,
-  AgentMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
 import { ApiClient, ApiConfig } from '../lib/api/client';
@@ -124,6 +125,7 @@ export interface UseChatWithStorageOptions {
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
   onTokenCount?: (count: number) => void;
+  endpoint?: 'chat' | 'negotiate'; // NEW: specify which endpoint to use
 }
 
 export interface UseChatWithStorageReturn {
@@ -489,6 +491,7 @@ export function useChatWithStorage(
           onToken: (token: string) => {
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
+
             // Update enhanced message content
             setEnhancedMessages(prev =>
               prev.map(msg =>
@@ -698,37 +701,42 @@ export function useChatWithStorage(
           },
         };
 
-        // Prepare messages with memory context
-        const messagesWithContext = [...currentMessages];
-        
-        // Wait for memory context to be retrieved (if it finishes quickly)
-        // But don't wait more than 500ms to avoid blocking streaming
-        try {
-          const contextWithTimeout = await Promise.race([
-            memoryContextPromise,
-            new Promise<string>(resolve => setTimeout(() => resolve(''), 500))
-          ]);
+        // Use the appropriate endpoint based on options
+        if (options.endpoint === 'negotiate') {
+          await sendNegotiationMessage(content, currentMessages, eventHandlers);
+        } else {
+          // Prepare messages with memory context for regular chat
+          const messagesWithContext = [...currentMessages];
           
-          if (contextWithTimeout) {
-            // Insert memory context as a system message at the beginning
-            messagesWithContext.unshift({
-              id: 'memory-context',
-              role: 'system',
-              content: contextWithTimeout,
-              timestamp: Date.now(),
-            });
-            console.log('🧠 [Chat] ✅ Added memory context to request');
-            console.log('🧠 [Chat] Memory context content:', contextWithTimeout);
-          } else {
-            console.log('🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)');
+          // Wait for memory context to be retrieved (if it finishes quickly)
+          // But don't wait more than 500ms to avoid blocking streaming
+          try {
+            const contextWithTimeout = await Promise.race([
+              memoryContextPromise,
+              new Promise<string>(resolve => setTimeout(() => resolve(''), 500))
+            ]);
+            
+            if (contextWithTimeout) {
+              // Insert memory context as a system message at the beginning
+              messagesWithContext.unshift({
+                id: 'memory-context',
+                role: 'system',
+                content: contextWithTimeout,
+                timestamp: Date.now(),
+              });
+              console.log('🧠 [Chat] ✅ Added memory context to request');
+              console.log('🧠 [Chat] Memory context content:', contextWithTimeout);
+            } else {
+              console.log('🧠 [Chat] ⚠️ No memory context retrieved (empty or timeout)');
+            }
+          } catch (err) {
+            console.warn('🧠 [Chat] ❌ Memory context retrieval timed out or failed:', err);
           }
-        } catch (err) {
-          console.warn('🧠 [Chat] ❌ Memory context retrieval timed out or failed:', err);
-        }
 
-        // 2. Start streaming to /api/stream
-        console.log('🧠 [Chat] STEP 2: Starting streaming to /api/stream...');
-        await sendStreamingMessage(content, messagesWithContext, eventHandlers);
+          // 2. Start streaming to /api/stream
+          console.log('🧠 [Chat] STEP 2: Starting streaming to /api/stream...');
+          await sendStreamingMessage(content, messagesWithContext, eventHandlers);
+        }
       } catch (err) {
         console.error('[Chat] Error sending message:', err);
         const error =

@@ -1,7 +1,6 @@
 """Configuration settings for the router service."""
 
 import os
-from pathlib import Path
 
 
 # Load .env file from parent directory only for OpenAI key when running locally
@@ -14,12 +13,12 @@ def _load_openai_key_from_env():
         from dotenv import load_dotenv
 
         # Get the directory where this config.py file is located
-        current_dir = Path(__file__).parent
+        current_dir = os.path.dirname(__file__)
         # Go up one directory to find the .env file
-        parent_dir = current_dir.parent
-        env_file = parent_dir / ".env"
+        parent_dir = os.path.dirname(current_dir)
+        env_file = os.path.join(parent_dir, ".env")
 
-        if env_file.exists():
+        if os.path.exists(env_file):
             load_dotenv(env_file)
     except ImportError:
         pass  # python-dotenv not installed, silently continue
@@ -75,6 +74,11 @@ API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # Token settings
 MAX_TOKENS = 4096
+
+# RevenueCat settings
+REVENUECAT_API_KEY = os.getenv("REVENUECAT_API_KEY", "")  # Secret API key from dashboard
+REVENUECAT_API_URL = "https://api.revenuecat.com/v1"
+PREMIUM_ENTITLEMENT_ID = "premium"
 
 # Tool calling settings
 ENABLE_TOOL_CALLS = os.getenv("ENABLE_TOOL_CALLS", "true").lower() == "true"

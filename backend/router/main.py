@@ -1,5 +1,5 @@
 from events import EventEmitter
-from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
@@ -16,6 +16,8 @@ from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
 from prompts import get_prompt, get_summarizer_prompt
 from chat_types import ChatMessage
+from revenuecat_auth import require_premium, get_user_id
+from agent_tool import create_pricing_agent
 
 from whisper_client import WhisperSTTClient
 
@@ -84,7 +86,7 @@ async def get_gpt_service():
     This allows us to reuse the same service instance but with different event emitters per request.
     """
     global gpt_service_instance
-    
+
     # Initialize the service once if not already done
     if gpt_service_instance is None:
         # Create a temporary event emitter for initialization
@@ -92,15 +94,15 @@ async def get_gpt_service():
         gpt_service_instance = GptService(config, temp_emitter, can_log=True)
         await gpt_service_instance.init_tools()
         logger.info("GptService initialized with tools")
-    
+
     # Create a new instance with a fresh event emitter for each request
     fresh_emitter = EventEmitter()
     new_service = GptService(config, fresh_emitter, can_log=True)
-    
+
     # Copy the tool registry from the initialized instance
     new_service._tool_registry = gpt_service_instance._tool_registry.copy()
     new_service._mcp_client = gpt_service_instance._mcp_client
-    
+
     return new_service
 
 @app.on_event("startup")
@@ -368,7 +370,7 @@ async def memory_proxy(request: Request):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    
+
     gpt_service = await get_gpt_service()
     # Build messages array with conversation history
     messages = chat_request.messages
@@ -534,8 +536,8 @@ async def summarize_conversation(conversation_dict: List[dict]):
     conversation_json = json.dumps(conversation_dict, ensure_ascii=False)
     content = f"{summarizer_prompt}\n\n[CONVERSATION_JSON]:\n{conversation_json}\n"
     conversation_dict = [{"role": "user", "content": content}]
-    
-    gpt_service = await get_gpt_service()  
+
+    gpt_service = await get_gpt_service()
     headers, model, url = gpt_service.get_chat_completion_params()
     async with httpx.AsyncClient() as client:
        response = await client.post(
@@ -560,9 +562,98 @@ async def summarize_conversation(conversation_dict: List[dict]):
     choice = result["choices"][0]
     return choice["message"]["content"]
 
+@app.post("/api/negotiate")
+async def negotiate_pricing(
+    chat_request: ChatRequest,
+    request: Request,
+    user_id: str = Depends(get_user_id),
+):
+    """
+    Streaming endpoint for price negotiation using LLM pricing agent
+
+    Returns: Server-Sent Events with negotiation messages
+    """
+    try:
+        logger.info(f"[Negotiate] Starting negotiation for user: {user_id}")
+
+        # Create pricing agent
+        gpt_service = await get_gpt_service()
+        pricing_agent = create_pricing_agent(config)
+        await pricing_agent.initialize(gpt_service, config)
+
+        async def event_generator():
+            try:
+                # Build full conversation context
+                conversation_context = ""
+                if chat_request.messages:
+                    # Convert messages to context string for the agent
+                    for msg in chat_request.messages:
+                        conversation_context += f"{msg.role.upper()}: {msg.content}\n"
+
+                # Run the agent with streaming events
+                events_captured = []
+
+                def capture_event(event_type):
+                    def handler(data):
+                        events_captured.append({
+                            "type": event_type,
+                            "data": data
+                        })
+                    return handler
+
+                # Register event listeners BEFORE running the agent
+                pricing_agent.on("agent_start", capture_event("agent_start"))
+                pricing_agent.on("agent_token", capture_event("agent_token"))
+                pricing_agent.on("agent_complete", capture_event("agent_complete"))
+                pricing_agent.on("agent_error", capture_event("agent_error"))
+
+                # Run the pricing agent
+                logger.info(f"[Negotiate] Running pricing agent with message: {chat_request.message}")
+                chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+                final_response = await pricing_agent.run(chat_messages)
+                logger.info(f"[Negotiate] Pricing agent completed: {final_response.status}")
+
+                # Send all captured events
+                for event in events_captured:
+                    if await request.is_disconnected():
+                        return
+
+                    yield json.dumps(event)
+
+                # Send final response
+                final_response_event = {
+                    'type': 'final_response',
+                    'text': final_response.text,
+                    'status': final_response.status,
+                    'agent': final_response.agent_name,
+                    'meta': final_response.meta
+                }
+                yield json.dumps(final_response_event)
+
+                # Send end event
+                yield json.dumps({'finished': True})
+
+            except Exception as e:
+                logger.error(f"[Negotiate] Error in stream: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                yield json.dumps({'error': str(e)})
+
+        return EventSourceResponse(
+            event_generator(),
+            media_type="text/event-stream"
+        )
+
+    except Exception as e:
+        logger.error(f"[Negotiate] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/speech-to-text")
 async def transcribe_audio(
-    audio_file: UploadFile = File(...), language: Optional[str] = Form(None)
+    audio_file: UploadFile = File(...),
+    language: Optional[str] = Form(None),
+    user_id: str = Depends(require_premium)
 ):
     """
     Transcribe audio using Whisper.cpp
@@ -570,10 +661,12 @@ async def transcribe_audio(
     Args:
         audio_file: Audio file to transcribe (WAV format preferred)
         language: Optional language code (e.g., 'en', 'es', 'fr') for forced language detection
+        user_id: Verified premium user ID
 
     Returns:
         JSON response with transcription results
     """
+    logger.info(f"[Premium User: {user_id}] Processing audio transcription")
     if not stt_service:
         raise HTTPException(
             status_code=503,
@@ -638,8 +731,9 @@ async def embeddings_health():
 
 
 @app.post("/embeddings/embed")
-async def embeddings_embed(request: Request):
+async def embeddings_embed(request: Request, user_id: str = Depends(require_premium)):
     """Proxy embed requests to embeddings service"""
+    logger.info(f"[Premium User: {user_id}] Creating embeddings")
     try:
         # Log the target URL for debugging
         target_url = f"{config.EMBEDDINGS_URL}/embed"
