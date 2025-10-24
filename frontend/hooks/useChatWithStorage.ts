@@ -19,6 +19,7 @@ import { memoryService, Memory } from '../lib/memoryService';
 export interface EnhancedMessage {
   id: string;
   content: string;
+  reasoningContent?: string;
   role: 'user' | 'assistant';
   timestamp: Date;
   isStreaming?: boolean;
@@ -295,7 +296,7 @@ export function useChatWithStorage(
 
       // Get current messages before updating state for passing to API
       const currentMessages = messages;
-      
+
       // Get current chat ID from ref
       const currentChatId = currentChatIdRef.current;
 
@@ -303,21 +304,28 @@ export function useChatWithStorage(
       setMessages(prev => [...prev, userMessage]);
 
       // 1. IMMEDIATELY extract memories from the question using /api/memory
-      const memoryExtractionPromise = memoryService.extractMemoriesFromQuestion(content);
+      const memoryExtractionPromise =
+        memoryService.extractMemoriesFromQuestion(content);
 
       // Save user message to storage asynchronously (don't block streaming)
       if (currentChatId && storage.addMessage) {
-        storage.addMessage(convertToLegacyMessage(userMessage), currentChatId)
+        storage
+          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
           .catch(err => {
             // Failed to save user message
           });
       }
 
       // Store assistant message saving function for later sequential execution
-      const saveAssistantMessageAsync = async (assistantMessage: ChatMessage) => {
+      const saveAssistantMessageAsync = async (
+        assistantMessage: ChatMessage,
+      ) => {
         try {
           if (currentChatId && storage.addMessage) {
-            await storage.addMessage(convertToLegacyMessage(assistantMessage), currentChatId);
+            await storage.addMessage(
+              convertToLegacyMessage(assistantMessage),
+              currentChatId,
+            );
           }
         } catch (err) {
           // Failed to save assistant message
@@ -325,51 +333,58 @@ export function useChatWithStorage(
       };
 
       // 3. When /api/memory returns, store the memories asynchronously
-      memoryExtractionPromise.then(async (extractedMemories) => {
-        try {
-          if (extractedMemories.length > 0) {
-            // Convert extracted memories to full Memory objects and store them
-            if (memoryManager.isInitialized && currentChatId) {
-              const memories: Memory[] = [];
-              
-              for (const memoryData of extractedMemories) {
-                const embedding = await memoryService.getEmbedding(memoryData.content);
-                
-                if (embedding.length > 0) {
-                  const memory: Memory = {
-                    id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    chatId: currentChatId,
-                    content: memoryData.content,
-                    originalContext: memoryData.originalContext || content,
-                    embedding,
-                    relevanceScore: memoryData.relevanceScore || 0.8,
-                    extractedAt: Date.now(),
-                    messageIds: [parseInt(userMessage.id)],
-                    category: memoryData.category || 'other',
-                  };
-                  
-                  memories.push(memory);
+      memoryExtractionPromise
+        .then(async extractedMemories => {
+          try {
+            if (extractedMemories.length > 0) {
+              // Convert extracted memories to full Memory objects and store them
+              if (memoryManager.isInitialized && currentChatId) {
+                const memories: Memory[] = [];
+
+                for (const memoryData of extractedMemories) {
+                  const embedding = await memoryService.getEmbedding(
+                    memoryData.content,
+                  );
+
+                  if (embedding.length > 0) {
+                    const memory: Memory = {
+                      id: `${currentChatId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                      chatId: currentChatId,
+                      content: memoryData.content,
+                      originalContext: memoryData.originalContext || content,
+                      embedding,
+                      relevanceScore: memoryData.relevanceScore || 0.8,
+                      extractedAt: Date.now(),
+                      messageIds: [parseInt(userMessage.id)],
+                      category: memoryData.category || 'other',
+                    };
+
+                    memories.push(memory);
+                  }
+                }
+
+                if (memories.length > 0) {
+                  await memoryManager.storeMemories(memories);
                 }
               }
-              
-              if (memories.length > 0) {
-                await memoryManager.storeMemories(memories);
-              }
             }
+          } catch (err) {
+            // Failed to store memories
           }
-        } catch (err) {
-          // Failed to store memories
-        }
-      }).catch(err => {
-        // Memory extraction failed
-      });
+        })
+        .catch(err => {
+          // Memory extraction failed
+        });
 
       // Get relevant memory context asynchronously (don't block streaming)
       let memoryContext = '';
       const getMemoryContextAsync = async () => {
         if (memoryManager.isInitialized && currentChatId) {
           try {
-            return await memoryManager.getRelevantContext(content, currentChatId);
+            return await memoryManager.getRelevantContext(
+              content,
+              currentChatId,
+            );
           } catch (err) {
             return '';
           }
@@ -482,12 +497,28 @@ export function useChatWithStorage(
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
             // Update enhanced message content
+
             setEnhancedMessages(prev =>
-              prev.map(msg =>
-                msg.id === enhancedAssistantMessageId
-                  ? { ...msg, content: msg.content + token }
-                  : msg,
-              ),
+              prev.map(msg => {
+                const resultingContent = msg.content + token;
+                return msg.id === enhancedAssistantMessageId
+                  ? { ...msg, content: resultingContent }
+                  : msg;
+              }),
+            );
+          },
+          onReasoningToken: (token: string) => {
+            // Add reasoning token to batcher instead of processing immediately
+            batcher.addToken(token);
+            // Update enhanced message content
+            setEnhancedMessages(prev =>
+              prev.map(msg => {
+                const resultingReasoningContent = msg.reasoningContent + token;
+
+                return msg.id === enhancedAssistantMessageId
+                  ? { ...msg, reasoningContent: resultingReasoningContent }
+                  : msg;
+              }),
             );
           },
           onSubAgentEvent: agentEvent => {
@@ -690,15 +721,15 @@ export function useChatWithStorage(
 
         // Prepare messages with memory context
         const messagesWithContext = [...currentMessages];
-        
+
         // Wait for memory context to be retrieved (if it finishes quickly)
         // But don't wait more than 500ms to avoid blocking streaming
         try {
           const contextWithTimeout = await Promise.race([
             memoryContextPromise,
-            new Promise<string>(resolve => setTimeout(() => resolve(''), 500))
+            new Promise<string>(resolve => setTimeout(() => resolve(''), 500)),
           ]);
-          
+
           if (contextWithTimeout) {
             // Insert memory context as a system message at the beginning
             messagesWithContext.unshift({

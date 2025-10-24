@@ -82,6 +82,7 @@ export type StreamEvent = StreamChunk | StreamEnd | StreamError;
 // Event handler interfaces for cleaner code organization
 export interface StreamEventHandlers {
   onToken: (token: string) => void;
+  onReasoningToken: (token: string) => void;
   onSubAgentEvent: (agentEvent: {
     agent: string;
     token: string;
@@ -110,7 +111,6 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
-  
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
@@ -141,8 +141,17 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    if (data.data?.channel === "content") {
+    if (
+      data.data?.channel === 'content' &&
+      typeof data.data.data === 'string'
+    ) {
       this.handlers.onToken(data.data.data);
+    }
+    if (
+      data.data?.channel === 'reasoning' &&
+      typeof data.data.data === 'string'
+    ) {
+      this.handlers.onReasoningToken(data.data.data);
     }
   }
 
