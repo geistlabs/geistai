@@ -63,7 +63,6 @@ export function useMemoryManager(
         await memoryStorage.initDatabase();
         setIsInitialized(true);
       } catch (err) {
-        console.error('Failed to initialize memory storage:', err);
         setError(
           err instanceof Error
             ? err.message
@@ -92,15 +91,10 @@ export function useMemoryManager(
       setError(null);
 
       try {
-        console.log(`🔍 [MemoryManager] Searching for: "${query}"`);
-        console.log(`🔍 [MemoryManager] Using threshold: ${searchThreshold}`);
-        
         // Generate embedding for query
         const queryEmbedding = await memoryService.getEmbedding(query);
-        console.log(`🔍 [MemoryManager] Query embedding length: ${queryEmbedding.length}`);
 
         if (queryEmbedding.length === 0) {
-          console.log('🔍 [MemoryManager] ❌ Failed to generate query embedding');
           return [];
         }
 
@@ -111,22 +105,9 @@ export function useMemoryManager(
           5, // Return top 5 results
           searchThreshold, // Use lower threshold (0.3) for search
         );
-
-        console.log(`🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`);
-        
-        // Log details about found memories for debugging
-        if (results.length > 0) {
-          console.log('🔍 [MemoryManager] Found memories:');
-          results.forEach((result, index) => {
-            console.log(`  ${index + 1}. [${result.memory.category}] Similarity: ${result.similarity.toFixed(3)} - ${result.memory.content.substring(0, 100)}...`);
-          });
-        } else {
-          console.log('🔍 [MemoryManager] No memories found above threshold');
-        }
         
         return results;
       } catch (err) {
-        console.error('Failed to search memories:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to search memories',
         );
@@ -155,7 +136,6 @@ export function useMemoryManager(
 
         return memoryService.formatMemoriesForContext(topResults);
       } catch (err) {
-        console.error('Failed to get relevant context:', err);
         return '';
       }
     },
@@ -174,7 +154,6 @@ export function useMemoryManager(
       try {
         await memoryStorage.storeMemories(memories);
       } catch (err) {
-        console.error('Failed to store memories:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to store memories',
         );
@@ -196,7 +175,6 @@ export function useMemoryManager(
       try {
         return await memoryStorage.getMemoriesByChat(chatId);
       } catch (err) {
-        console.error('Failed to get memories by chat:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to get memories by chat',
         );
@@ -218,7 +196,6 @@ export function useMemoryManager(
       try {
         await memoryStorage.deleteMemory(memoryId);
       } catch (err) {
-        console.error('Failed to delete memory:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to delete memory',
         );
@@ -240,7 +217,6 @@ export function useMemoryManager(
       try {
         await memoryStorage.deleteMemoriesByChat(chatId);
       } catch (err) {
-        console.error('Failed to delete memories by chat:', err);
         setError(
           err instanceof Error
             ? err.message
@@ -260,11 +236,10 @@ export function useMemoryManager(
       throw new Error('Memory storage not initialized');
     }
 
-    try {
-      await memoryStorage.clearAllMemories();
-    } catch (err) {
-      console.error('Failed to clear all memories:', err);
-      setError(
+      try {
+        await memoryStorage.clearAllMemories();
+      } catch (err) {
+        setError(
         err instanceof Error ? err.message : 'Failed to clear all memories',
       );
       throw err;
@@ -282,7 +257,6 @@ export function useMemoryManager(
     try {
       return await memoryStorage.getMemoryStats();
     } catch (err) {
-      console.error('Failed to get memory stats:', err);
       setError(
         err instanceof Error ? err.message : 'Failed to get memory stats',
       );

@@ -69,9 +69,7 @@ export default function ChatDrawer({
     try {
       const allChats = await storage.getAllChats({ includeArchived: false });
       setChats(allChats);
-      console.log('Loaded chats:', allChats.length);
     } catch (error) {
-      console.error('Failed to load chats:', error);
       // Failed to load chats
     }
   };
@@ -92,17 +90,14 @@ export default function ChatDrawer({
 
   const handleRename = async (chatId: number, newTitle: string) => {
     // TODO: Implement rename functionality
-    console.log('Rename not implemented yet');
   };
 
   const handlePin = async (chatId: number, pinned: boolean) => {
     // TODO: Implement pin functionality
-    console.log('Pin not implemented yet');
   };
 
   const handleArchive = async (chatId: number) => {
     // TODO: Implement archive functionality
-    console.log('Archive not implemented yet');
   };
 
   const handleDelete = async (chatId: number) => {
@@ -111,7 +106,6 @@ export default function ChatDrawer({
       await loadChats();
       setShowActionMenu(null);
     } catch (error) {
-      console.error('Failed to delete chat:', error);
       // Failed to delete chat
     }
   };

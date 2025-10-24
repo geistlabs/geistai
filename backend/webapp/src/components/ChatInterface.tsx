@@ -82,7 +82,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const collectLinksFromMessage = (message: Message): CollectedLink[] => {
     const links: CollectedLink[] = [];
     const seenUrls = new Set<string>();
-
+    console.log(message, "my message")
     // Collect links from main message citations
     if (message.citations) {
       message.citations.forEach((citation, index) => {

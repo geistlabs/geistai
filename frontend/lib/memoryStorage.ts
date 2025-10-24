@@ -40,7 +40,6 @@ class MemoryStorageService {
       // Run migrations
       await this.runMigrations();
     } catch (error) {
-      console.error('Memory database initialization failed:', error);
       throw error;
     }
   }
@@ -88,7 +87,6 @@ class MemoryStorageService {
         ON memories(relevance_score DESC);
       `);
     } catch (error) {
-      console.error('Memory database migration failed:', error);
       throw error;
     }
   }
@@ -133,7 +131,6 @@ class MemoryStorageService {
         ],
       );
     } catch (error) {
-      console.error('Failed to store memory:', error);
       throw error;
     }
   }
@@ -167,7 +164,6 @@ class MemoryStorageService {
         );
       }
     } catch (error) {
-      console.error('Failed to store memories:', error);
       throw error;
     }
   }
@@ -186,7 +182,6 @@ class MemoryStorageService {
 
       return rows.map((row: any) => this.rowToMemory(row));
     } catch (error) {
-      console.error('Failed to get memories by chat:', error);
       throw error;
     }
   }
@@ -207,7 +202,6 @@ class MemoryStorageService {
 
       return rows.map((row: any) => this.rowToMemory(row));
     } catch (error) {
-      console.error('Failed to get memories excluding chat:', error);
       throw error;
     }
   }
@@ -225,7 +219,6 @@ class MemoryStorageService {
 
       return rows.map((row: any) => this.rowToMemory(row));
     } catch (error) {
-      console.error('Failed to get all memories:', error);
       throw error;
     }
   }
@@ -266,15 +259,11 @@ class MemoryStorageService {
 
     const results: MemorySearchResult[] = [];
 
-    console.log(`🔍 [MemoryStorage] Searching ${memories.length} memories with threshold ${threshold}`);
-
     for (const memory of memories) {
       const similarity = this.cosineSimilarity(
         queryEmbedding,
         memory.embedding,
       );
-
-      console.log(`🔍 [MemoryStorage] Memory "${memory.content}" similarity: ${similarity.toFixed(3)}`);
 
       if (similarity >= threshold) {
         results.push({
@@ -285,12 +274,9 @@ class MemoryStorageService {
     }
 
     // Sort by similarity (descending) and limit results
-    const sortedResults = results.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
-    
-    console.log(`🔍 [MemoryStorage] Found ${sortedResults.length} results above threshold ${threshold}`);
-    sortedResults.forEach((result, index) => {
-      console.log(`🔍 [MemoryStorage] Result ${index + 1}: "${result.memory.content}" (${result.similarity.toFixed(3)})`);
-    });
+    const sortedResults = results
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
 
     return sortedResults;
   }
@@ -306,7 +292,6 @@ class MemoryStorageService {
         chatId,
       ]);
     } catch (error) {
-      console.error('Failed to delete memories by chat:', error);
       throw error;
     }
   }
@@ -320,7 +305,6 @@ class MemoryStorageService {
     try {
       await database.runAsync('DELETE FROM memories WHERE id = ?', [memoryId]);
     } catch (error) {
-      console.error('Failed to delete memory:', error);
       throw error;
     }
   }
@@ -374,7 +358,6 @@ class MemoryStorageService {
         newestMemory: newestResult?.extracted_at || 0,
       };
     } catch (error) {
-      console.error('Failed to get memory stats:', error);
       throw error;
     }
   }
@@ -388,7 +371,6 @@ class MemoryStorageService {
     try {
       await database.runAsync('DELETE FROM memories');
     } catch (error) {
-      console.error('Failed to clear all memories:', error);
       throw error;
     }
   }
