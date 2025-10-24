@@ -31,7 +31,6 @@ def run_alembic_command(command: str, *args):
             'DATABASE_URL', 
             'postgresql://postgres:password@localhost:5433/test-storage'
         )
-        print(env['DATABASE_URL'])
         # Change to the database directory
         db_dir = Path(__file__).parent
         os.chdir(db_dir)

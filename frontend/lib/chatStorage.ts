@@ -250,25 +250,19 @@ export const addMessage = async (
   const now = Date.now();
 
   try {
-    let messageId = 0;
+    // Insert message
+    const messageResult = await database.runAsync(
+      'INSERT INTO messages (chat_id, role, content, created_at) VALUES (?, ?, ?, ?)',
+      [chatId, role, content.trim(), now],
+    );
 
-    await database.withTransactionAsync(async () => {
-      // Insert message
-      const messageResult = await database.runAsync(
-        'INSERT INTO messages (chat_id, role, content, created_at) VALUES (?, ?, ?, ?)',
-        [chatId, role, content.trim(), now],
-      );
+    // Update chat's updated_at timestamp
+    await database.runAsync('UPDATE chats SET updated_at = ? WHERE id = ?', [
+      now,
+      chatId,
+    ]);
 
-      // Update chat's updated_at timestamp
-      await database.runAsync('UPDATE chats SET updated_at = ? WHERE id = ?', [
-        now,
-        chatId,
-      ]);
-
-      messageId = messageResult.lastInsertRowId;
-    });
-
-    return messageId;
+    return messageResult.lastInsertRowId;
   } catch (error) {
     console.error('[chatStorage] Failed to add message:', error);
     throw error;
@@ -282,15 +276,13 @@ export const deleteChat = async (chatId: number): Promise<void> => {
   const database = getDatabase();
 
   try {
-    await database.withTransactionAsync(async () => {
-      // Delete messages first (though CASCADE should handle this)
-      await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [
-        chatId,
-      ]);
+    // Delete messages first (though CASCADE should handle this)
+    await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [
+      chatId,
+    ]);
 
-      // Delete chat
-      await database.runAsync('DELETE FROM chats WHERE id = ?', [chatId]);
-    });
+    // Delete chat
+    await database.runAsync('DELETE FROM chats WHERE id = ?', [chatId]);
 
     // Chat deleted
   } catch (error) {

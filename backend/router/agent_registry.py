@@ -38,7 +38,6 @@ async def register_predefined_agents(gpt_service: GptService, config) -> List[st
         )
         
         registered.append(agent.name)
-        print(f"✅ Registered agent tool: {agent.name}")
     
     return registered
 
@@ -90,7 +89,6 @@ async def register_custom_agent(
         tool_type="agent"
     )
     
-    print(f"✅ Registered custom agent tool: {agent.name}")
     return agent.name
 
 
@@ -116,7 +114,6 @@ async def register_specific_agents(
     
     for agent_name in agent_names:
         if agent_name not in agent_map:
-            print(f"⚠️  Unknown agent: {agent_name}")
             continue
         
         agent = agent_map[agent_name]
@@ -134,53 +131,7 @@ async def register_specific_agents(
         )
         
         registered.append(agent.name)
-        print(f"✅ Registered agent tool: {agent.name}")
     
     return registered
 
 
-# ============================================================================
-# EXAMPLE USAGE
-# ============================================================================
-
-async def example_usage(config):
-    """
-    Example of how to use the agent registry
-    """
-    # Create GPT service
-    gpt_service = GptService(config)
-    
-    # Example 1: Register all predefined agents
-    await register_predefined_agents(gpt_service, config)
-    
-    # Example 2: Register only specific agents
-    await register_specific_agents(
-        gpt_service, 
-        config, 
-        agent_names=["research_agent", "creative_agent", "weather_agent"]
-    )
-    
-    # Example 3: Register a custom agent
-    await register_custom_agent(
-        gpt_service,
-        config,
-        name="math_tutor",
-        description="A specialized agent for math tutoring and problem-solving",
-        system_prompt=(
-            "You are a math tutor. Your role is to:\n"
-            "- Help students understand mathematical concepts\n"
-            "- Solve math problems step by step\n"
-            "- Explain the reasoning behind solutions\n"
-            "- Provide practice problems and examples\n"
-            "- Be patient and encouraging\n\n"
-            "Always show your work and explain each step clearly."
-        ),
-        available_tools=[],  # Could add calculator tool here
-        reasoning_effort="high"
-    )
-
-
-if __name__ == "__main__":
-    import asyncio
-    config= {}
-    asyncio.run(example_usage(config))

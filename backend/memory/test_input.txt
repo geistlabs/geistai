@@ -1,0 +1,1 @@
+[{"content": "This is a test memory", "category": "personal", "relevanceScore": 0.8, "originalContext": "User mentioned this during conversation"}]

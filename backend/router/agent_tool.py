@@ -19,6 +19,7 @@ import asyncio
 from typing import Dict, List, Any, Optional
 import httpx
 from gpt_service import GptService
+from chat_types import ChatMessage
 from response_schema import AgentResponse
 from events import EventEmitter
 from prompts import get_prompt
@@ -69,7 +70,7 @@ class AgentTool(EventEmitter):
         self.stream_sub_agents = stream_sub_agents
 
         # Create a GPT service instance for this agent
-        self.gpt_service = GptService(model_config)
+        self.gpt_service = GptService(model_config, EventEmitter())
 
         # Set up tool call event forwarding from this agent's GPT service
         self._setup_tool_call_event_forwarding()
@@ -82,7 +83,6 @@ class AgentTool(EventEmitter):
         if hasattr(self.gpt_service, 'emit') and hasattr(self.gpt_service, 'on'):
             def create_tool_forwarder(event_type):
                 def forwarder(data):
-                    print(f"🎯 Agent {self.name} forwarding {event_type}")
                     self.emit("tool_call_event", {
                         "type": event_type,
                         "data": data
@@ -90,16 +90,16 @@ class AgentTool(EventEmitter):
                 return forwarder
 
             # Add tool call event listeners
-            self.gpt_service.on("tool_call_start", create_tool_forwarder("tool_call_start"))
-            self.gpt_service.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
-            self.gpt_service.on("tool_call_error", create_tool_forwarder("tool_call_error"))
+            self.gpt_service.event_emitter.on("tool_call_start", create_tool_forwarder("tool_call_start"))
+            self.gpt_service.event_emitter.on("tool_call_complete", create_tool_forwarder("tool_call_complete"))
+            self.gpt_service.event_emitter.on("tool_call_error", create_tool_forwarder("tool_call_error"))
 
     def _cleanup_tool_call_event_forwarding(self):
         """Clean up tool call event listeners from this agent's GPT service"""
         if hasattr(self.gpt_service, 'remove_all_listeners'):
-            self.gpt_service.remove_all_listeners("tool_call_start")
-            self.gpt_service.remove_all_listeners("tool_call_complete")
-            self.gpt_service.remove_all_listeners("tool_call_error")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_start")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_complete")
+            self.gpt_service.event_emitter.remove_all_listeners("tool_call_error")
 
     async def initialize(self, main_gpt_service: GptService, config):
         """
@@ -123,7 +123,7 @@ class AgentTool(EventEmitter):
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
 
-    async def run(self, input_data: str, context: str = "") -> AgentResponse:
+    async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """
         Run the agent with structured response and event streaming
 
@@ -137,31 +137,18 @@ class AgentTool(EventEmitter):
         # Emit start event
         self.emit("agent_start", {
             "agent": self.name,
-            "input": input_data,
-            "context": context
+            "messages": [{"role": msg.role, "content": msg.content} for msg in messages],
         })
 
         try:
-            # Prepare the conversation
-            messages = []
-
-            # Add context if provided
-            if context:
-                messages.append({
-                    "role": "user",
-                    "content": f"Context: {context}\n\nTask: {input_data}"
-                })
-            else:
-                messages.append({
-                    "role": "user",
-                    "content": input_data
-                })
-
             # Get response from agent using streaming with system prompt
             response_chunks = []
             chunk_count = 0
+            # Convert ChatMessage objects to dicts for stream_chat_request
+            message_dicts = [{"role": msg.role, "content": msg.content} for msg in messages]
+            
             async for chunk in self.gpt_service.stream_chat_request(
-                messages=messages,
+                messages=message_dicts,
                 reasoning_effort=self.reasoning_effort,
                 agent_name=self.name,
                 permitted_tools=self.available_tools,
@@ -170,8 +157,6 @@ class AgentTool(EventEmitter):
                 response_chunks.append(chunk)
                 chunk_count += 1
                 # Debug: Log first few chunks
-                if chunk_count <= 5:
-                    print(f"🔍 Agent {self.name} chunk {chunk_count}: '{chunk}'")
                 # Emit token event for streaming
                 self.emit("agent_token", {
                     "agent": self.name,
@@ -180,7 +165,6 @@ class AgentTool(EventEmitter):
 
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
-            print(f"🔍 Agent {self.name} received {chunk_count} total chunks, response_text length: {len(response_text)}")
 
             # No need to restore - using direct system prompt parameter
 
@@ -277,18 +261,15 @@ class AgentTool(EventEmitter):
         Returns:
             dict: Agent's response with 'content' key (legacy format)
         """
-        print(f"🔍 AgentTool {self.name} execute called with arguments: {arguments}")
         task = arguments.get("task", "")
         context = arguments.get("context", "")
+        messages = [ChatMessage(role="user", content="Your task is to " + task + " you have the following context: " + context)]
 
         if not task:
-            print(f"❌ AgentTool {self.name} - No task provided in arguments: {arguments}")
             return {"error": "No task provided"}
 
-        print(f"✅ AgentTool {self.name} - Task: '{task}', Context: '{context}'")
         # Use the new run method
-        agent_response = await self.run(task, context)
-        print(f"AgentTool {self.name} agent_response: {agent_response}")
+        agent_response = await self.run(messages)
 
         # Convert to legacy format for backward compatibility
         return {
@@ -311,7 +292,7 @@ def create_research_agent(config) -> AgentTool:
         name="research_agent",
         description="Use this tool to research the web using brave search. To be used to search the web, analyze information, and provide detailed research reports.",
         system_prompt=get_prompt("research_agent"),
-        available_tools=["brave_web_search",  "fetch "],  # Include citation tool
+        available_tools=["brave_web_search",  "fetch"],  # Include citation tool
         reasoning_effort="high"
     )
 

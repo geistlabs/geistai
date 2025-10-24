@@ -1,6 +1,7 @@
+import EventSource from 'react-native-sse';
+
 import { ENV } from '../config/environment';
 import { revenuecat } from '../revenuecat';
-
 import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
@@ -112,15 +113,7 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
-      // Handle end event specially (doesn't have type field)
-      if (data.finished === true) {
-        // eslint-disable-next-line no-console
-        console.log('🏁 Stream finished');
-        // Call onComplete to clear loading state
-        this.handlers.onComplete?.();
-        return;
-      }
-
+  
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
@@ -140,12 +133,10 @@ class StreamEventProcessor {
         case 'final_response':
           this.handleFinalResponse(data);
           break;
-
+        case 'error':
+          this.handleError(data);
+          break;
         default:
-          if (data.type !== undefined) {
-            // eslint-disable-next-line no-console
-            console.warn('Unknown event type:', data.type);
-          }
       }
     } catch (error) {
       console.error('Error processing event:', error);
@@ -153,8 +144,9 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    if (data.data?.content) {
-      this.handlers.onToken(data.data.content);
+    print('whatch me handle token pal',data.data?.data)
+    if (data.data?.channel === "content") {
+      this.handlers.onToken(data.data.data);
     }
   }
 
@@ -243,35 +235,463 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorStart(data: any): void {
-    const orchestratorName = data.data?.orchestrator || 'unknown';
-    const input = data.data?.input || '';
-    // eslint-disable-next-line no-console
-    console.log(`🎯 Orchestrator started: ${orchestratorName}`, { input });
+    console.log('🎯 Orchestrator started:', data.data.orchestrator);
   }
 
   private handleOrchestratorComplete(data: any): void {
-    const orchestratorName = data.data?.orchestrator || 'unknown';
-    const status = data.data?.status || 'unknown';
-    // eslint-disable-next-line no-console
-    console.log(`✅ Orchestrator completed: ${orchestratorName}`, { status });
+    console.log('✅ Orchestrator completed:', data.data.orchestrator);
   }
 
   private handleFinalResponse(data: any): void {
-    const text = data.text || data.data?.text || 'no response';
-    const status = data.status || data.data?.status || 'unknown';
-    // eslint-disable-next-line no-console
-    console.log('📄 Final response received', { status, length: text.length });
+    console.log('📄 Final response received');
+    console.log('Citations:', data.citations?.length || 0);
   }
 
   private handleError(data: any): void {
-    const message = data.message || data.data?.message || 'Unknown error';
-    // eslint-disable-next-line no-console
-    console.error('❌ Stream error:', message);
-    this.handlers.onError(message);
+    console.error('❌ Stream error:', data.message);
+    this.handlers.onError(data.message || 'Unknown error');
   }
 }
 
-// Send a streaming message to the negotiation API
+// Send a streaming message to the chat API
+export async function sendStreamingMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  // 🔍 DEBUG: Log the FULL prompt being sent to backend
+  console.log(
+    '🚀 [Chat API] ===== FULL PROMPT BEING SENT TO /api/stream =====',
+  );
+  console.log('🚀 [Chat API] User Message:', message);
+  console.log(
+    '🚀 [Chat API] Conversation History Length:',
+    conversationHistory.length,
+  );
+  console.log(
+    '🚀 [Chat API] Full Request Body:',
+    JSON.stringify(requestBody, null, 2),
+  );
+
+  // Log each message in the conversation history for debugging
+  conversationHistory.forEach((msg, index) => {
+    console.log(
+      `🚀 [Chat API] Message ${index + 1} [${msg.role}]:`,
+      msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''),
+    );
+  });
+  console.log('🚀 [Chat API] ============================================');
+
+  // Create event processor
+  const eventProcessor = new StreamEventProcessor(handlers);
+
+  return new Promise<void>((resolve, reject) => {
+    console.log(`${ENV.API_URL}/api/stream`);
+
+    // Create EventSource with POST data
+    const es = new EventSource(`${ENV.API_URL}/api/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestBody),
+      withCredentials: false,
+    });
+
+    // Handle different event types
+    es.addEventListener('orchestrator_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse orchestrator_token:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('sub_agent_event', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse sub_agent_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('tool_call_event', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse tool_call_event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('orchestrator_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse orchestrator_start:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('orchestrator_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse orchestrator_complete:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse final_response:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('error', (event: any) => {
+      try {
+        // Only try to parse if event.data exists and is a string
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        } else {
+          // Handle error events without data
+          console.warn('Error event received without valid data:', event);
+          handlers.onError('Stream error occurred');
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse error event:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+    });
+
+    es.addEventListener('end', (event: any) => {
+      try {
+        // Check if there's any data to process before completing
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          'Failed to parse end event data:',
+          parseError,
+          'Raw data:',
+          event.data,
+        );
+      }
+
+      handlers.onComplete();
+      es.close();
+      resolve();
+    });
+
+    es.addEventListener('open', (event: any) => {
+      console.log('SSE connection established');
+    });
+
+    // Handle connection errors
+    es.onerror = error => {
+      console.error('EventSource error:', error);
+      handlers.onError('Connection failed');
+      es.close();
+      reject(new Error('Connection failed'));
+    };
+
+    // Handle general errors
+    es.onopen = () => {
+      console.log('EventSource opened');
+    };
+  });
+}
+
+// Agent message utilities
+export function createAgentMessage(
+  agent: string,
+  content: string,
+  type: 'start' | 'token' | 'complete' | 'error',
+  status?: string,
+  citations?: any[],
+  meta?: any,
+): AgentMessage {
+  return {
+    agent,
+    content,
+    timestamp: Date.now(),
+    type,
+    status,
+    citations,
+    meta,
+  };
+}
+
+export function groupAgentMessagesByAgent(
+  messages: AgentMessage[],
+): Record<string, AgentMessage[]> {
+  return messages.reduce(
+    (groups, message) => {
+      if (!groups[message.agent]) {
+        groups[message.agent] = [];
+      }
+      groups[message.agent].push(message);
+      return groups;
+    },
+    {} as Record<string, AgentMessage[]>,
+  );
+}
+
+export function getAgentDisplayName(agentName: string): string {
+  const displayNames: Record<string, string> = {
+    main_orchestrator: 'Main Orchestrator',
+    research_agent: 'Research Agent',
+    current_info_agent: 'Current Info Agent',
+    creative_agent: 'Creative Agent',
+    technical_agent: 'Technical Agent',
+    summary_agent: 'Summary Agent',
+  };
+  return (
+    displayNames[agentName] ||
+    agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  );
+}
+
+// Health check function
+export async function checkHealth(): Promise<{
+  status: string;
+}> {
+  try {
+    const response = await fetch(`${ENV.API_URL}/health`);
+
+    if (!response.ok) {
+      throw new Error(`Health check failed: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Health check error:', error);
+    throw error;
+  }
+}
+
+// Legacy ChatAPI class for backward compatibility
+export class ChatAPI {
+  constructor(private apiClient: ApiClient) {}
+
+  async sendMessage(message: string): Promise<string> {
+    const response = await this.apiClient.request<ChatResponse>('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    });
+    return response.response;
+  }
+
+  async streamMessage(
+    message: string,
+    onChunk: (token: string) => void,
+    onError?: (error: Error) => void,
+    onComplete?: () => void,
+    messages?: ChatMessage[],
+  ): Promise<AbortController> {
+    const controller = new AbortController();
+
+    return new Promise(resolve => {
+      const baseUrl = this.apiClient.getBaseUrl();
+      const url = `${baseUrl}/api/stream`;
+
+      // Starting SSE connection
+      const requestBody = { message, messages: messages || [] };
+      // Sending request to backend
+
+      const es = new EventSource(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(requestBody),
+        withCredentials: false,
+      });
+
+      // Store EventSource in controller for cleanup
+      (controller as any).eventSource = es;
+
+      es.addEventListener('chunk', (event: any) => {
+        try {
+          const data = JSON.parse(event.data) as StreamChunk;
+
+          // Skip only truly empty tokens, but preserve space-only tokens
+          if (data.token !== undefined && data.token !== '') {
+            onChunk(data.token);
+          }
+        } catch {
+          // console.error('[Chat] Failed to parse chunk:', e);
+        }
+      });
+
+      es.addEventListener('open', (event: any) => {
+        // SSE connection established
+      });
+
+      es.addEventListener('end', (event: any) => {
+        // Stream completed
+        onComplete?.();
+        es.close();
+        resolve(controller);
+      });
+
+      es.addEventListener('error', (event: any) => {
+        let errorMessage = 'Stream connection failed';
+
+        try {
+          // Try to parse as structured error event
+          const errorData = JSON.parse(event.data || '{}');
+          if (errorData.type === 'error') {
+            errorMessage = errorData.message || errorMessage;
+          } else {
+            errorMessage = event.message || event.type || errorMessage;
+          }
+        } catch {
+          // Fallback to legacy error handling
+          errorMessage = event.message || event.type || errorMessage;
+        }
+
+        // console.error('[Chat] Stream connection error:', errorMessage);
+        onError?.(new Error(errorMessage));
+        es.close();
+        resolve(controller);
+      });
+
+      // Override abort to close EventSource
+      const originalAbort = controller.abort.bind(controller);
+      controller.abort = () => {
+        es.close();
+        originalAbort();
+      };
+
+      resolve(controller);
+    });
+  }
+
+  async getChatHistory(limit: number = 50): Promise<ChatMessage[]> {
+    return this.apiClient.request<ChatMessage[]>(
+      `/api/chat/history?limit=${limit}`,
+    );
+  }
+
+  async deleteChat(chatId: string): Promise<void> {
+    await this.apiClient.request(`/api/chat/${chatId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async transcribeAudio(
+    audioUri: string,
+    language?: string,
+  ): Promise<{
+    success: boolean;
+    text: string;
+    language?: string;
+    error?: string;
+  }> {
+    // Create FormData for file upload
+    const formData = new FormData();
+
+    // Add the audio file - React Native FormData expects the file object directly
+    formData.append('audio_file', {
+      uri: audioUri,
+      type: 'audio/wav',
+      name: 'recording.wav',
+    } as any);
+
+    // Add language if specified
+    if (language) {
+      formData.append('language', language);
+    }
+
+    try {
+      const response = await fetch(
+        `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
+        {
+          method: 'POST',
+          body: formData,
+          // Don't set Content-Type header - let fetch set it with boundary for multipart/form-data
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`STT request failed: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      // console.error('[STT] Transcription failed:', error);
+      return {
+        success: false,
+        text: '',
+        error: error instanceof Error ? error.message : 'Transcription failed',
+      };
+    }
+  }
+}
+
+// Negotiation-specific functionality
 export async function sendNegotiationMessage(
   message: string,
   conversationHistory: ChatMessage[],
@@ -365,373 +785,4 @@ export async function sendNegotiationMessage(
       reject(error);
     }
   });
-}
-
-// Send a streaming message to the chat API
-export async function sendStreamingMessage(
-  message: string,
-  conversationHistory: ChatMessage[],
-  handlers: StreamEventHandlers,
-): Promise<void> {
-  const requestBody: ChatRequest = {
-    message,
-    messages: conversationHistory,
-  };
-
-  // Create event processor
-  const eventProcessor = new StreamEventProcessor(handlers);
-
-  return new Promise<void>(async (resolve, reject) => {
-    try {
-      console.log(`${ENV.API_URL}/api/stream`);
-
-      // Get user ID for premium verification
-      const userId = await revenuecat.getAppUserId();
-
-      const response = await fetch(`${ENV.API_URL}/api/stream`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          'X-User-ID': userId,
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        reject(new Error(`HTTP ${response.status}: ${errorText}`));
-        return;
-      }
-
-      // Manual SSE parsing
-      const reader = response.body?.getReader();
-      if (!reader) {
-        // Fallback: Try to get response as text for non-streaming responses
-        try {
-          const text = await response.text();
-          console.log('Response text:', text);
-          // Try to parse as SSE format
-          const lines = text.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              try {
-                const parsed = JSON.parse(data);
-                eventProcessor.processEvent(parsed);
-              } catch {
-                // Skip non-JSON lines
-              }
-            }
-          }
-          resolve();
-        } catch (error) {
-          reject(
-            new Error('Failed to read response: ' + (error as Error).message),
-          );
-        }
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          resolve();
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              resolve();
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              eventProcessor.processEvent(parsed);
-            } catch {
-              // Skip non-JSON lines
-            }
-          }
-        }
-      }
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-// Agent message utilities
-export function createAgentMessage(
-  agent: string,
-  content: string,
-  type: 'start' | 'token' | 'complete' | 'error',
-  status?: string,
-  citations?: any[],
-  meta?: any,
-): AgentMessage {
-  return {
-    agent,
-    content,
-    timestamp: Date.now(),
-    type,
-    status,
-    citations,
-    meta,
-  };
-}
-
-export function groupAgentMessagesByAgent(
-  messages: AgentMessage[],
-): Record<string, AgentMessage[]> {
-  return messages.reduce(
-    (groups, message) => {
-      if (!groups[message.agent]) {
-        groups[message.agent] = [];
-      }
-      groups[message.agent].push(message);
-      return groups;
-    },
-    {} as Record<string, AgentMessage[]>,
-  );
-}
-
-export function getAgentDisplayName(agentName: string): string {
-  const displayNames: Record<string, string> = {
-    main_orchestrator: 'Main Orchestrator',
-    research_agent: 'Research Agent',
-    current_info_agent: 'Current Info Agent',
-    creative_agent: 'Creative Agent',
-    technical_agent: 'Technical Agent',
-    summary_agent: 'Summary Agent',
-  };
-  return (
-    displayNames[agentName] ||
-    agentName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
-  );
-}
-
-// Health check function
-export async function checkHealth(): Promise<{
-  status: string;
-  ssl_enabled: boolean;
-  ssl_status: string;
-}> {
-  try {
-    const response = await fetch(`${ENV.API_URL}/health`);
-
-    if (!response.ok) {
-      throw new Error(`Health check failed: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Health check error:', error);
-    throw error;
-  }
-}
-
-// Legacy ChatAPI class for backward compatibility
-export class ChatAPI {
-  constructor(private apiClient: ApiClient) {}
-
-  async sendMessage(message: string): Promise<string> {
-    const response = await this.apiClient.request<ChatResponse>('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify({ message }),
-    });
-    return response.response;
-  }
-
-  async streamMessage(
-    message: string,
-    onChunk: (token: string) => void,
-    onError?: (error: Error) => void,
-    onComplete?: () => void,
-    messages?: ChatMessage[],
-  ): Promise<AbortController> {
-    const controller = new AbortController();
-
-    try {
-      const baseUrl = this.apiClient.getBaseUrl();
-      const url = `${baseUrl}/api/stream`;
-
-      // Get user ID for premium verification
-      const userId = await revenuecat.getAppUserId();
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          'X-User-ID': userId,
-        },
-        body: JSON.stringify({ message, messages: messages || [] }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        onError?.(new Error(`HTTP ${response.status}: ${errorText}`));
-        return controller;
-      }
-
-      // Manual SSE parsing
-      const reader = response.body?.getReader();
-      if (!reader) {
-        // Fallback: Try to get response as text for non-streaming responses
-        try {
-          const text = await response.text();
-          console.log('Response text:', text);
-          // Try to parse as SSE format
-          const lines = text.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.data?.content) {
-                  onChunk(parsed.data.content);
-                } else if (parsed.text) {
-                  onChunk(parsed.text);
-                }
-              } catch {
-                // Skip non-JSON lines
-              }
-            }
-          }
-          onComplete?.();
-        } catch (error) {
-          onError?.(
-            new Error('Failed to read response: ' + (error as Error).message),
-          );
-        }
-        return controller;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      const readChunk = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              onComplete?.();
-              break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') {
-                  onComplete?.();
-                  return;
-                }
-                try {
-                  const parsed = JSON.parse(data);
-                  // Handle different event types
-                  if (parsed.data?.content) {
-                    onChunk(parsed.data.content);
-                  } else if (parsed.text) {
-                    // Handle final_response
-                    onChunk(parsed.text);
-                  } else if (typeof parsed === 'string') {
-                    onChunk(parsed);
-                  }
-                } catch {
-                  // Skip non-JSON lines
-                }
-              }
-            }
-          }
-        } catch (error) {
-          if ((error as Error).name !== 'AbortError') {
-            onError?.(error as Error);
-          }
-        }
-      };
-
-      readChunk();
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        onError?.(error as Error);
-      }
-    }
-
-    return controller;
-  }
-
-  async getChatHistory(limit: number = 50): Promise<ChatMessage[]> {
-    return this.apiClient.request<ChatMessage[]>(
-      `/api/chat/history?limit=${limit}`,
-    );
-  }
-
-  async deleteChat(chatId: string): Promise<void> {
-    await this.apiClient.request(`/api/chat/${chatId}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async transcribeAudio(
-    audioUri: string,
-    language?: string,
-  ): Promise<{
-    success: boolean;
-    text: string;
-    language?: string;
-    error?: string;
-  }> {
-    // Create FormData for file upload
-    const formData = new FormData();
-
-    // Add the audio file - React Native FormData expects the file object directly
-    formData.append('audio_file', {
-      uri: audioUri,
-      type: 'audio/wav',
-      name: 'recording.wav',
-    } as any);
-
-    // Add language if specified
-    if (language) {
-      formData.append('language', language);
-    }
-
-    try {
-      const response = await fetch(
-        `${this.apiClient.getBaseUrl()}/api/speech-to-text`,
-        {
-          method: 'POST',
-          body: formData,
-          // Don't set Content-Type header - let fetch set it with boundary for multipart/form-data
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`STT request failed: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      // console.error('[STT] Transcription failed:', error);
-      return {
-        success: false,
-        text: '',
-        error: error instanceof Error ? error.message : 'Transcription failed',
-      };
-    }
-  }
 }
