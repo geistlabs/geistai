@@ -127,4 +127,3 @@ export async function createEmbeddings(text: string) {
     throw error;
   }
 }
-
