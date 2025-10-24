@@ -2,6 +2,7 @@ import EventSource from 'react-native-sse';
 
 import { ENV } from '../config/environment';
 import { revenuecat } from '../revenuecat';
+
 import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
@@ -113,7 +114,6 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
-  
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
@@ -144,8 +144,8 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    print('whatch me handle token pal',data.data?.data)
-    if (data.data?.channel === "content") {
+    console.log('whatch me handle token pal', data.data?.data);
+    if (data.data?.channel === 'content') {
       this.handlers.onToken(data.data.data);
     }
   }
