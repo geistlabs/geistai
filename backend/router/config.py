@@ -40,7 +40,7 @@ INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL="https://api.studio.nebius.com"
 REMOTE_INFERENCE_KEY=os.getenv("REMOTE_INFERENCE_KEY", "")
-USE_REMOTE_INFERENCE = True#  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+USE_REMOTE_INFERENCE =  os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 
 RATING_INFERENCE_URL = "https://api.openai.com"
 
