@@ -86,7 +86,7 @@ async def get_gpt_service():
     This allows us to reuse the same service instance but with different event emitters per request.
     """
     global gpt_service_instance
-    
+
     # Initialize the service once if not already done
     if gpt_service_instance is None:
         # Create a temporary event emitter for initialization
@@ -94,15 +94,15 @@ async def get_gpt_service():
         gpt_service_instance = GptService(config, temp_emitter, can_log=True)
         await gpt_service_instance.init_tools()
         logger.info("GptService initialized with tools")
-    
+
     # Create a new instance with a fresh event emitter for each request
     fresh_emitter = EventEmitter()
     new_service = GptService(config, fresh_emitter, can_log=True)
-    
+
     # Copy the tool registry from the initialized instance
     new_service._tool_registry = gpt_service_instance._tool_registry.copy()
     new_service._mcp_client = gpt_service_instance._mcp_client
-    
+
     return new_service
 
 @app.on_event("startup")
@@ -185,74 +185,18 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
 
     try:
         # Use the orchestrator for processing
+        gpt_service = await get_gpt_service()
         orchestrator = NestedOrchestrator(config)
         await orchestrator.initialize(gpt_service, config)
-        
+
         # Get the response
-        response = await orchestrator.run(chat_request.message, context="")
-        
+        chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+        response = await orchestrator.run(chat_messages)
+
         return {"response": response.text}
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/api/stream")
-async def stream_with_orchestrator(
-    chat_request: ChatRequest,
-    request: Request,
-    user_id: str = Depends(require_premium)
-):
-    """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    logger.info(f"[Premium User: {user_id}] Processing chat request")
-    print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
-
-    # Build messages array with conversation history
-    if chat_request.messages:
-        messages = [msg.dict() for msg in chat_request.messages]
-        messages.append({"role": "user", "content": chat_request.message})
-    else:
-        messages = [{"role": "user", "content": chat_request.message}]
-
-    try:
-        # Create a nested orchestrator structure
-        orchestrator = create_nested_research_system(config)
-
-        # Initialize the orchestrator with the main GPT service
-        if gpt_service_instance is None:
-            current_gpt_service = await get_gpt_service()
-        else:
-            current_gpt_service = gpt_service_instance
-        await orchestrator.initialize(current_gpt_service, config)
-
-        # Configure available tools (only sub-agents) if tool calls are enabled
-        if config.ENABLE_TOOL_CALLS:
-            sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
-            all_tools = list(current_gpt_service._tool_registry.keys())
-            available_tool_names = [
-                tool for tool in all_tools if tool in sub_agent_names
-            ]
-            orchestrator.available_tools = available_tool_names
-        else:
-            orchestrator.available_tools = []
-        orchestrator.gpt_service = current_gpt_service
-
-        # Run the orchestrator and get the final response
-        chat_messages = [ChatMessage(role="user", content=chat_request.message)]
-        final_response = await orchestrator.run(chat_messages)
-
-        return {
-            "response": final_response.text,
-            "status": final_response.status,
-            "meta": final_response.meta,
-        }
-
-    except Exception as e:
-        print(f"Error in chat endpoint: {e}")
-        import traceback
-
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 async def handle_memory(chat_request: ChatRequest):
@@ -403,7 +347,7 @@ async def memory_proxy(request: Request):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    
+
     gpt_service = await get_gpt_service()
     # Build messages array with conversation history
     messages = chat_request.messages
@@ -569,8 +513,8 @@ async def summarize_conversation(conversation_dict: List[dict]):
     conversation_json = json.dumps(conversation_dict, ensure_ascii=False)
     content = f"{summarizer_prompt}\n\n[CONVERSATION_JSON]:\n{conversation_json}\n"
     conversation_dict = [{"role": "user", "content": content}]
-    
-    gpt_service = await get_gpt_service()  
+
+    gpt_service = await get_gpt_service()
     headers, model, url = gpt_service.get_chat_completion_params()
     async with httpx.AsyncClient() as client:
        response = await client.post(
@@ -610,6 +554,7 @@ async def negotiate_pricing(
         logger.info(f"[Negotiate] Starting negotiation for user: {user_id}")
 
         # Create pricing agent
+        gpt_service = await get_gpt_service()
         pricing_agent = create_pricing_agent(config)
         await pricing_agent.initialize(gpt_service, config)
 
@@ -641,10 +586,8 @@ async def negotiate_pricing(
 
                 # Run the pricing agent
                 logger.info(f"[Negotiate] Running pricing agent with message: {chat_request.message}")
-                final_response = await pricing_agent.run(
-                    chat_request.message,
-                    context=conversation_context
-                )
+                chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+                final_response = await pricing_agent.run(chat_messages)
                 logger.info(f"[Negotiate] Pricing agent completed: {final_response.status}")
 
                 # Send all captured events
