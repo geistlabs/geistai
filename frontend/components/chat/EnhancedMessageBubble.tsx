@@ -334,8 +334,6 @@ const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({
 
 export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
   message,
-  allMessages = [],
-  messageIndex = 0,
 }) => {
   const [copied, setCopied] = useState(false);
   const [showActions, setShowActions] = useState(false);

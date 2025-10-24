@@ -43,7 +43,6 @@ export async function sendMessage(
   };
 
   try {
-    console.log(`${ENV.API_URL}/api/chat`);
     const response = await fetch(`${ENV.API_URL}/api/chat`, {
       method: 'POST',
       headers: {
@@ -60,7 +59,6 @@ export async function sendMessage(
     const data: ChatResponse = await response.json();
     return { content: data.response };
   } catch (error) {
-    console.error('Error sending message:', error);
     throw error;
   }
 }
@@ -138,12 +136,11 @@ class StreamEventProcessor {
         default:
       }
     } catch (error) {
-      console.error('Error processing event:', error);
+      // Error processing event
     }
   }
 
   private handleOrchestratorToken(data: any): void {
-    print('whatch me handle token pal',data.data?.data)
     if (data.data?.channel === "content") {
       this.handlers.onToken(data.data.data);
     }
@@ -190,11 +187,6 @@ class StreamEventProcessor {
     const agentName = data.data.agent;
 
     if (!toolCallData?.tool_name) {
-      console.warn('Invalid tool call event data:', {
-        eventType,
-        toolCallData,
-        data,
-      });
       return;
     }
 
@@ -206,10 +198,6 @@ class StreamEventProcessor {
       error: toolCallData.error,
     };
 
-    console.log(
-      `🔧 Sub-agent ${agentName} tool call ${eventType}:`,
-      toolCallData.tool_name,
-    );
     this.handlers.onToolCallEvent(toolCallEvent);
   }
 
@@ -217,7 +205,6 @@ class StreamEventProcessor {
     const { type, data: eventData } = data.data;
 
     if (!eventData?.tool_name) {
-      console.warn('Invalid tool call event data:', data);
       return;
     }
 
@@ -229,25 +216,22 @@ class StreamEventProcessor {
       error: eventData.error,
     };
 
-    console.log(`🔧 Tool call ${type}:`, eventData.tool_name);
     this.handlers.onToolCallEvent(toolCallEvent);
   }
 
   private handleOrchestratorStart(data: any): void {
-    console.log('🎯 Orchestrator started:', data.data.orchestrator);
+    // Orchestrator started
   }
 
   private handleOrchestratorComplete(data: any): void {
-    console.log('✅ Orchestrator completed:', data.data.orchestrator);
+    // Orchestrator completed
   }
 
   private handleFinalResponse(data: any): void {
-    console.log('📄 Final response received');
-    console.log('Citations:', data.citations?.length || 0);
+    // Final response received
   }
 
   private handleError(data: any): void {
-    console.error('❌ Stream error:', data.message);
     this.handlers.onError(data.message || 'Unknown error');
   }
 }
@@ -263,35 +247,10 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
-  // 🔍 DEBUG: Log the FULL prompt being sent to backend
-  console.log(
-    '🚀 [Chat API] ===== FULL PROMPT BEING SENT TO /api/stream =====',
-  );
-  console.log('🚀 [Chat API] User Message:', message);
-  console.log(
-    '🚀 [Chat API] Conversation History Length:',
-    conversationHistory.length,
-  );
-  console.log(
-    '🚀 [Chat API] Full Request Body:',
-    JSON.stringify(requestBody, null, 2),
-  );
-
-  // Log each message in the conversation history for debugging
-  conversationHistory.forEach((msg, index) => {
-    console.log(
-      `🚀 [Chat API] Message ${index + 1} [${msg.role}]:`,
-      msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''),
-    );
-  });
-  console.log('🚀 [Chat API] ============================================');
-
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
 
   return new Promise<void>((resolve, reject) => {
-    console.log(`${ENV.API_URL}/api/stream`);
-
     // Create EventSource with POST data
     const es = new EventSource(`${ENV.API_URL}/api/stream`, {
       method: 'POST',
@@ -311,12 +270,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse orchestrator_token:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse orchestrator_token
       }
     });
 
@@ -327,12 +281,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse sub_agent_event:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse sub_agent_event
       }
     });
 
@@ -343,12 +292,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse tool_call_event:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse tool_call_event
       }
     });
 
@@ -359,12 +303,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse orchestrator_start:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse orchestrator_start
       }
     });
 
@@ -375,12 +314,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse orchestrator_complete:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse orchestrator_complete
       }
     });
 
@@ -391,12 +325,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse final_response:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse final_response
       }
     });
 
@@ -408,16 +337,10 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         } else {
           // Handle error events without data
-          console.warn('Error event received without valid data:', event);
           handlers.onError('Stream error occurred');
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse error event:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse error event
       }
     });
 
@@ -429,12 +352,7 @@ export async function sendStreamingMessage(
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse end event data:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        // Failed to parse end event data
       }
 
       handlers.onComplete();
@@ -443,12 +361,11 @@ export async function sendStreamingMessage(
     });
 
     es.addEventListener('open', (event: any) => {
-      console.log('SSE connection established');
+      // SSE connection established
     });
 
     // Handle connection errors
     es.onerror = error => {
-      console.error('EventSource error:', error);
       handlers.onError('Connection failed');
       es.close();
       reject(new Error('Connection failed'));
@@ -456,7 +373,7 @@ export async function sendStreamingMessage(
 
     // Handle general errors
     es.onopen = () => {
-      console.log('EventSource opened');
+      // EventSource opened
     };
   });
 }
@@ -524,7 +441,6 @@ export async function checkHealth(): Promise<{
 
     return await response.json();
   } catch (error) {
-    console.error('Health check error:', error);
     throw error;
   }
 }

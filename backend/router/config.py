@@ -35,7 +35,7 @@ REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # "low", "medium", "hig
 # Note: Always using nested orchestrator (can handle single-layer or multi-layer scenarios)
 
 # External service settings
-INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
+INFERENCE_URL = "https://memory.geist.im"#os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
 REMOTE_INFERENCE_URL="https://api.studio.nebius.com"

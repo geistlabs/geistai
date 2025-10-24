@@ -14,6 +14,8 @@ module.exports = defineConfig([
       'react-native': require('eslint-plugin-react-native'),
     },
     rules: {
+      'no-inline-styles': 'off',
+      'no-unused-vars': 'off',
       // Prettier integration
       'prettier/prettier': [
         'error',
