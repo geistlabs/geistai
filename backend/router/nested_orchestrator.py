@@ -29,7 +29,6 @@ class NestedOrchestrator(Orchestrator):
     
     def _setup_recursive_event_forwarding(self):
         """Set up event forwarding for all agents, including nested ones"""
-        print(f"🎯 Setting up recursive event forwarding for {len(self.gpt_service._tool_registry)} tools")
         
         # First pass: identify all agents and their immediate paths
         self._discover_agent_hierarchy()
@@ -65,7 +64,6 @@ class NestedOrchestrator(Orchestrator):
                     # This is a nested sub-agent
                     full_path = f"{parent_path}.{tool_name}"
                     self._event_paths[tool_name] = full_path
-                    print(f"🎯 Discovered nested agent: {tool_name} at path {full_path}")
                     
                     # Recursively discover deeper nesting
                     self._discover_nested_agents(agent_instance, full_path)
@@ -77,12 +75,10 @@ class NestedOrchestrator(Orchestrator):
             if executor and hasattr(executor, '__self__'):
                 agent_instance = executor.__self__
                 if hasattr(agent_instance, 'emit') and hasattr(agent_instance, 'on'):
-                    print(f"🎯 Setting up nested event forwarding for: {tool_name}")
                     
                     # Create event handlers with full path context
                     def create_nested_forwarder(event_type, agent_name, full_path):
                         def forwarder(data):
-                            print(f"🎯 Forwarding {event_type} from {agent_name} (path: {full_path})")
                             self.emit("sub_agent_event", {
                                 "type": event_type,
                                 "agent": agent_name,
@@ -116,7 +112,6 @@ class NestedOrchestrator(Orchestrator):
                     # Create a forwarder that bubbles up to the main orchestrator
                     def create_recursive_forwarder(event_type, agent_name, path):
                         def forwarder(data):
-                            print(f"🎯 Recursive forwarding {event_type} from {agent_name} (path: {path})")
                             # Forward to the main orchestrator
                             self.emit("sub_agent_event", {
                                 "type": event_type,

@@ -11,7 +11,7 @@ import json
 from typing import Dict, Any, Optional
 import config
 from pathlib import Path
-
+from prompts import get_rubrics_prompt
 # Load .env file from parent directory when running locally
 try:
     from dotenv import load_dotenv
@@ -36,8 +36,8 @@ class ReasonablenessService:
     """Service for rating the reasonableness of AI responses."""
     
     def __init__(self):
-        self.base_url = config.REMOTE_INFERENCE_URL
-        self.api_key = config.OPENAI_KEY
+        self.base_url = config.RATING_INFERENCE_URL
+        self.api_key = config.RATING_INFERENCE_KEY
         
     async def rate_response(
         self, 
@@ -90,12 +90,13 @@ class ReasonablenessService:
                     timeout=300.0
                 )
                 if response.status_code != 200:
+                    print(f"Rating API error: {response.status_code} {response.text}")
                     return {
                 
                         "rating": 0.5,
                         "reasoning": f"Rating API error: {response.status_code}",
                         "confidence": 0.0,
-                        "issues": ["API request failed"]
+                        "issues": [f"API request failed: {response.status_code} {response.text}"]
                     }
                 
                 result = response.json()
@@ -152,55 +153,7 @@ class ReasonablenessService:
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
         """Build the evaluation context for the rating tool call."""
         
-        RUBRIC_SYSTEM_PROMPT = (
-            "You are a strict but fair grader of AI responses for overall REASONABLENESS (not factual accuracy).\n"
-            "\n"
-            "OUTPUT FORMAT: Call the grading function tool EXACTLY ONCE. No prose.\n"
-            "\n"
-            "WHAT TO JUDGE (only these):\n"
-            "- Intent match: did it answer what was asked?\n"
-            "- Constraint adherence (format/style/length).\n"
-            "- Helpfulness & specificity for the user’s ask.\n"
-            "- Tone appropriateness.\n"
-            "- Obvious errors/contradictions.\n"
-            "- Genre appropriateness: do NOT penalize brevity when the genre warrants short turns (e.g., roleplay beats).\n"
-            "\n"
-            "LINKS & EXTRACTION POLICY:\n"
-            "- MAJOR issue: user asked to extract/summarize from a URL or page and the assistant link-dumps instead.\n"
-            "- MINOR issue: for general queries, the assistant links but also provides a usable summary.\n"
-            "\n"
-            "SCORING (use the full 0.0–1.0 scale; do NOT default to 0.6):\n"
-            "- 1.0  Excellent: direct, helpful, on-tone, fits constraints; no meaningful issues.\n"
-            "- 0.9  Very good: minor nit(s) only; still clearly excellent for the user.\n"
-            "- 0.8  Good: a couple small issues (slight verbosity/omissions) but solid overall.\n"
-            "- 0.7  Fair: one notable issue that reduces usefulness, yet answer still serviceable.\n"
-            "- 0.6  Marginal: multiple minors or one clear major that materially harms usefulness.\n"
-            "- 0.5  Weak: major issues; partially useful but notably flawed.\n"
-            "- 0.3  Poor: largely unhelpful/incorrect format or ignores key constraints.\n"
-            "- 0.1  Bad: off-topic/irrelevant/unsafe; no meaningful help.\n"
-            "\n"
-            "MAPPING RULE:\n"
-            "- Identify issues → choose the closest band from the descriptors above.\n"
-            "- Round to ONE decimal. Do not compute long penalties; pick the nearest band.\n"
-            "\n"
-            "CONFIDENCE:\n"
-            "- 0.9 clear-cut; 0.6 mixed; 0.3 borderline/ambiguous.\n"
-            "\n"
-            "CALIBRATION EXAMPLES (anchor your scale to these):\n"
-            "- 1.0  User: \"Give LaTeX quadratic formula.\" Assistant: \"\\[x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}\\]\"\n"
-            "- 0.9  ROLEPLAY beat (short, in-character, on-tone): User starts scene; Assistant replies with a single in-character line that advances the scene.\n"
-            "- 0.9  TONE analysis follow-up: User asks overall tone beyond pos/neg; Assistant concisely labels it (e.g., \"mostly disappointed but appreciative\") and cites which parts.\n"
-            "- 0.8  User: \"2 sentences.\" Assistant gives 4 but helpful and correct.\n"
-            "- 0.6  User: \"Summarize key numbers from <url>.\" Assistant points to link with minimal/no extraction (major: link-dump).\n"
-            "- 0.3  User asks for a summary; Assistant writes unrelated content.\n"
-            "\n"
-            "Now grade the item below by CALLING THE TOOL:\n"
-            "\n"
-            f"USER PROMPT:\n{user_prompt}\n"
-            f"AI RESPONSE:\n{ai_response}\n"
-            "\n"
-            f"OPTIONAL CONTEXT:\n{context}\n"
-        )
+        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt()
 
         return RUBRIC_SYSTEM_PROMPT
     def _get_rating_tool_definition(self) -> Dict[str, Any]:

@@ -1,0 +1,521 @@
+{
+  "info": {
+    "name": "Geist API Collection",
+    "description": "Complete API collection for GeistAI services including Router, Inference, and Memory endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "router_base_url",
+      "value": "https://router.geist.im",
+      "description": "Base URL for Router service"
+    },
+    {
+      "key": "router_local_url",
+      "value": "http://localhost:8000",
+      "description": "Local Router service URL"
+    },
+    {
+      "key": "inference_base_url",
+      "value": "https://inference.geist.im",
+      "description": "Base URL for Inference service"
+    },
+    {
+      "key": "inference_local_url",
+      "value": "http://localhost:8080",
+      "description": "Local Inference service URL"
+    },
+    {
+      "key": "memory_base_url",
+      "value": "https://memory.geist.im",
+      "description": "Base URL for Memory Extraction service"
+    },
+    {
+      "key": "memory_local_url",
+      "value": "http://localhost:8080",
+      "description": "Local Memory Extraction service URL"
+    },
+    {
+      "key": "embeddings_base_url",
+      "value": "https://embeddings.geist.im",
+      "description": "Base URL for Embeddings service"
+    },
+    {
+      "key": "embeddings_local_url",
+      "value": "http://localhost:8001",
+      "description": "Local Embeddings service URL"
+    }
+  ],
+  "item": [
+    {
+      "name": "Router",
+      "description": "GeistAI Router service endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{router_base_url}}/health",
+              "host": ["{{router_base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check endpoint for the router service"
+          }
+        },
+        {
+          "name": "Chat (Non-streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Hello, how can you help me today?\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Previous message context\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"Previous response context\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/chat",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Non-streaming chat endpoint for simple requests"
+          }
+        },
+        {
+          "name": "Chat (Streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Tell me about artificial intelligence\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Previous message context\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/stream",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "stream"]
+            },
+            "description": "Enhanced streaming endpoint with orchestrator and sub-agent visibility"
+          }
+        },
+        {
+          "name": "Memory Extraction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Extract key facts from this conversation and return as a JSON array\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"I work as a software engineer at Google and I love playing tennis on weekends\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"That's great! Software engineering at Google must be exciting, and tennis is a wonderful way to stay active.\"\n    }\n  ],\n  \"extract_memories\": true\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/memory/extract",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "memory", "extract"]
+            },
+            "description": "Dedicated endpoint for memory extraction"
+          }
+        },
+        {
+          "name": "Memory Extraction Proxy",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a memory extraction assistant. Extract key facts and return them as a JSON array.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"I am a data scientist working on machine learning projects. I prefer Python over R and I live in San Francisco.\"\n    }\n  ],\n  \"temperature\": 0.1,\n  \"max_tokens\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/memory",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "memory"]
+            },
+            "description": "Proxy requests to the memory service"
+          }
+        },
+        {
+          "name": "Speech to Text",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "audio_file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Audio file to transcribe (WAV format preferred)"
+                },
+                {
+                  "key": "language",
+                  "value": "en",
+                  "type": "text",
+                  "description": "Optional language code (e.g., 'en', 'es', 'fr')"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/speech-to-text",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "speech-to-text"]
+            },
+            "description": "Transcribe audio using Whisper.cpp"
+          }
+        },
+        {
+          "name": "List Tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{router_base_url}}/api/tools",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "tools"]
+            },
+            "description": "List available tools"
+          }
+        },
+        {
+          "name": "Test Tool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"test query\",\n  \"param1\": \"value1\"\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/api/tools/research_agent/test",
+              "host": ["{{router_base_url}}"],
+              "path": ["api", "tools", "research_agent", "test"]
+            },
+            "description": "Test a specific tool (replace 'research_agent' with actual tool name)"
+          }
+        },
+        {
+          "name": "Embeddings Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{router_base_url}}/embeddings/health",
+              "host": ["{{router_base_url}}"],
+              "path": ["embeddings", "health"]
+            },
+            "description": "Proxy health check to embeddings service"
+          }
+        },
+        {
+          "name": "Embeddings Embed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"This is a sample text to embed\",\n  \"model\": \"all-MiniLM-L6-v2\"\n}"
+            },
+            "url": {
+              "raw": "{{router_base_url}}/embeddings/embed",
+              "host": ["{{router_base_url}}"],
+              "path": ["embeddings", "embed"]
+            },
+            "description": "Proxy embed requests to embeddings service"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inference",
+      "description": "Direct inference service endpoints (llama.cpp server with OpenAI-compatible API)",
+      "item": [
+        {
+          "name": "Chat Completions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful AI assistant.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Hello, how are you today?\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 1000,\n  \"stream\": false\n}"
+            },
+            "url": {
+              "raw": "{{inference_base_url}}/v1/chat/completions",
+              "host": ["{{inference_base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "OpenAI-compatible chat completions endpoint"
+          }
+        },
+        {
+          "name": "Chat Completions (Streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful AI assistant.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a short story about a robot learning to paint.\"\n    }\n  ],\n  \"temperature\": 0.8,\n  \"max_tokens\": 2000,\n  \"stream\": true\n}"
+            },
+            "url": {
+              "raw": "{{inference_base_url}}/v1/chat/completions",
+              "host": ["{{inference_base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Streaming chat completions endpoint"
+          }
+        },
+        {
+          "name": "List Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inference_base_url}}/v1/models",
+              "host": ["{{inference_base_url}}"],
+              "path": ["v1", "models"]
+            },
+            "description": "List available models"
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{inference_base_url}}/health",
+              "host": ["{{inference_base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check endpoint for inference service"
+          }
+        },
+        {
+          "name": "Completions (Legacy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Once upon a time, in a land far away,\",\n  \"max_tokens\": 100,\n  \"temperature\": 0.7,\n  \"stop\": [\"\\n\\n\"]\n}"
+            },
+            "url": {
+              "raw": "{{inference_base_url}}/v1/completions",
+              "host": ["{{inference_base_url}}"],
+              "path": ["v1", "completions"]
+            },
+            "description": "Legacy completions endpoint"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Memory",
+      "description": "Direct memory extraction service endpoints (llama.cpp server with grammar-constrained output)",
+      "item": [
+        {
+          "name": "Memory Extraction Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a memory extraction assistant. Extract key facts from conversations and return them as a JSON array. Each memory should have: content, category (personal/technical/preference/context/other), relevanceScore (0-1), and originalContext.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"I'm a software engineer at Microsoft. I've been working on Azure cloud services for 3 years. I prefer TypeScript over JavaScript and I'm learning Rust. I live in Seattle and enjoy hiking on weekends.\"\n    }\n  ],\n  \"temperature\": 0.1,\n  \"max_tokens\": 1000,\n  \"stream\": false\n}"
+            },
+            "url": {
+              "raw": "{{memory_base_url}}/v1/chat/completions",
+              "host": ["{{memory_base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Memory extraction using chat completions with grammar constraints"
+          }
+        },
+        {
+          "name": "Memory Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{memory_base_url}}/v1/models",
+              "host": ["{{memory_base_url}}"],
+              "path": ["v1", "models"]
+            },
+            "description": "List available memory extraction models"
+          }
+        },
+        {
+          "name": "Memory Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{memory_base_url}}/health",
+              "host": ["{{memory_base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check for memory extraction service"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Embeddings",
+      "description": "Direct embeddings service endpoints",
+      "item": [
+        {
+          "name": "Generate Embeddings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": \"This is a sample text to generate embeddings for\",\n  \"model\": \"all-MiniLM-L6-v2\"\n}"
+            },
+            "url": {
+              "raw": "{{embeddings_base_url}}/embed",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["embed"]
+            },
+            "description": "Generate embeddings for input text(s)"
+          }
+        },
+        {
+          "name": "Generate Embeddings (Batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input\": [\n    \"First text to embed\",\n    \"Second text to embed\",\n    \"Third text to embed\"\n  ],\n  \"model\": \"all-mpnet-base-v2\"\n}"
+            },
+            "url": {
+              "raw": "{{embeddings_base_url}}/embed",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["embed"]
+            },
+            "description": "Generate embeddings for multiple texts in batch"
+          }
+        },
+        {
+          "name": "List Models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{embeddings_base_url}}/models",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["models"]
+            },
+            "description": "List available embedding models"
+          }
+        },
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{embeddings_base_url}}/health",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check for embeddings service"
+          }
+        },
+        {
+          "name": "List Models (Alt Path)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{embeddings_base_url}}/embeddings/models",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["embeddings", "models"]
+            },
+            "description": "List available embedding models - alternative path"
+          }
+        },
+        {
+          "name": "Health Check (Alt Path)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{embeddings_base_url}}/embeddings/health",
+              "host": ["{{embeddings_base_url}}"],
+              "path": ["embeddings", "health"]
+            },
+            "description": "Health check - alternative path for webapp compatibility"
+          }
+        }
+      ]
+    }
+  ]
+}

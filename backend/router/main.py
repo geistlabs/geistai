@@ -1,3 +1,4 @@
+from events import EventEmitter
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +14,8 @@ import config
 from gpt_service import GptService
 from nested_orchestrator import NestedOrchestrator
 from agent_registry import get_predefined_agents
-from prompts import get_prompt
+from prompts import get_prompt, get_summarizer_prompt
+from chat_types import ChatMessage
 
 from whisper_client import WhisperSTTClient
 
@@ -25,18 +27,20 @@ logger = logging.getLogger(__name__)
 
 class HealthCheckResponse(BaseModel):
     status: str
-    ssl_enabled: bool
-    ssl_status: str
 
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
 
 
 class ChatRequest(BaseModel):
     message: str
     messages: Optional[List[ChatMessage]] = None
+
+
+class MemoryExtractionRequest(BaseModel):
+    message: str
+    messages: Optional[List[ChatMessage]] = None
+    extract_memories: bool = (
+        True  # Flag to indicate this is a memory extraction request
+    )
 
 
 app = FastAPI(title="Geist Router")
@@ -63,22 +67,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Gpt service if enabled
-gpt_service = GptService(config, can_log=True)
-
-# Initialize tools for the GPT service on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize GPT service tools on startup"""
-    await gpt_service.init_tools()
-
-    # Register sub-agents as tools
-    from agent_registry import register_predefined_agents
-    registered_agents = await register_predefined_agents(gpt_service, config)
-    print(f"✅ Registered {len(registered_agents)} agent tools: {registered_agents}")
-
-    print(f"✅ GPT service initialized with {len(gpt_service._tool_registry)} total tools")
-    print(f"🔧 Available tools: {list(gpt_service._tool_registry.keys())}")
 
 # Initialize Whisper STT client
 whisper_service_url = os.getenv(
@@ -88,105 +76,49 @@ stt_service = WhisperSTTClient(whisper_service_url)
 
 logger.info(f"Whisper STT client initialized with service URL: {whisper_service_url}")
 
-# Validate SSL configuration on startup
-ssl_valid, ssl_message = config.validate_ssl_config()
-if config.SSL_ENABLED and not ssl_valid:
-    logger.error(f"SSL configuration error: {ssl_message}")
-    raise RuntimeError(f"SSL configuration error: {ssl_message}")
-elif config.SSL_ENABLED:
-    logger.info(f"SSL enabled: {ssl_message}")
-else:
-    logger.info("SSL disabled - running in HTTP mode")
+gpt_service_instance: GptService | None = None
 
+async def get_gpt_service():
+    """
+    Factory function that returns a GptService with a fresh event emitter.
+    This allows us to reuse the same service instance but with different event emitters per request.
+    """
+    global gpt_service_instance
+    
+    # Initialize the service once if not already done
+    if gpt_service_instance is None:
+        # Create a temporary event emitter for initialization
+        temp_emitter = EventEmitter()
+        gpt_service_instance = GptService(config, temp_emitter, can_log=True)
+        await gpt_service_instance.init_tools()
+        logger.info("GptService initialized with tools")
+    
+    # Create a new instance with a fresh event emitter for each request
+    fresh_emitter = EventEmitter()
+    new_service = GptService(config, fresh_emitter, can_log=True)
+    
+    # Copy the tool registry from the initialized instance
+    new_service._tool_registry = gpt_service_instance._tool_registry.copy()
+    new_service._mcp_client = gpt_service_instance._mcp_client
+    
+    return new_service
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize GptService on server startup"""
+    await get_gpt_service()
+    logger.info("Server startup complete - GptService initialized")
 @app.get("/health")
 def health_check():
-    """Health check endpoint that includes SSL status."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
+    """Health check endpoint."""
     return {
         "status": "healthy",
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_status": ssl_message,
-        "tools_available": len(gpt_service._tool_registry),
-        "tool_names": list(gpt_service._tool_registry.keys())
     }
-
-
-@app.get("/ssl/info")
-def ssl_info():
-    """Get SSL configuration and certificate information."""
-    ssl_valid, ssl_message = config.validate_ssl_config()
-
-    info = {
-        "ssl_enabled": config.SSL_ENABLED,
-        "ssl_valid": ssl_valid,
-        "ssl_status": ssl_message,
-        "cert_path": config.SSL_CERT_PATH,
-        "key_path": config.SSL_KEY_PATH,
-    }
-
-    if config.SSL_ENABLED and ssl_valid:
-        try:
-            import ssl
-            import socket
-            from datetime import datetime
-
-            # Load certificate and get basic info
-            with open(config.SSL_CERT_PATH, "rb") as f:
-                cert_data = f.read()
-
-            # Parse certificate (basic info)
-            cert_lines = cert_data.decode("utf-8").split("\n")
-            cert_info = {}
-
-            for line in cert_lines:
-                if "BEGIN CERTIFICATE" in line:
-                    cert_info["format"] = "PEM"
-                    break
-
-            info["certificate"] = {
-                "format": cert_info.get("format", "Unknown"),
-                "size_bytes": len(cert_data),
-            }
-
-        except Exception as e:
-            info["certificate"] = {"error": f"Could not read certificate: {str(e)}"}
-
-    return info
 
 
 # ============================================================================
 # Tool Management Endpoints
 # ============================================================================
-
-@app.get("/api/tools")
-async def list_tools():
-    """List available tools"""
-    return {
-        "tools": [
-            {
-                "name": name,
-                "description": info.get("description", ""),
-                "type": info.get("type", "unknown"),
-                "input_schema": info.get("input_schema", {})
-            }
-            for name, info in gpt_service._tool_registry.items()
-        ]
-    }
-
-@app.post("/api/tools/{tool_name}/test")
-async def test_tool(tool_name: str, arguments: dict = {}):
-    """Test a specific tool"""
-    if tool_name not in gpt_service._tool_registry:
-        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-
-    try:
-        result = await gpt_service._execute_tool(tool_name, arguments)
-        return {"result": result}
-
-    except Exception as e:
-        logger.error(f"Tool test failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Tool test failed: {str(e)}")
 
 
 # ============================================================================
@@ -210,14 +142,17 @@ def create_nested_research_system(config):
 
     # Get your existing agents
     existing_agents = get_predefined_agents(config)
-
+    permitted_agents = []
+    # Removed brave_summarizer due to 0% success rate in testing - it consistently failed with "Unable to retrieve a Summarizer summary"
+    permitted_mcp_tools = ["custom_mcp_fetch", "brave_web_search", "brave_summarizer"]
+    # INSERT_YOUR_CODE
+    # Filter existing_agents to only include agents whose names are in permitted_agents
+    existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
     # Configure each agent to use brave_search and brave_summarizer tools
-    mcp_tools = ["brave_web_search",  "fetch"]
 
-    for agent in existing_agents:
-        # Update each agent to only use MCP tools
-        agent.available_tools = mcp_tools
-        print(f"🎯 Configured {agent.name} with tools: {mcp_tools}")
+   # for agent in existing_agents:
+   #     # Update each agent to only use MCP tools
+   #     agent.available_tools = mcp_tools
 
     # Create main orchestrator with all agents at the top level
     main_orchestrator = NestedOrchestrator(
@@ -226,16 +161,16 @@ def create_nested_research_system(config):
         description="Main coordination hub with all agents at top level",
         system_prompt=get_prompt("main_orchestrator"),
         sub_agents=existing_agents,  # All agents at top level
-        available_tools=['research_agent', 'current_info_agent', 'creative_agent',]  # Set specific tools here
+        available_tools=permitted_mcp_tools  # Set specific tools here
     )
 
     return main_orchestrator
 
 
-@app.post("/api/stream")
-async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
-    """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    print(f"[Backend] Received orchestrator request: {chat_request.model_dump_json(indent=2)}")
+@app.post("/api/chat")
+async def chat_with_orchestrator(chat_request: ChatRequest):
+    """Non-streaming chat endpoint for simple requests"""
+    print(f"[Backend] Received chat request: {chat_request.model_dump_json(indent=2)}")
 
     # Build messages array with conversation history
     if chat_request.messages:
@@ -244,110 +179,386 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     else:
         messages = [{"role": "user", "content": chat_request.message}]
 
-    print(f"[Backend] Created messages array with {len(messages)} messages")
+    try:
+        # Create a nested orchestrator structure
+        orchestrator = create_nested_research_system(config)
+
+        # Initialize the orchestrator with the main GPT service
+        if gpt_service_instance is None:
+            current_gpt_service = await get_gpt_service()
+        else:
+            current_gpt_service = gpt_service_instance
+        await orchestrator.initialize(current_gpt_service, config)
+
+        # Configure available tools (only sub-agents) if tool calls are enabled
+        if config.ENABLE_TOOL_CALLS:
+            sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
+            all_tools = list(current_gpt_service._tool_registry.keys())
+            available_tool_names = [
+                tool for tool in all_tools if tool in sub_agent_names
+            ]
+            orchestrator.available_tools = available_tool_names
+        else:
+            orchestrator.available_tools = []
+        orchestrator.gpt_service = current_gpt_service
+
+        # Run the orchestrator and get the final response
+        chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+        final_response = await orchestrator.run(chat_messages)
+
+        return {
+            "response": final_response.text,
+            "status": final_response.status,
+            "meta": final_response.meta,
+        }
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+async def handle_memory(chat_request: ChatRequest):
+    """Handle memory extraction requests with direct GPT service call"""
+    print("[Backend] 🧠 Processing memory extraction request")
+
+    # Build messages array
+    if chat_request.messages:
+        messages = [msg.dict() for msg in chat_request.messages]
+        messages.append({"role": "user", "content": chat_request.message})
+    else:
+        messages = [{"role": "user", "content": chat_request.message}]
+
+    try:
+        if gpt_service_instance is None:
+            current_gpt_service = await get_gpt_service()
+        else:
+            current_gpt_service = gpt_service_instance
+        # Use direct GPT service call without orchestrator for clean response
+        response_text = await current_gpt_service.process_chat_request(
+            messages=messages,
+            reasoning_effort="low",  # Use low reasoning for cleaner output
+            system_prompt="You are a memory extraction assistant. Your job is to extract key facts from conversations and return ONLY a valid JSON array. Do not include any reasoning, explanations, or other text. Return only the JSON array starting with [ and ending with ].",
+        )
+
+        print(f"[Backend] 🧠 Raw GPT response: {response_text[:200]}...")
+
+        # Extract JSON array from response
+        json_start = response_text.find("[")
+        json_end = response_text.rfind("]")
+
+        if json_start != -1 and json_end != -1 and json_start < json_end:
+            json_array = response_text[json_start : json_end + 1]
+            print(f"[Backend] 🧠 Extracted JSON: {json_array}")
+
+            import json as json_lib
+            # Validate JSON
+            try:
+
+                parsed = json_lib.loads(json_array)
+                if isinstance(parsed, list):
+                    return {
+                        "response": json_array,
+                        "status": "success",
+                        "meta": {"extracted_memories": len(parsed)},
+                    }
+                else:
+                    print(
+                        f"[Backend] 🧠 ❌ Parsed result is not an array: {type(parsed)}"
+                    )
+            except json_lib.JSONDecodeError as e:
+                print(f"[Backend] 🧠 ❌ JSON parsing error: {e}")
+
+        # Fallback: return the raw response if JSON extraction fails
+        print("[Backend] 🧠 ❌ Failed to extract valid JSON, returning raw response")
+        return {
+            "response": response_text,
+            "status": "success",
+            "meta": {"warning": "Could not extract clean JSON array"},
+        }
+
+    except Exception as e:
+        print(f"[Backend] 🧠 ❌ Memory extraction error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Memory extraction failed: {str(e)}"
+        )
+
+
+@app.post("/api/memory")
+async def memory_proxy(request: Request):
+    """Proxy requests to the memory extraction service at memory.geist.im/v1/chat/completions"""
+    try:
+        # Build the target URL
+        target_url = f"{config.MEMORY_EXTRACTION_URL}/v1/chat/completions"
+        logger.info(f"Proxying memory request to: {target_url}")
+
+        # Get request body
+        body = await request.body()
+
+        # Prepare headers for forwarding (exclude hop-by-hop headers)
+        forward_headers = {}
+        skip_headers = {
+            "host",
+            "connection",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailers",
+            "transfer-encoding",
+        }
+
+        for key, value in request.headers.items():
+            if key.lower() not in skip_headers:
+                forward_headers[key] = value
+
+        # Forward the request to memory extraction service
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                target_url,
+                headers=forward_headers,
+                content=body,
+                timeout=config.MEMORY_EXTRACTION_TIMEOUT,
+            )
+
+        logger.info(
+            f"Memory extraction service responded with status: {response.status_code}"
+        )
+
+        # Return the response with appropriate headers
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in skip_headers:
+                response_headers[key] = value
+
+        return StreamingResponse(
+            iter([response.content]),
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
+        )
+
+    except httpx.ConnectError as e:
+        logger.error(
+            f"Failed to connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}: {str(e)}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Cannot connect to memory extraction service at {config.MEMORY_EXTRACTION_URL}",
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"Timeout connecting to memory extraction service: {str(e)}")
+        raise HTTPException(
+            status_code=504,
+            detail="Memory extraction service timeout",
+        )
+    except Exception as e:
+        logger.error(f"Error proxying memory extraction request: {str(e)}")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to proxy request to memory extraction service",
+        )
+
+
+@app.post("/api/stream")
+async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
+    """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
+    
+    gpt_service = await get_gpt_service()
+    # Build messages array with conversation history
+    messages = chat_request.messages
+    if not messages:
+        messages = [ChatMessage(role="user", content=chat_request.message)]
+    else:
+        messages.append(ChatMessage(role="user", content=chat_request.message))
 
     async def orchestrator_event_stream():
-        chunk_sequence = 0
-        print(f"INFERENCE_URL: {config.INFERENCE_URL}")
-
+        orchestrator_task = None
 
         try:
-            # Always use nested orchestrator (can handle single-layer or multi-layer)
-            print("🎯 Using nested orchestrator mode")
             # Create a nested orchestrator structure
             orchestrator = create_nested_research_system(config)
-            print(f"🎯 Created nested orchestrator: {orchestrator.name}")
-            print(f"🎯 Agent hierarchy: {orchestrator.get_agent_hierarchy()}")
 
             # Initialize the orchestrator with the main GPT service
             await orchestrator.initialize(gpt_service, config)
-
-            # Configure available tools (only sub-agents, not MCP tools)
-            all_tools = list(gpt_service._tool_registry.keys())
-            # Filter to only include sub-agents (not MCP tools like brave_web_search, fetch, etc.)
-            sub_agent_names = ['research_agent', 'current_info_agent', 'creative_agent']#, 'brave_web_search', 'fetch']
-            available_tool_names = [tool for tool in all_tools if tool in sub_agent_names]
-            print(f"🎯 Orchestrator tools (sub-agents only): {available_tool_names}")
-
-            # Set the available tools on the orchestrator
-            orchestrator.available_tools = available_tool_names
-
-            # Make sure the orchestrator uses the main GPT service with all tools
             orchestrator.gpt_service = gpt_service
 
-            # Simple approach: just run the orchestrator and capture events
-            events_captured = []
+            # Use asyncio.Queue to stream events in real-time
+            event_queue = asyncio.Queue()
+            final_response = None
+            sequence_counter = {"value": 0}  # Use dict for mutable closure
 
-            def capture_event(event_type):
+            def queue_event(event_type):
+                """Create event handler that queues events with proper sequencing"""
                 def handler(data):
-                    events_captured.append({
+                    event_data = {
                         "type": event_type,
                         "data": data,
-                        "sequence": chunk_sequence
-                    })
+                        "sequence": sequence_counter["value"]
+                    }
+                    sequence_counter["value"] += 1
+                    try:
+                        event_queue.put_nowait(event_data)
+                    except asyncio.QueueFull:
+                        logger.warning(f"Event queue full, dropping {event_type} event")
                 return handler
 
-            # Register event listeners BEFORE running the orchestrator
-            orchestrator.on("orchestrator_start", capture_event("orchestrator_start"))
-            orchestrator.on("agent_token", capture_event("orchestrator_token"))
-            orchestrator.on("orchestrator_complete", capture_event("orchestrator_complete"))
-            orchestrator.on("sub_agent_event", capture_event("sub_agent_event"))
-            orchestrator.on("tool_call_event", capture_event("tool_call_event"))
+            # Register event listeners - orchestrator handles sub-agent event propagation
+            orchestrator.on("orchestrator_start", queue_event("orchestrator_start"))
+            orchestrator.on("agent_token", queue_event("orchestrator_token"))
+            orchestrator.on("orchestrator_complete", queue_event("orchestrator_complete"))
+            orchestrator.on("sub_agent_event", queue_event("sub_agent_event"))
+            orchestrator.on("tool_call_event", queue_event("tool_call_event"))
 
-            # Also listen to sub-agent events directly
-            for sub_agent in orchestrator.sub_agents:
-                sub_agent.on("agent_start", capture_event("sub_agent_event"))
-                sub_agent.on("agent_token", capture_event("sub_agent_event"))
-                sub_agent.on("agent_complete", capture_event("sub_agent_event"))
-                sub_agent.on("agent_error", capture_event("sub_agent_event"))
+            # Start orchestrator in background
+            orchestrator_task = asyncio.create_task(orchestrator.run(messages))
 
-            # Run the orchestrator
-            print(f"🚀 Starting orchestrator with message: {chat_request.message}")
-            final_response = await orchestrator.run(chat_request.message)
-            print(f"✅ Orchestrator completed with status: {final_response.status}")
+            # Stream events as they come in
+            while True:
+                try:
+                    # Wait for either an event or orchestrator completion
+                    done, pending = await asyncio.wait(
+                        [
+                            asyncio.create_task(event_queue.get()),
+                            orchestrator_task
+                        ],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
 
-            # Send all captured events
-            for event in events_captured:
-                if await request.is_disconnected():
-                    return
+                    # Check if orchestrator is done
+                    if orchestrator_task in done:
+                        final_response = await orchestrator_task
 
-                yield {
-                    "data": json.dumps(event),
-                    "event": event.get("type", "unknown")
-                }
-                chunk_sequence += 1
+                        # Cancel pending event queue task
+                        for task in pending:
+                            task.cancel()
 
-            # Send final response (citations are now handled by frontend)
+                        # Drain remaining events from queue
+                        while not event_queue.empty():
+                            try:
+                                event = event_queue.get_nowait()
+                                if await request.is_disconnected():
+                                    return
+
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+                            except asyncio.QueueEmpty:
+                                break
+                        break
+
+                    # Process events
+                    for task in done:
+                        if task != orchestrator_task:
+                            event = await task
+                            if await request.is_disconnected():
+                                logger.info("Client disconnected, stopping stream")
+                                orchestrator_task.cancel()
+                                return
+
+                            if isinstance(event, dict):
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+
+                    # Cancel pending event queue tasks (not the orchestrator)
+                    for task in pending:
+                        if task != orchestrator_task:
+                            task.cancel()
+
+                except asyncio.CancelledError:
+                    logger.info("Stream cancelled")
+                    break
+
+            # Send final response
             if final_response:
                 yield {
                     "data": json.dumps({
                         "type": "final_response",
                         "text": final_response.text,
-
                         "status": final_response.status,
                         "meta": final_response.meta,
-                        "sequence": chunk_sequence
+                        "sequence": sequence_counter["value"]
                     }),
                     "event": "final_response"
                 }
-                chunk_sequence += 1
+                sequence_counter["value"] += 1
 
             # Send end event
-            yield {"data": json.dumps({"finished": True}), "event": "end"}
-
-        except asyncio.TimeoutError as e:
-            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
-        except Exception as e:
-            print(f"Error in orchestrator stream: {e}")
-            import traceback
-            traceback.print_exc()
             yield {
-                "data": json.dumps({"error": "Internal server error"}),
+                "data": json.dumps({
+                    "finished": True,
+                    "sequence": sequence_counter["value"]
+                }),
+                "event": "end"
+            }
+
+        except asyncio.TimeoutError:
+            logger.error("Request timeout")
+            yield {
+                "data": json.dumps({"error": "Request timeout"}),
                 "event": "error"
             }
+        except Exception as e:
+            logger.error(f"Stream error: {str(e)}", exc_info=True)
+            yield {
+                "data": json.dumps({
+                    "error": "Internal server error",
+                    "details": str(e)
+                }),
+                "event": "error"
+            }
+        finally:
+            # Cleanup: cancel orchestrator task if still running
+            if orchestrator_task and not orchestrator_task.done():
+                logger.info("Cleaning up orchestrator task")
+                orchestrator_task.cancel()
+                try:
+                    await orchestrator_task
+                except asyncio.CancelledError:
+                    pass
 
     return EventSourceResponse(orchestrator_event_stream())
 
+@app.post("/api/summarize")
+async def summarize_conversation(conversation_dict: List[dict]):
+    """Summarize text using the orchestrator"""
+    summarizer_prompt = get_summarizer_prompt()
+    conversation_json = json.dumps(conversation_dict, ensure_ascii=False)
+    content = f"{summarizer_prompt}\n\n[CONVERSATION_JSON]:\n{conversation_json}\n"
+    conversation_dict = [{"role": "user", "content": content}]
+    
+    gpt_service = await get_gpt_service()  
+    headers, model, url = gpt_service.get_chat_completion_params()
+    async with httpx.AsyncClient() as client:
+       response = await client.post(
+        f"{url}/v1/chat/completions",
+        json={
+            "messages": conversation_dict,
+            "temperature": 1.0,
+            "top_p": 1.0,
+            "max_tokens": 32767,
+            "stream": False,
+            "model": model,
+            "reasoning_effort": "medium",
+        },
+        headers=headers,
+        timeout=config.INFERENCE_TIMEOUT
+    )
+    result = response.json()
+
+        # Validate response structure
+    if "choices" not in result or not result["choices"]:
+        raise ValueError(f"Invalid response from inference service: {result}")
+    choice = result["choices"][0]
+    return choice["message"]["content"]
 
 @app.post("/api/speech-to-text")
 async def transcribe_audio(
@@ -562,28 +773,8 @@ if __name__ == "__main__":
     import sys
 
     try:
-        if config.SSL_ENABLED:
-            logger.info(
-                f"Starting server with SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            logger.info(f"SSL Certificate: {config.SSL_CERT_PATH}")
-            logger.info(f"SSL Private Key: {config.SSL_KEY_PATH}")
-
-            uvicorn.run(
-                app,
-                host=config.API_HOST,
-                port=config.API_PORT,
-                ssl_keyfile=config.SSL_KEY_PATH,
-                ssl_certfile=config.SSL_CERT_PATH,
-                log_level="info",
-            )
-        else:
-            logger.info(
-                f"Starting server without SSL on {config.API_HOST}:{config.API_PORT}"
-            )
-            uvicorn.run(
-                app, host=config.API_HOST, port=config.API_PORT, log_level="info"
-            )
+        logger.info(f"Starting server on {config.API_HOST}:{config.API_PORT}")
+        uvicorn.run(app, host=config.API_HOST, port=config.API_PORT, log_level="info")
     except Exception as e:
         logger.error(f"Failed to start server: {str(e)}")
         sys.exit(1)

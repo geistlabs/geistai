@@ -51,10 +51,6 @@ def main():
     test_proxy_endpoint(http_base, "embeddings", "health")
     test_proxy_endpoint(http_base, "embeddings", "models")
 
-    # Test HTTPS endpoints if SSL is enabled
-    print("\n🔒 Testing HTTPS proxy endpoints (port 443):")
-    https_base = "https://localhost"
-
     print("\n📊 Testing Embedder Service Proxy (HTTPS):")
     test_proxy_endpoint(https_base, "embeddings", "health", use_ssl=True)
 
@@ -69,9 +65,6 @@ def main():
     print('  -H "Content-Type: application/json" \\')
     print('  -d \'{"input":"hello world","model":"all-MiniLM-L6-v2"}\'')
     print("")
-    print("# With SSL enabled:")
-    print("curl -k https://localhost/embeddings/health")
-    print("curl -k https://localhost/embeddings/embeddings")
 
 
 if __name__ == "__main__":

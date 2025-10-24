@@ -6,7 +6,10 @@ interface BackIconProps {
   color?: string;
 }
 
-export default function BackIcon({ size = 20, color = '#374151' }: BackIconProps) {
+export default function BackIcon({
+  size = 20,
+  color = '#374151',
+}: BackIconProps) {
   return (
     <View
       style={{
