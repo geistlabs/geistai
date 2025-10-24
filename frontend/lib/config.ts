@@ -23,4 +23,3 @@ if (__DEV__) {
     config.revenuecat.publicKey.substring(0, 20) + '...',
   );
 }
-

@@ -103,6 +103,29 @@ export function DebugMenu() {
     }
   };
 
+  // Cancel test subscription (simulates subscription expiry/cancellation)
+  const cancelTestSubscription = async () => {
+    try {
+      console.log('🔄 Simulating subscription cancellation...');
+      // Invalidate cache to force refresh from local Test Store
+      await Purchases.invalidateCustomerInfoCache();
+
+      // Note: In Test Store, you cannot programmatically cancel.
+      // This simulates the effect by clearing cache.
+      // User will need to cancel via iOS Settings for real effect.
+      Alert.alert(
+        '⚠️ Test Store Limitation',
+        'Test Store subscriptions cannot be canceled programmatically.\n\n' +
+          'To actually cancel, go to:\n' +
+          'iOS Settings → [Your Apple ID] → Subscriptions → GeistAI → Cancel\n\n' +
+          'Cache cleared. After canceling in Settings, reopen the app to see the change.',
+      );
+      await checkPremiumStatus();
+    } catch (error) {
+      Alert.alert('❌ Error', 'Failed to cancel test subscription');
+    }
+  };
+
   // Only show in development
   if (!__DEV__) return null;
 
@@ -121,7 +144,7 @@ export function DebugMenu() {
       <Modal
         visible={visible}
         transparent
-        animationType="slide"
+        animationType='slide'
         onRequestClose={() => setVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -133,9 +156,7 @@ export function DebugMenu() {
                 <Text
                   style={[
                     styles.statusBadge,
-                    premiumStatus
-                      ? styles.premiumBadge
-                      : styles.freeBadge,
+                    premiumStatus ? styles.premiumBadge : styles.freeBadge,
                   ]}
                 >
                   {premiumStatus ? '✅ Premium' : '❌ Free'}
@@ -180,6 +201,14 @@ export function DebugMenu() {
 
             <TouchableOpacity onPress={viewUserInfo} style={styles.button}>
               <Text style={styles.buttonText}>📱 View User Info</Text>
+            </TouchableOpacity>
+
+            {/* Cancel Test Subscription Button */}
+            <TouchableOpacity
+              onPress={cancelTestSubscription}
+              style={[styles.button, styles.dangerButton]}
+            >
+              <Text style={styles.buttonText}>❌ Cancel Test Subscription</Text>
             </TouchableOpacity>
 
             {/* Divider */}
@@ -289,6 +318,9 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: '#EF4444',
+  },
+  dangerButton: {
+    backgroundColor: '#DC2626',
   },
   closeButton: {
     backgroundColor: '#E5E7EB',

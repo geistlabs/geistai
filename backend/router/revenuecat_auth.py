@@ -135,3 +135,5 @@ async def get_user_id(
         Optional[str]: User ID or None if not provided
     """
     return x_user_id
+
+
