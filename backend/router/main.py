@@ -181,22 +181,45 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
     else:
         messages = [{"role": "user", "content": chat_request.message}]
 
-    print(f"[Backend] Created messages array with {len(messages)} messages")
-
     try:
-        # Use the orchestrator for processing
-        gpt_service = await get_gpt_service()
-        orchestrator = NestedOrchestrator(config)
-        await orchestrator.initialize(gpt_service, config)
+        # Create a nested orchestrator structure
+        orchestrator = create_nested_research_system(config)
 
-        # Get the response
+        # Initialize the orchestrator with the main GPT service
+        if gpt_service_instance is None:
+            current_gpt_service = await get_gpt_service()
+        else:
+            current_gpt_service = gpt_service_instance
+        await orchestrator.initialize(current_gpt_service, config)
+
+        # Configure available tools (only sub-agents) if tool calls are enabled
+        if config.ENABLE_TOOL_CALLS:
+            sub_agent_names = ["research_agent", "current_info_agent", "creative_agent"]
+            all_tools = list(current_gpt_service._tool_registry.keys())
+            available_tool_names = [
+                tool for tool in all_tools if tool in sub_agent_names
+            ]
+            orchestrator.available_tools = available_tool_names
+        else:
+            orchestrator.available_tools = []
+        orchestrator.gpt_service = current_gpt_service
+
+        # Run the orchestrator and get the final response
         chat_messages = [ChatMessage(role="user", content=chat_request.message)]
-        response = await orchestrator.run(chat_messages)
+        final_response = await orchestrator.run(chat_messages)
 
-        return {"response": response.text}
+        return {
+            "response": final_response.text,
+            "status": final_response.status,
+            "meta": final_response.meta,
+        }
+
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in chat endpoint: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 async def handle_memory(chat_request: ChatRequest):
