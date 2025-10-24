@@ -519,7 +519,7 @@ class GptService:
         if self.config.REMOTE_INFERENCE_KEY:
             headers["Authorization"] = f"Bearer {self.config.REMOTE_INFERENCE_KEY}"
 
-        if False:
+        if self.config.USE_REMOTE_INFERENCE:
             url = self.config.REMOTE_INFERENCE_URL
             model = self.config.OPENAI_MODEL
         else:
@@ -700,7 +700,6 @@ class GptService:
                 print(f"📤 Sending request with {len(msgs)} messages")
 
             try:
-                print(f"🔍 agent_name: {agent_name} request data: {request_data}")
                 async with httpx.AsyncClient(
                     timeout=self.config.INFERENCE_TIMEOUT
                 ) as client:
