@@ -158,13 +158,13 @@ class AgentTool(EventEmitter):
                 if isinstance(chunk, dict) and "channel" in chunk and "data" in chunk:
                     text_content = chunk["data"]
                     channel = chunk["channel"]
-                    
+
                     # Only accumulate content channel for final response text
                     if channel == "content" and text_content:
                         response_chunks.append(text_content)
-                    
+
                     chunk_count += 1
-                    
+
                     # Emit token event for streaming - match orchestrator format
                     # Emit the chunk directly as {channel, data} to match orchestrator.py line 197
                     self.emit("agent_token", chunk)
