@@ -6,6 +6,7 @@ import {
   ChatAPI,
   ChatMessage,
   NegotiationResult,
+  parseNegotiationResult,
   sendStreamingMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
@@ -983,6 +984,19 @@ export function useChatWithStorage(
                   : msg,
               ),
             );
+
+            // Check for JSON in accumulated content for negotiation result
+            accumulatedContent += token;
+            const negotiationResult = parseNegotiationResult(
+              accumulatedContent,
+            );
+            if (negotiationResult) {
+              console.log(
+                '💰 [Negotiate] JSON detected in stream:',
+                negotiationResult,
+              );
+              setNegotiationResult(negotiationResult);
+            }
           },
           onSubAgentEvent: agentEvent => {
             // Handle sub-agent events in enhanced messages
