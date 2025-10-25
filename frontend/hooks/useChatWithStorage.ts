@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   AgentMessage,
-  NegotiationResult,
   sendNegotiationMessage as apiSendNegotiationMessage,
   ChatAPI,
   ChatMessage,
+  NegotiationResult,
   sendStreamingMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
@@ -208,7 +208,8 @@ export function useChatWithStorage(
   }>({ isActive: false });
 
   // Negotiation result state
-  const [negotiationResult, setNegotiationResult] = useState<NegotiationResult | null>(null);
+  const [negotiationResult, setNegotiationResult] =
+    useState<NegotiationResult | null>(null);
 
   const streamControllerRef = useRef<AbortController | null>(null);
   const tokenCountRef = useRef(0);
