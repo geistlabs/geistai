@@ -1,6 +1,8 @@
 import EventSource from 'react-native-sse';
 
 import { ENV } from '../config/environment';
+import { revenuecat } from '../revenuecat';
+
 import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
@@ -112,10 +114,18 @@ class StreamEventProcessor {
 
   processEvent(data: any): void {
     try {
-  
       switch (data.type) {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
+          break;
+        case 'agent_token':
+          this.handleAgentToken(data);
+          break;
+        case 'agent_start':
+          this.handleAgentStart(data);
+          break;
+        case 'agent_complete':
+          this.handleAgentComplete(data);
           break;
         case 'sub_agent_event':
           this.handleSubAgentEvent(data);
@@ -143,8 +153,8 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    print('whatch me handle token pal',data.data?.data)
-    if (data.data?.channel === "content") {
+    console.log('whatch me handle token pal', data.data?.data);
+    if (data.data?.channel === 'content') {
       this.handlers.onToken(data.data.data);
     }
   }
@@ -250,6 +260,22 @@ class StreamEventProcessor {
     console.error('❌ Stream error:', data.message);
     this.handlers.onError(data.message || 'Unknown error');
   }
+
+  // Agent event handlers for /api/negotiate endpoint
+  private handleAgentToken(data: any): void {
+    console.log('🤖 Agent token:', data.data?.content?.data);
+    if (data.data?.content?.channel === 'content') {
+      this.handlers.onToken(data.data.content.data);
+    }
+  }
+
+  private handleAgentStart(data: any): void {
+    console.log('🤖 Agent started:', data.data?.agent);
+  }
+
+  private handleAgentComplete(data: any): void {
+    console.log('✅ Agent completed:', data.data?.agent);
+  }
 }
 
 // Send a streaming message to the chat API
@@ -289,15 +315,18 @@ export async function sendStreamingMessage(
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<void>(async (resolve, reject) => {
     console.log(`${ENV.API_URL}/api/stream`);
 
+    const userId = await revenuecat.getAppUserId();
+    console.log('🚀 [Chat API] User ID:', userId);
     // Create EventSource with POST data
     const es = new EventSource(`${ENV.API_URL}/api/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
+        'X-User-ID': userId,
       },
       body: JSON.stringify(requestBody),
       withCredentials: false,
@@ -402,22 +431,48 @@ export async function sendStreamingMessage(
 
     es.addEventListener('error', (event: any) => {
       try {
-        // Only try to parse if event.data exists and is a string
+        // Try to extract error message from event
+        let errorMessage = 'Stream error occurred';
+
+        // Check if there's a message property (backend error)
+        if (event.message) {
+          try {
+            // Try to parse JSON detail from message
+            const parsed = JSON.parse(event.message);
+            errorMessage = parsed.detail || event.message;
+          } catch {
+            // If not JSON, use the message as-is
+            errorMessage = event.message;
+          }
+        }
+
+        // Check HTTP status for premium errors
+        if (event.xhrStatus === 403) {
+          errorMessage = 'Premium subscription required to use this feature';
+        } else if (event.xhrStatus === 401) {
+          errorMessage = 'Authentication failed - please log in again';
+        }
+
+        console.warn('Stream error:', errorMessage);
+        handlers.onError(errorMessage);
+
+        // ✅ CLOSE THE CONNECTION AND STOP
+        es.close();
+        reject(new Error(errorMessage));
+
         if (event.data && typeof event.data === 'string') {
-          const data = JSON.parse(event.data);
-          eventProcessor.processEvent(data);
-        } else {
-          // Handle error events without data
-          console.warn('Error event received without valid data:', event);
-          handlers.onError('Stream error occurred');
+          try {
+            const data = JSON.parse(event.data);
+            eventProcessor.processEvent(data);
+          } catch {
+            // Skip if can't parse
+          }
         }
       } catch (parseError) {
-        console.warn(
-          'Failed to parse error event:',
-          parseError,
-          'Raw data:',
-          event.data,
-        );
+        console.warn('Failed to parse error event:', parseError);
+        handlers.onError('Stream connection error');
+        es.close();
+        reject(new Error('Stream connection error'));
       }
     });
 
@@ -688,4 +743,217 @@ export class ChatAPI {
       };
     }
   }
+}
+
+// Negotiation-specific functionality
+export async function sendNegotiationMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  // Create event processor
+  const eventProcessor = new StreamEventProcessor(handlers);
+
+  return new Promise<void>(async (resolve, reject) => {
+    console.log(`[Negotiate] Sending to ${ENV.API_URL}/api/negotiate`);
+
+    const userId = await revenuecat.getAppUserId();
+    console.log('[Negotiate] User ID:', userId);
+
+    // Use EventSource just like /api/stream
+    const es = new EventSource(`${ENV.API_URL}/api/negotiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        'X-User-ID': userId,
+      },
+      body: JSON.stringify(requestBody),
+      withCredentials: false,
+    });
+
+    // Handle different event types (same as /api/stream + agent events for /api/negotiate)
+    es.addEventListener('orchestrator_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse orchestrator_token:',
+          parseError,
+        );
+      }
+    });
+
+    // Add agent event listeners for /api/negotiate endpoint
+    es.addEventListener('agent_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_token:', parseError);
+      }
+    });
+
+    es.addEventListener('agent_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_start:', parseError);
+      }
+    });
+
+    es.addEventListener('agent_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_complete:', parseError);
+      }
+    });
+
+    es.addEventListener('sub_agent_event', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse sub_agent_event:',
+          parseError,
+        );
+      }
+    });
+
+    es.addEventListener('tool_call_event', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse tool_call_event:',
+          parseError,
+        );
+      }
+    });
+
+    es.addEventListener('orchestrator_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse orchestrator_start:',
+          parseError,
+        );
+      }
+    });
+
+    es.addEventListener('orchestrator_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse orchestrator_complete:',
+          parseError,
+        );
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse final_response:', parseError);
+      }
+    });
+
+    es.addEventListener('error', (event: any) => {
+      try {
+        let errorMessage = 'Stream error occurred';
+
+        if (event.message) {
+          try {
+            const parsed = JSON.parse(event.message);
+            errorMessage = parsed.detail || event.message;
+          } catch {
+            errorMessage = event.message;
+          }
+        }
+
+        if (event.xhrStatus === 403) {
+          errorMessage = 'Premium subscription required to use this feature';
+        } else if (event.xhrStatus === 401) {
+          errorMessage = 'Authentication failed - please log in again';
+        }
+
+        console.warn('[Negotiate] Stream error:', errorMessage);
+        handlers.onError(errorMessage);
+
+        es.close();
+        reject(new Error(errorMessage));
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse error event:', parseError);
+        handlers.onError('Stream connection error');
+        es.close();
+        reject(new Error('Stream connection error'));
+      }
+    });
+
+    es.addEventListener('end', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse end event data:', parseError);
+      }
+
+      console.log('[Negotiate] ✅ Stream ended');
+      handlers.onComplete();
+      es.close();
+      resolve();
+    });
+
+    es.addEventListener('open', (event: any) => {
+      console.log('[Negotiate] SSE connection established');
+    });
+
+    es.onerror = error => {
+      console.error('[Negotiate] EventSource error:', error);
+      handlers.onError('Connection failed');
+      es.close();
+      reject(new Error('Connection failed'));
+    };
+
+    es.onopen = () => {
+      console.log('[Negotiate] EventSource opened');
+    };
+  });
 }
