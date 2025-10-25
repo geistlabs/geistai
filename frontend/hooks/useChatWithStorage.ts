@@ -918,14 +918,12 @@ export function useChatWithStorage(
           batchSize: 10, // Batch 10 tokens before updating UI
           flushInterval: 100, // Or flush every 100ms
           onBatch: (batchedTokens: string) => {
-            accumulatedContent += batchedTokens;
-
-            // Update UI with batched tokens
+            // Update UI with batched tokens (don't accumulate here - done in onToken)
             setMessages(prev => {
               const newMessages = [...prev];
               const lastMessage = newMessages[newMessages.length - 1];
               if (lastMessage && lastMessage.role === 'assistant') {
-                lastMessage.content = accumulatedContent;
+                lastMessage.content += batchedTokens;
               }
               return newMessages;
             });
@@ -985,18 +983,8 @@ export function useChatWithStorage(
               ),
             );
 
-            // Check for JSON in accumulated content for negotiation result
+            // Accumulate content for later parsing
             accumulatedContent += token;
-            const negotiationResult = parseNegotiationResult(
-              accumulatedContent,
-            );
-            if (negotiationResult) {
-              console.log(
-                '💰 [Negotiate] JSON detected in stream:',
-                negotiationResult,
-              );
-              setNegotiationResult(negotiationResult);
-            }
           },
           onSubAgentEvent: agentEvent => {
             // Handle sub-agent events in enhanced messages
@@ -1167,6 +1155,23 @@ export function useChatWithStorage(
             setIsStreaming(false);
             isStreamingRef.current = false;
             setIsLoading(false);
+
+            // Parse negotiation result from final accumulated content
+            if (accumulatedContent) {
+              console.log(
+                '🔍 [Negotiate] Checking for JSON in final message...',
+              );
+              const result = parseNegotiationResult(accumulatedContent);
+              if (result) {
+                console.log(
+                  '💰 [Negotiate] JSON detected in final message:',
+                  result,
+                );
+                setNegotiationResult(result);
+              } else {
+                console.log('⚠️ [Negotiate] No valid JSON found in message');
+              }
+            }
 
             // Save final assistant message to storage asynchronously (don't block completion)
             if (currentChatId && storage.addMessage && accumulatedContent) {
