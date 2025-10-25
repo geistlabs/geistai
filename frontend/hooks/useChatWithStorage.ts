@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   AgentMessage,
+  NegotiationResult,
   sendNegotiationMessage as apiSendNegotiationMessage,
   ChatAPI,
   ChatMessage,
@@ -151,6 +152,7 @@ export interface UseChatWithStorageReturn {
     currentAgent?: string;
     status?: string;
   };
+  negotiationResult: NegotiationResult | null;
 
   // Storage functionality
   currentChat: any;
@@ -204,6 +206,9 @@ export function useChatWithStorage(
     currentAgent?: string;
     status?: string;
   }>({ isActive: false });
+
+  // Negotiation result state
+  const [negotiationResult, setNegotiationResult] = useState<NegotiationResult | null>(null);
 
   const streamControllerRef = useRef<AbortController | null>(null);
   const tokenCountRef = useRef(0);
@@ -1168,6 +1173,10 @@ export function useChatWithStorage(
             setIsLoading(false);
             options.onStreamEnd?.();
           },
+          onNegotiationResult: (result: NegotiationResult) => {
+            console.log('💰 [Negotiate] Negotiation result received:', result);
+            setNegotiationResult(result);
+          },
         };
 
         // Use the negotiation endpoint
@@ -1298,6 +1307,7 @@ export function useChatWithStorage(
     toolCallEvents,
     agentEvents,
     orchestratorStatus,
+    negotiationResult,
 
     // Storage functionality
     currentChat: storage.currentChat,

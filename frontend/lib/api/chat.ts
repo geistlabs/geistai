@@ -34,6 +34,61 @@ export interface ChatError {
   error: string;
 }
 
+export interface NegotiationResult {
+  final_price: number;
+  package_id: string;
+  negotiation_summary: string;
+}
+
+// Parse negotiation result from agent message content
+export function parseNegotiationResult(
+  content: string,
+): NegotiationResult | null {
+  try {
+    // Look for JSON block in the content
+    const jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+    if (!jsonMatch) {
+      return null;
+    }
+
+    const jsonStr = jsonMatch[1];
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate required fields
+    if (
+      typeof parsed.final_price !== 'number' ||
+      typeof parsed.package_id !== 'string' ||
+      typeof parsed.negotiation_summary !== 'string'
+    ) {
+      console.warn('Invalid negotiation result structure:', parsed);
+      return null;
+    }
+
+    // Validate final_price is one of the expected values
+    const validPrices = [19.99, 29.99, 39.99];
+    if (!validPrices.includes(parsed.final_price)) {
+      console.warn('Invalid final_price:', parsed.final_price);
+      return null;
+    }
+
+    // Validate package_id matches expected format
+    const validPackageIds = [
+      'premium_monthly_20',
+      'premium_monthly_30',
+      'premium_monthly_40',
+    ];
+    if (!validPackageIds.includes(parsed.package_id)) {
+      console.warn('Invalid package_id:', parsed.package_id);
+      return null;
+    }
+
+    return parsed as NegotiationResult;
+  } catch (error) {
+    console.warn('Failed to parse negotiation result:', error);
+    return null;
+  }
+}
+
 // Send a message to the chat API (non-streaming)
 export async function sendMessage(
   message: string,
@@ -102,6 +157,7 @@ export interface StreamEventHandlers {
   }) => void;
   onComplete: () => void;
   onError: (error: string) => void;
+  onNegotiationResult?: (result: NegotiationResult) => void;
 }
 
 // Event processor class for handling different event types
@@ -276,6 +332,15 @@ class StreamEventProcessor {
 
   private handleAgentComplete(data: any): void {
     console.log('✅ Agent completed:', data.data?.agent);
+
+    // Check if this is a pricing agent completion and parse negotiation result
+    if (data.data?.agent === 'pricing_agent' && data.data?.text) {
+      const negotiationResult = parseNegotiationResult(data.data.text);
+      if (negotiationResult) {
+        console.log('💰 Negotiation result parsed:', negotiationResult);
+        this.handlers.onNegotiationResult?.(negotiationResult);
+      }
+    }
   }
 }
 
