@@ -78,10 +78,10 @@ export function NegotiationChat({ onClose }: NegotiationChatProps) {
 
     try {
       console.log('💰 [Negotiation] Starting purchase for:', negotiationResult);
-      
+
       // Get RevenueCat offerings
       const offerings = await revenuecat.getOfferings();
-      
+
       if (!offerings.current) {
         Alert.alert('Error', 'No subscription packages available');
         return;
@@ -90,31 +90,42 @@ export function NegotiationChat({ onClose }: NegotiationChatProps) {
       // Find the package matching the negotiated price
       const packageId = negotiationResult.package_id; // e.g., "premium_monthly_30"
       const package_ = offerings.current.getPackage(packageId);
-      
+
       if (!package_) {
         Alert.alert('Error', `Package ${packageId} not found in offerings`);
-        console.error('Available packages:', offerings.current.availablePackages.map(p => p.identifier));
+        console.error(
+          'Available packages:',
+          offerings.current.availablePackages.map(p => p.identifier),
+        );
         return;
       }
-      
-      console.log('💰 [Negotiation] Found package:', package_.identifier, 'Price:', package_.price);
-      
+
+      console.log(
+        '💰 [Negotiation] Found package:',
+        package_.identifier,
+        'Price:',
+        package_.price,
+      );
+
       // Initiate purchase
       const purchase = await revenuecat.purchasePackage(package_);
-      
+
       // Check if purchase was successful
       if (purchase.customerInfo.entitlements.active['premium']) {
         Alert.alert(
-          'Success!', 
+          'Success!',
           `Welcome to GeistAI Premium at $${negotiationResult.final_price.toFixed(2)}/month!`,
-          [{ text: 'Continue', onPress: () => onClose?.() }]
+          [{ text: 'Continue', onPress: () => onClose?.() }],
         );
       } else {
         Alert.alert('Purchase Failed', 'Please try again');
       }
     } catch (err) {
       console.error('❌ [Negotiation] Purchase error:', err);
-      Alert.alert('Purchase Error', 'Failed to complete purchase. Please try again.');
+      Alert.alert(
+        'Purchase Error',
+        'Failed to complete purchase. Please try again.',
+      );
     }
   };
 
@@ -124,6 +135,11 @@ export function NegotiationChat({ onClose }: NegotiationChatProps) {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
+
+  // Debug negotiation result changes
+  useEffect(() => {
+    console.log('🔍 [DEBUG] NegotiationChat negotiationResult changed:', negotiationResult);
+  }, [negotiationResult]);
 
   if (premiumLoading) {
     return (
@@ -222,19 +238,21 @@ export function NegotiationChat({ onClose }: NegotiationChatProps) {
             <Text className='text-sm font-semibold text-blue-900 mb-2'>
               ✅ Deal Finalized!
             </Text>
-            
+
             <View className='mb-3'>
-              <Text className='text-xs text-blue-700 mb-1'>Your Negotiated Price</Text>
+              <Text className='text-xs text-blue-700 mb-1'>
+                Your Negotiated Price
+              </Text>
               <Text className='text-3xl font-bold text-blue-900'>
                 ${negotiationResult.final_price.toFixed(2)}
               </Text>
               <Text className='text-xs text-blue-600 mt-1'>per month</Text>
             </View>
-            
+
             <Text className='text-sm text-blue-800 mb-3 italic'>
               "{negotiationResult.negotiation_summary}"
             </Text>
-            
+
             <TouchableOpacity
               onPress={handleUpgradeNow}
               className='bg-blue-600 px-4 py-3 rounded-lg'

@@ -45,14 +45,21 @@ export function parseNegotiationResult(
   content: string,
 ): NegotiationResult | null {
   try {
+    console.log('🔍 [DEBUG] parseNegotiationResult called with content:', content);
+    
     // Look for JSON block in the content
     const jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+    console.log('🔍 [DEBUG] JSON regex match result:', jsonMatch);
+    
     if (!jsonMatch) {
+      console.log('❌ [DEBUG] No JSON block found in content');
       return null;
     }
 
     const jsonStr = jsonMatch[1];
+    console.log('🔍 [DEBUG] Extracted JSON string:', jsonStr);
     const parsed = JSON.parse(jsonStr);
+    console.log('🔍 [DEBUG] Parsed JSON object:', parsed);
 
     // Validate required fields
     if (
@@ -332,14 +339,24 @@ class StreamEventProcessor {
 
   private handleAgentComplete(data: any): void {
     console.log('✅ Agent completed:', data.data?.agent);
+    console.log('🔍 [DEBUG] Full agent_complete data:', JSON.stringify(data, null, 2));
 
     // Check if this is a pricing agent completion and parse negotiation result
     if (data.data?.agent === 'pricing_agent' && data.data?.text) {
+      console.log('🔍 [DEBUG] Pricing agent text content:', data.data.text);
       const negotiationResult = parseNegotiationResult(data.data.text);
       if (negotiationResult) {
         console.log('💰 Negotiation result parsed:', negotiationResult);
         this.handlers.onNegotiationResult?.(negotiationResult);
+      } else {
+        console.log('❌ [DEBUG] Failed to parse negotiation result from text:', data.data.text);
       }
+    } else {
+      console.log('🔍 [DEBUG] Not pricing agent or no text:', {
+        agent: data.data?.agent,
+        hasText: !!data.data?.text,
+        isPricingAgent: data.data?.agent === 'pricing_agent'
+      });
     }
   }
 }
@@ -883,12 +900,15 @@ export async function sendNegotiationMessage(
 
     es.addEventListener('agent_complete', (event: any) => {
       try {
+        console.log('🔍 [DEBUG] agent_complete event received:', event);
         if (event.data && typeof event.data === 'string') {
           const data = JSON.parse(event.data);
+          console.log('🔍 [DEBUG] Parsed agent_complete data:', data);
           eventProcessor.processEvent(data);
         }
       } catch (parseError) {
         console.warn('[Negotiate] Failed to parse agent_complete:', parseError);
+        console.log('🔍 [DEBUG] Raw agent_complete event data:', event.data);
       }
     });
 
