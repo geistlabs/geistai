@@ -173,9 +173,23 @@ async def create_agent_direct_event_stream(agent, messages, request):
         def queue_event(event_type):
             """Create event handler that queues events with proper sequencing"""
             def handler(data):
+                # Normalize agent_token structure like process_llm_response.py does
+                normalized_data = data
+                if event_type == "agent_token" and isinstance(data, dict):
+                    # AgentTool emits: {"agent": "...", "content": {"channel": "...", "data": "..."}}
+                    # We need to extract just: {"channel": "...", "data": "..."}
+                    if "content" in data and isinstance(data["content"], dict):
+                        content_obj = data["content"]
+                        # Extract channel and data from content object
+                        if "channel" in content_obj and "data" in content_obj:
+                            normalized_data = {
+                                "channel": content_obj["channel"],
+                                "data": content_obj["data"]
+                            }
+
                 event_data = {
                     "type": event_type,
-                    "data": data,
+                    "data": normalized_data,
                     "sequence": sequence_counter["value"]
                 }
                 sequence_counter["value"] += 1
@@ -559,9 +573,17 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             def queue_event(event_type):
                 """Create event handler that queues events with proper sequencing"""
                 def handler(data):
+                    # Normalize agent_token structure
+                    normalized_data = data
+                    if event_type == "agent_token" and isinstance(data, dict):
+                        # Agent tokens have structure: {"agent": "...", "content": {"channel": "...", "data": "..."}}
+                        # Normalize to: {"channel": "...", "data": "..."}
+                        if "content" in data and isinstance(data["content"], dict):
+                            normalized_data = data["content"]
+
                     event_data = {
                         "type": event_type,
-                        "data": data,
+                        "data": normalized_data,
                         "sequence": sequence_counter["value"]
                     }
                     sequence_counter["value"] += 1
@@ -837,7 +859,7 @@ async def negotiate_pricing(
         # Create pricing agent directly
         from agent_tool import create_pricing_agent
         pricing_agent = create_pricing_agent()
-        
+
         # Stream events using the direct agent stream function
         event_stream = create_agent_direct_event_stream(pricing_agent, messages, request)
         async for event in event_stream:

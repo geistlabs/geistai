@@ -154,14 +154,22 @@ class AgentTool(EventEmitter):
                 permitted_tools=self.available_tools,
                 agent_prompt=self.system_prompt,
             ):
-                response_chunks.append(chunk)
-                chunk_count += 1
-                # Debug: Log first few chunks
-                # Emit token event for streaming
-                self.emit("agent_token", {
-                    "agent": self.name,
-                    "content": chunk
-                })
+                # chunk is a dict with {channel, data} from process_llm_response.py
+                if isinstance(chunk, dict) and "channel" in chunk and "data" in chunk:
+                    text_content = chunk["data"]
+                    channel = chunk["channel"]
+                    
+                    # Only accumulate content channel for final response text
+                    if channel == "content" and text_content:
+                        response_chunks.append(text_content)
+                    
+                    chunk_count += 1
+                    
+                    # Emit token event for streaming with proper structure
+                    self.emit("agent_token", {
+                        "agent": self.name,
+                        "content": chunk  # Keep the full {channel, data} structure
+                    })
 
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
@@ -416,7 +424,7 @@ def create_pricing_agent(model_config: Dict[str, Any] = None) -> AgentTool:
 
 ## PRICING DECISION:
 - $39.99 (premium_monthly_40) - Weak negotiation, no reasoning
-- $29.99 (premium_monthly_30) - Decent negotiation, some reasoning  
+- $29.99 (premium_monthly_30) - Decent negotiation, some reasoning
 - $19.99 (premium_monthly_20) - Strong negotiation, compelling arguments
 
 ## CONVERSATION FLOW:
@@ -436,7 +444,7 @@ End every conversation with this JSON block:
 ```json
 {
   "final_price": 29.99,
-  "package_id": "premium_monthly_30", 
+  "package_id": "premium_monthly_30",
   "negotiation_summary": "You made a good case for a discount. I'm offering you $29.99/month."
 }
 ```
