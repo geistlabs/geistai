@@ -20,7 +20,7 @@ class RevenueCatService {
 
       // Generate a mock user ID for development
       this.appUserId = `dev_user_${Date.now()}`;
-      this.isPremium = false; // Start as non-premium for testing
+      this.isPremium = false; // Start as non-premium for testing negotiation chat
 
       this.isInitialized = true;
       console.log('✅ [RevenueCat] Initialized successfully');

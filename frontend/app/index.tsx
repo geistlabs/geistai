@@ -18,7 +18,6 @@ import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble'
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import HamburgerIcon from '../components/HamburgerIcon';
-import NegotiationChat from '../components/NegotiationChat';
 import { NetworkStatus } from '../components/NetworkStatus';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
@@ -48,6 +47,12 @@ export default function ChatScreen() {
 
   // Call ALL hooks FIRST before any conditional logic
   const {
+    isPremium,
+    isLoading: premiumLoading,
+    togglePremiumStatus,
+  } = usePremium();
+
+  const {
     enhancedMessages,
     isLoading,
     isStreaming,
@@ -59,13 +64,12 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
-  } = useChatWithStorage({ chatId: currentChatId });
+  } = useChatWithStorage({ chatId: currentChatId, isPremium });
 
-  const {
-    isPremium,
-    isLoading: premiumLoading,
-    togglePremiumStatus,
-  } = usePremium();
+  // Debug: Log when isPremium changes
+  useEffect(() => {
+    console.log(`🔄 [App] isPremium changed to: ${isPremium}`);
+  }, [isPremium]);
 
   // Rest of the component for premium users...
   useEffect(() => {
@@ -252,10 +256,8 @@ export default function ChatScreen() {
     );
   }
 
-  if (!isPremium) {
-    return <NegotiationChat onClose={undefined} />;
-  }
-
+  // Use the same UI for both premium and non-premium users
+  // Only difference: endpoint and welcome message
   return (
     <>
       {/* Main App Content */}

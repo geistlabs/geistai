@@ -121,6 +121,7 @@ export function collectLinksFromEnhancedMessage(
 export interface UseChatWithStorageOptions {
   chatId?: number;
   apiConfig?: Partial<ApiConfig>;
+  isPremium?: boolean;
   onError?: (error: Error) => void;
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
@@ -172,12 +173,17 @@ const defaultApiConfig: ApiConfig = {
 export function useChatWithStorage(
   options: UseChatWithStorageOptions = {},
 ): UseChatWithStorageReturn {
+  const { isPremium = false } = options;
+  console.log(
+    `🔄 [Chat] useChatWithStorage called with isPremium: ${isPremium}`,
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
       id: '1',
-      content:
-        'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
+      content: isPremium
+        ? 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.'
+        : "Hello! I'm here to help you find the perfect GeistAI subscription plan for your needs. Let's start by understanding what you're looking to accomplish with GeistAI.",
       role: 'assistant',
       timestamp: new Date(),
       isStreaming: false,
@@ -229,6 +235,31 @@ export function useChatWithStorage(
   useEffect(() => {
     currentChatIdRef.current = options.chatId;
   }, [options.chatId]);
+
+  // Update welcome message when isPremium changes
+  useEffect(() => {
+    console.log(`🔄 [Chat] isPremium changed to: ${isPremium}`);
+    const welcomeMessage = isPremium
+      ? 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.'
+      : "Hello! I'm here to help you find the perfect GeistAI subscription plan for your needs. Let's start by understanding what you're looking to accomplish with GeistAI.";
+
+    console.log(
+      `🔄 [Chat] Updating welcome message: ${welcomeMessage.substring(0, 50)}...`,
+    );
+
+    setEnhancedMessages(prev => {
+      if (prev.length > 0 && prev[0].id === '1') {
+        return [
+          {
+            ...prev[0],
+            content: welcomeMessage,
+          },
+          ...prev.slice(1),
+        ];
+      }
+      return prev;
+    });
+  }, [isPremium]);
 
   // Sync storage messages with local messages ONLY on chatId changes or initial load
   // Never during streaming to avoid conflicts
@@ -762,9 +793,23 @@ export function useChatWithStorage(
           );
         }
 
-        // 2. Start streaming to /api/stream
-        console.log('🧠 [Chat] STEP 2: Starting streaming to /api/stream...');
-        await sendStreamingMessage(content, messagesWithContext, eventHandlers);
+        // 2. Start streaming to appropriate endpoint based on premium status
+        const endpoint = isPremium ? '/api/stream' : '/api/negotiate';
+        console.log(`🧠 [Chat] STEP 2: Starting streaming to ${endpoint}...`);
+
+        if (isPremium) {
+          await sendStreamingMessage(
+            content,
+            messagesWithContext,
+            eventHandlers,
+          );
+        } else {
+          await apiSendNegotiationMessage(
+            content,
+            messagesWithContext,
+            eventHandlers,
+          );
+        }
       } catch (err) {
         console.error('[Chat] Error sending message:', err);
         const error =

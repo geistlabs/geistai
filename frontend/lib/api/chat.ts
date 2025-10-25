@@ -118,6 +118,15 @@ class StreamEventProcessor {
         case 'orchestrator_token':
           this.handleOrchestratorToken(data);
           break;
+        case 'agent_token':
+          this.handleAgentToken(data);
+          break;
+        case 'agent_start':
+          this.handleAgentStart(data);
+          break;
+        case 'agent_complete':
+          this.handleAgentComplete(data);
+          break;
         case 'sub_agent_event':
           this.handleSubAgentEvent(data);
           break;
@@ -250,6 +259,22 @@ class StreamEventProcessor {
   private handleError(data: any): void {
     console.error('❌ Stream error:', data.message);
     this.handlers.onError(data.message || 'Unknown error');
+  }
+
+  // Agent event handlers for /api/negotiate endpoint
+  private handleAgentToken(data: any): void {
+    console.log('🤖 Agent token:', data.data?.content?.data);
+    if (data.data?.content?.channel === 'content') {
+      this.handlers.onToken(data.data.content.data);
+    }
+  }
+
+  private handleAgentStart(data: any): void {
+    console.log('🤖 Agent started:', data.data?.agent);
+  }
+
+  private handleAgentComplete(data: any): void {
+    console.log('✅ Agent completed:', data.data?.agent);
   }
 }
 
@@ -752,7 +777,7 @@ export async function sendNegotiationMessage(
       withCredentials: false,
     });
 
-    // Handle different event types (same as /api/stream)
+    // Handle different event types (same as /api/stream + agent events for /api/negotiate)
     es.addEventListener('orchestrator_token', (event: any) => {
       try {
         if (event.data && typeof event.data === 'string') {
@@ -764,6 +789,40 @@ export async function sendNegotiationMessage(
           '[Negotiate] Failed to parse orchestrator_token:',
           parseError,
         );
+      }
+    });
+
+    // Add agent event listeners for /api/negotiate endpoint
+    es.addEventListener('agent_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_token:', parseError);
+      }
+    });
+
+    es.addEventListener('agent_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_start:', parseError);
+      }
+    });
+
+    es.addEventListener('agent_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse agent_complete:', parseError);
       }
     });
 
@@ -820,6 +879,17 @@ export async function sendNegotiationMessage(
           '[Negotiate] Failed to parse orchestrator_complete:',
           parseError,
         );
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn('[Negotiate] Failed to parse final_response:', parseError);
       }
     });
 
