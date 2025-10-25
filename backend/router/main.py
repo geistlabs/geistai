@@ -173,23 +173,10 @@ async def create_agent_direct_event_stream(agent, messages, request):
         def queue_event(event_type):
             """Create event handler that queues events with proper sequencing"""
             def handler(data):
-                # Normalize agent_token structure like process_llm_response.py does
-                normalized_data = data
-                if event_type == "agent_token" and isinstance(data, dict):
-                    # AgentTool emits: {"agent": "...", "content": {"channel": "...", "data": "..."}}
-                    # We need to extract just: {"channel": "...", "data": "..."}
-                    if "content" in data and isinstance(data["content"], dict):
-                        content_obj = data["content"]
-                        # Extract channel and data from content object
-                        if "channel" in content_obj and "data" in content_obj:
-                            normalized_data = {
-                                "channel": content_obj["channel"],
-                                "data": content_obj["data"]
-                            }
-
+                # No normalization needed - agent now emits same format as orchestrator
                 event_data = {
                     "type": event_type,
-                    "data": normalized_data,
+                    "data": data,
                     "sequence": sequence_counter["value"]
                 }
                 sequence_counter["value"] += 1

@@ -263,9 +263,10 @@ class StreamEventProcessor {
 
   // Agent event handlers for /api/negotiate endpoint
   private handleAgentToken(data: any): void {
-    console.log('🤖 Agent token:', data.data?.content?.data);
-    if (data.data?.content?.channel === 'content') {
-      this.handlers.onToken(data.data.content.data);
+    // Agent now emits same format as orchestrator: {channel, data}
+    console.log('🤖 Agent token:', data.data?.data);
+    if (data.data?.channel === 'content') {
+      this.handlers.onToken(data.data.data);
     }
   }
 

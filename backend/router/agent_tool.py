@@ -165,11 +165,9 @@ class AgentTool(EventEmitter):
                     
                     chunk_count += 1
                     
-                    # Emit token event for streaming with proper structure
-                    self.emit("agent_token", {
-                        "agent": self.name,
-                        "content": chunk  # Keep the full {channel, data} structure
-                    })
+                    # Emit token event for streaming - match orchestrator format
+                    # Emit the chunk directly as {channel, data} to match orchestrator.py line 197
+                    self.emit("agent_token", chunk)
 
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
