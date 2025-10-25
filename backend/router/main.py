@@ -126,6 +126,32 @@ def health_check():
 # Nested Orchestrator Factory Functions
 # ============================================================================
 
+def create_negotiation_orchestrator(config):
+    """
+    Create a negotiation orchestrator with only the pricing agent
+
+    Negotiation Orchestrator
+    └── pricing_agent
+
+    This uses the same pattern as the research system but with only the pricing agent
+    """
+    from agent_tool import create_pricing_agent
+
+    # Create only the pricing agent
+    pricing_agent = create_pricing_agent()
+
+    # Create main orchestrator with only the pricing agent
+    from nested_orchestrator import NestedOrchestrator
+    orchestrator = NestedOrchestrator(
+        model_config=config,
+        name="negotiation_orchestrator",
+        system_prompt="You are coordinating a pricing negotiation. Route all pricing discussions to the pricing_agent. Let the pricing_agent handle all user interactions and pricing recommendations.",
+        sub_agents=[pricing_agent]
+    )
+
+    return orchestrator
+
+
 def create_nested_research_system(config):
     """
     Create a nested orchestrator system using your existing agents at the top level:
@@ -605,7 +631,7 @@ async def create_agent_event_stream(
                     while not event_queue.empty():
                         try:
                             event = event_queue.get_nowait()
-                            if request and await request.is_disconnected():
+                            if await request.is_disconnected():
                                 return
 
                             yield {
@@ -620,7 +646,7 @@ async def create_agent_event_stream(
                 for task in done:
                     if task != agent_task:
                         event = await task
-                        if request and await request.is_disconnected():
+                        if await request.is_disconnected():
                             logger.info(f"{logger_prefix} Client disconnected, stopping stream")
                             agent_task.cancel()
                             return
@@ -658,8 +684,8 @@ async def negotiate_pricing(
     request: Request
 ):
     """
-    Pricing negotiation endpoint using pricing agent directly
-    Uses the dedicated create_agent_event_stream function
+    Pricing negotiation endpoint using orchestrator pattern with only pricing agent
+    Uses the same pattern as /api/stream for consistency
     """
     logger.info("[Negotiate] Starting pricing negotiation")
 
@@ -672,18 +698,142 @@ async def negotiate_pricing(
     else:
         messages.append(ChatMessage(role="user", content=chat_request.message))
 
-    # Create pricing agent directly
-    pricing_agent = create_pricing_agent()
+    async def negotiation_orchestrator_event_stream():
+        orchestrator_task = None
 
-    return EventSourceResponse(
-        create_agent_event_stream(
-            messages=messages,
-            agent=pricing_agent,
-            gpt_service=gpt_service,
-            request=request,
-            logger_prefix="[Negotiate]"
-        )
-    )
+        try:
+            # Create a negotiation orchestrator with only the pricing agent
+            orchestrator = create_negotiation_orchestrator(config)
+
+            # Initialize the orchestrator with the main GPT service
+            await orchestrator.initialize(gpt_service, config)
+            orchestrator.gpt_service = gpt_service
+
+            # Use asyncio.Queue to stream events in real-time
+            event_queue = asyncio.Queue()
+            final_response = None
+            sequence_counter = {"value": 0}  # Use dict for mutable closure
+
+            def queue_event(event_type):
+                """Create event handler that queues events with proper sequencing"""
+                def handler(data):
+                    event_data = {
+                        "type": event_type,
+                        "data": data,
+                        "sequence": sequence_counter["value"]
+                    }
+                    sequence_counter["value"] += 1
+                    try:
+                        event_queue.put_nowait(event_data)
+                    except asyncio.QueueFull:
+                        logger.warning(f"Event queue full, dropping {event_type} event")
+                return handler
+
+            # Register event listeners - orchestrator handles sub-agent event propagation
+            orchestrator.on("orchestrator_start", queue_event("orchestrator_start"))
+            orchestrator.on("agent_token", queue_event("orchestrator_token"))
+            orchestrator.on("orchestrator_complete", queue_event("orchestrator_complete"))
+            orchestrator.on("sub_agent_event", queue_event("sub_agent_event"))
+            orchestrator.on("tool_call_event", queue_event("tool_call_event"))
+
+            # Start orchestrator in background
+            orchestrator_task = asyncio.create_task(orchestrator.run(messages))
+
+            # Stream events as they come in
+            while True:
+                try:
+                    # Wait for either an event or orchestrator completion
+                    done, pending = await asyncio.wait(
+                        [
+                            asyncio.create_task(event_queue.get()),
+                            orchestrator_task
+                        ],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                    # Check if orchestrator is done
+                    if orchestrator_task in done:
+                        final_response = await orchestrator_task
+                        logger.info("[Negotiate] Orchestrator completed")
+
+                        # Cancel pending event queue task
+                        for task in pending:
+                            task.cancel()
+
+                        # Drain remaining events from queue
+                        while not event_queue.empty():
+                            try:
+                                event = event_queue.get_nowait()
+                                if await request.is_disconnected():
+                                    return
+
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+                            except asyncio.QueueEmpty:
+                                break
+
+                        # Send final response (same as regular chat)
+                        if final_response:
+                            yield {
+                                "data": json.dumps({
+                                    "type": "final_response",
+                                    "text": final_response.text,
+                                    "status": final_response.status,
+                                    "meta": final_response.meta,
+                                    "sequence": sequence_counter["value"]
+                                }),
+                                "event": "final_response"
+                            }
+                            sequence_counter["value"] += 1
+
+                        # Send end event
+                        yield {
+                            "data": json.dumps({
+                                "finished": True,
+                                "sequence": sequence_counter["value"]
+                            }),
+                            "event": "end"
+                        }
+                        break
+
+                    # Process events
+                    for task in done:
+                        if task != orchestrator_task:
+                            event = await task
+                            if await request.is_disconnected():
+                                logger.info("[Negotiate] Client disconnected, stopping stream")
+                                orchestrator_task.cancel()
+                                return
+
+                            if isinstance(event, dict):
+                                yield {
+                                    "data": json.dumps(event),
+                                    "event": event.get("type", "unknown")
+                                }
+                except asyncio.TimeoutError:
+                    pass
+                except asyncio.CancelledError:
+                    logger.info("[Negotiate] Stream cancelled")
+                    break
+
+        except Exception as e:
+            logger.error(f"[Negotiate] Orchestrator error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            yield {
+                "data": json.dumps({
+                    "type": "error",
+                    "data": {"message": str(e)}
+                }),
+                "event": "error"
+            }
+        finally:
+            if orchestrator_task and not orchestrator_task.done():
+                orchestrator_task.cancel()
+
+    return EventSourceResponse(negotiation_orchestrator_event_stream())
 
 
 @app.post("/api/summarize")
