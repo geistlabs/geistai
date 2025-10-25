@@ -1176,7 +1176,10 @@ export function useChatWithStorage(
           },
           onNegotiationResult: (result: NegotiationResult) => {
             console.log('💰 [Negotiate] Negotiation result received:', result);
-            console.log('🔍 [DEBUG] Setting negotiationResult state to:', result);
+            console.log(
+              '🔍 [DEBUG] Setting negotiationResult state to:',
+              result,
+            );
             setNegotiationResult(result);
           },
         };

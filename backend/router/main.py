@@ -215,10 +215,15 @@ async def create_agent_direct_event_stream(agent, messages, request):
                     for task in pending:
                         task.cancel()
 
+                    # Wait a bit for any final events to be queued (like agent_complete)
+                    await asyncio.sleep(0.2)
+                    logger.info("[Negotiate] Draining remaining events from queue, size: %d", event_queue.qsize())
+
                     # Drain remaining events from queue
                     while not event_queue.empty():
                         try:
                             event = event_queue.get_nowait()
+                            logger.info("[Negotiate] Sending drained event: %s", event.get("type"))
                             if await request.is_disconnected():
                                 return
 
@@ -776,6 +781,7 @@ async def create_agent_event_stream(
                     while not event_queue.empty():
                         try:
                             event = event_queue.get_nowait()
+                            logger.info("[Negotiate] Sending drained event: %s", event.get("type"))
                             if await request.is_disconnected():
                                 return
 

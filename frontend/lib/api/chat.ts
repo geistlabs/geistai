@@ -45,12 +45,15 @@ export function parseNegotiationResult(
   content: string,
 ): NegotiationResult | null {
   try {
-    console.log('🔍 [DEBUG] parseNegotiationResult called with content:', content);
-    
+    console.log(
+      '🔍 [DEBUG] parseNegotiationResult called with content:',
+      content,
+    );
+
     // Look for JSON block in the content
     const jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
     console.log('🔍 [DEBUG] JSON regex match result:', jsonMatch);
-    
+
     if (!jsonMatch) {
       console.log('❌ [DEBUG] No JSON block found in content');
       return null;
@@ -339,7 +342,10 @@ class StreamEventProcessor {
 
   private handleAgentComplete(data: any): void {
     console.log('✅ Agent completed:', data.data?.agent);
-    console.log('🔍 [DEBUG] Full agent_complete data:', JSON.stringify(data, null, 2));
+    console.log(
+      '🔍 [DEBUG] Full agent_complete data:',
+      JSON.stringify(data, null, 2),
+    );
 
     // Check if this is a pricing agent completion and parse negotiation result
     if (data.data?.agent === 'pricing_agent' && data.data?.text) {
@@ -349,13 +355,16 @@ class StreamEventProcessor {
         console.log('💰 Negotiation result parsed:', negotiationResult);
         this.handlers.onNegotiationResult?.(negotiationResult);
       } else {
-        console.log('❌ [DEBUG] Failed to parse negotiation result from text:', data.data.text);
+        console.log(
+          '❌ [DEBUG] Failed to parse negotiation result from text:',
+          data.data.text,
+        );
       }
     } else {
       console.log('🔍 [DEBUG] Not pricing agent or no text:', {
         agent: data.data?.agent,
         hasText: !!data.data?.text,
-        isPricingAgent: data.data?.agent === 'pricing_agent'
+        isPricingAgent: data.data?.agent === 'pricing_agent',
       });
     }
   }

@@ -138,7 +138,10 @@ export function NegotiationChat({ onClose }: NegotiationChatProps) {
 
   // Debug negotiation result changes
   useEffect(() => {
-    console.log('🔍 [DEBUG] NegotiationChat negotiationResult changed:', negotiationResult);
+    console.log(
+      '🔍 [DEBUG] NegotiationChat negotiationResult changed:',
+      negotiationResult,
+    );
   }, [negotiationResult]);
 
   if (premiumLoading) {
