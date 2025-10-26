@@ -896,6 +896,26 @@ export async function sendNegotiationMessage(
       }
     });
 
+    es.addEventListener('negotiation_finalized', (event: any) => {
+      try {
+        console.log('🔍 [DEBUG] negotiation_finalized event received:', event);
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          console.log('🔍 [DEBUG] Parsed negotiation_finalized data:', data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        console.warn(
+          '[Negotiate] Failed to parse negotiation_finalized:',
+          parseError,
+        );
+        console.log(
+          '🔍 [DEBUG] Raw negotiation_finalized event data:',
+          event.data,
+        );
+      }
+    });
+
     es.addEventListener('orchestrator_start', (event: any) => {
       try {
         if (event.data && typeof event.data === 'string') {
