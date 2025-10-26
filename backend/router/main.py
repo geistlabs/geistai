@@ -190,7 +190,7 @@ async def create_agent_direct_event_stream(agent, messages, request):
         agent.on("agent_start", queue_event("agent_start"))
         agent.on("agent_token", queue_event("agent_token"))
         agent.on("agent_complete", queue_event("agent_complete"))
-        
+
         # Register negotiation_finalized event from gpt_service
         if hasattr(agent.gpt_service, 'event_emitter'):
             agent.gpt_service.event_emitter.on("negotiation_finalized", queue_event("negotiation_finalized"))
@@ -859,7 +859,7 @@ async def negotiate_pricing(
 
         # Stream events using the direct agent stream function
         event_stream = create_agent_direct_event_stream(pricing_agent, messages, request)
-        async for event in event_stream:
+        for event in event_stream:
             yield event
 
     return EventSourceResponse(direct_negotiation_stream())
