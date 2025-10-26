@@ -40,65 +40,6 @@ export interface NegotiationResult {
   negotiation_summary: string;
 }
 
-// Parse negotiation result from agent message content
-export function parseNegotiationResult(
-  content: string,
-): NegotiationResult | null {
-  try {
-    console.log(
-      '🔍 [DEBUG] parseNegotiationResult called with content:',
-      content,
-    );
-
-    // Look for JSON block in the content
-    const jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-    console.log('🔍 [DEBUG] JSON regex match result:', jsonMatch);
-
-    if (!jsonMatch) {
-      console.log('❌ [DEBUG] No JSON block found in content');
-      return null;
-    }
-
-    const jsonStr = jsonMatch[1];
-    console.log('🔍 [DEBUG] Extracted JSON string:', jsonStr);
-    const parsed = JSON.parse(jsonStr);
-    console.log('🔍 [DEBUG] Parsed JSON object:', parsed);
-
-    // Validate required fields
-    if (
-      typeof parsed.final_price !== 'number' ||
-      typeof parsed.package_id !== 'string' ||
-      typeof parsed.negotiation_summary !== 'string'
-    ) {
-      console.warn('Invalid negotiation result structure:', parsed);
-      return null;
-    }
-
-    // Validate final_price is one of the expected values
-    const validPrices = [19.99, 29.99, 39.99];
-    if (!validPrices.includes(parsed.final_price)) {
-      console.warn('Invalid final_price:', parsed.final_price);
-      return null;
-    }
-
-    // Validate package_id matches expected format
-    const validPackageIds = [
-      'premium_monthly_20',
-      'premium_monthly_30',
-      'premium_monthly_40',
-    ];
-    if (!validPackageIds.includes(parsed.package_id)) {
-      console.warn('Invalid package_id:', parsed.package_id);
-      return null;
-    }
-
-    return parsed as NegotiationResult;
-  } catch (error) {
-    console.warn('Failed to parse negotiation result:', error);
-    return null;
-  }
-}
-
 // Send a message to the chat API (non-streaming)
 export async function sendMessage(
   message: string,
@@ -207,6 +148,9 @@ class StreamEventProcessor {
           break;
         case 'final_response':
           this.handleFinalResponse(data);
+          break;
+        case 'negotiation_finalized':
+          this.handleNegotiationFinalized(data);
           break;
         case 'error':
           this.handleError(data);
@@ -342,30 +286,33 @@ class StreamEventProcessor {
 
   private handleAgentComplete(data: any): void {
     console.log('✅ Agent completed:', data.data?.agent);
-    console.log(
-      '🔍 [DEBUG] Full agent_complete data:',
-      JSON.stringify(data, null, 2),
-    );
+  }
 
-    // Check if this is a pricing agent completion and parse negotiation result
-    if (data.data?.agent === 'pricing_agent' && data.data?.text) {
-      console.log('🔍 [DEBUG] Pricing agent text content:', data.data.text);
-      const negotiationResult = parseNegotiationResult(data.data.text);
-      if (negotiationResult) {
-        console.log('💰 Negotiation result parsed:', negotiationResult);
-        this.handlers.onNegotiationResult?.(negotiationResult);
-      } else {
-        console.log(
-          '❌ [DEBUG] Failed to parse negotiation result from text:',
-          data.data.text,
-        );
-      }
+  private handleNegotiationFinalized(data: any): void {
+    console.log('💰 Negotiation finalized via tool:', data.data);
+
+    const result: NegotiationResult = {
+      final_price: data.data.final_price,
+      package_id: data.data.package_id,
+      negotiation_summary: data.data.negotiation_summary,
+    };
+
+    // Validate the result
+    const validPrices = [19.99, 29.99, 39.99];
+    const validPackages = [
+      'premium_monthly_20',
+      'premium_monthly_30',
+      'premium_monthly_40',
+    ];
+
+    if (
+      validPrices.includes(result.final_price) &&
+      validPackages.includes(result.package_id)
+    ) {
+      console.log('✅ Valid negotiation result, triggering handler:', result);
+      this.handlers.onNegotiationResult?.(result);
     } else {
-      console.log('🔍 [DEBUG] Not pricing agent or no text:', {
-        agent: data.data?.agent,
-        hasText: !!data.data?.text,
-        isPricingAgent: data.data?.agent === 'pricing_agent',
-      });
+      console.error('❌ Invalid negotiation result from tool:', result);
     }
   }
 }

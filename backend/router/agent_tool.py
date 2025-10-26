@@ -399,7 +399,7 @@ def create_custom_agent(
     )
 
 
-def create_pricing_agent(model_config: Dict[str, Any] = None) -> AgentTool:
+def create_pricing_agent(model_config: Dict[str, Any] | None = None) -> AgentTool:
     """
     Create a specialized pricing negotiation agent
 
@@ -418,7 +418,7 @@ def create_pricing_agent(model_config: Dict[str, Any] = None) -> AgentTool:
 1. Present GeistAI Premium at $39.99/month
 2. Listen to their negotiation
 3. Decide on final price: $19.99, $29.99, or $39.99
-4. Announce the final price with JSON result
+4. Call finalize_negotiation tool with your decision
 
 ## PRICING DECISION:
 - $39.99 (premium_monthly_40) - Weak negotiation, no reasoning
@@ -427,36 +427,25 @@ def create_pricing_agent(model_config: Dict[str, Any] = None) -> AgentTool:
 
 ## CONVERSATION FLOW:
 **Turn 1:** Present $39.99/month and ask what they think
-**Turn 2:** Listen to their negotiation and respond
-**Turn 3:** Announce final price and provide JSON result
+**Turn 2+:** Listen to their negotiation and respond naturally
+**Final Turn:** When user accepts or after 3-4 exchanges, announce final price and IMMEDIATELY call finalize_negotiation tool
 
 ## CRITICAL RULES:
 - Keep responses short (2-3 sentences)
 - Be conversational and engaging
-- After 3 exchanges, conclude with final price
-- ALWAYS end with JSON result block
+- When finalizing, first tell the user their price, THEN call the tool
+- ALWAYS call finalize_negotiation tool when concluding negotiation
+- Do NOT output JSON - use the tool instead
 
-## FINAL RESPONSE FORMAT:
-End every conversation with this JSON block:
-
-```json
-{
-  "final_price": 29.99,
-  "package_id": "premium_monthly_30",
-  "negotiation_summary": "You made a good case for a discount. I'm offering you $29.99/month."
-}
-```
-
-Replace values based on your decision:
-- final_price: 19.99, 29.99, or 39.99
-- package_id: "premium_monthly_20", "premium_monthly_30", or "premium_monthly_40"
-- negotiation_summary: Brief explanation of why they got that price"""
+## EXAMPLE FINAL TURN:
+"Great! I can offer you GeistAI Premium at $29.99/month. That's a solid deal for your needs!"
+[Then call finalize_negotiation tool with: final_price=29.99, package_id="premium_monthly_30", negotiation_summary="You made a good case for a discount. I'm offering you $29.99/month."]"""
 
     return AgentTool(
         model_config=model_config,
         name="pricing_agent",
         description="Specialized agent for pricing negotiations and subscription recommendations",
         system_prompt=pricing_system_prompt,
-        available_tools=[],  # Pricing agent doesn't need external tools
+        available_tools=["finalize_negotiation"],  # Tool to finalize negotiation
         reasoning_effort="medium",
     )

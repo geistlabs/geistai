@@ -6,7 +6,6 @@ import {
   ChatAPI,
   ChatMessage,
   NegotiationResult,
-  parseNegotiationResult,
   sendStreamingMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
@@ -1155,23 +1154,6 @@ export function useChatWithStorage(
             setIsStreaming(false);
             isStreamingRef.current = false;
             setIsLoading(false);
-
-            // Parse negotiation result from final accumulated content
-            if (accumulatedContent) {
-              console.log(
-                '🔍 [Negotiate] Checking for JSON in final message...',
-              );
-              const result = parseNegotiationResult(accumulatedContent);
-              if (result) {
-                console.log(
-                  '💰 [Negotiate] JSON detected in final message:',
-                  result,
-                );
-                setNegotiationResult(result);
-              } else {
-                console.log('⚠️ [Negotiate] No valid JSON found in message');
-              }
-            }
 
             // Save final assistant message to storage asynchronously (don't block completion)
             if (currentChatId && storage.addMessage && accumulatedContent) {

@@ -190,6 +190,10 @@ async def create_agent_direct_event_stream(agent, messages, request):
         agent.on("agent_start", queue_event("agent_start"))
         agent.on("agent_token", queue_event("agent_token"))
         agent.on("agent_complete", queue_event("agent_complete"))
+        
+        # Register negotiation_finalized event from gpt_service
+        if hasattr(agent.gpt_service, 'event_emitter'):
+            agent.gpt_service.event_emitter.on("negotiation_finalized", queue_event("negotiation_finalized"))
 
         # Start agent in background
         agent_task = asyncio.create_task(agent.run(messages))

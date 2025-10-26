@@ -264,6 +264,72 @@ class GptService:
             tool_type="custom"
         )
 
+        # Register finalize_negotiation tool for pricing agent
+        async def finalize_negotiation_tool(args: dict) -> Dict:
+            """
+            Tool for pricing agent to finalize negotiation with structured data.
+            This tool emits an event to frontend with the negotiation result.
+            
+            Args:
+                final_price: The negotiated price (19.99, 29.99, or 39.99)
+                package_id: The package identifier (premium_monthly_20/30/40)
+                negotiation_summary: Brief explanation of the pricing decision
+            """
+            final_price = args.get("final_price")
+            package_id = args.get("package_id")
+            negotiation_summary = args.get("negotiation_summary", "")
+            
+            # Validate inputs
+            valid_prices = [19.99, 29.99, 39.99]
+            if final_price not in valid_prices:
+                return {"error": f"Invalid price. Must be one of: {valid_prices}"}
+            
+            valid_packages = ["premium_monthly_20", "premium_monthly_30", "premium_monthly_40"]
+            if package_id not in valid_packages:
+                return {"error": f"Invalid package_id. Must be one of: {valid_packages}"}
+            
+            # Emit negotiation_finalized event through event emitter
+            if hasattr(self, 'event_emitter'):
+                self.event_emitter.emit("negotiation_finalized", {
+                    "final_price": final_price,
+                    "package_id": package_id,
+                    "negotiation_summary": negotiation_summary
+                })
+                logger.info(f"💰 Negotiation finalized: ${final_price}/month ({package_id})")
+            
+            # Return success to agent
+            return {
+                "success": True,
+                "message": f"Negotiation finalized at ${final_price}/month ({package_id})"
+            }
+
+        self._register_tool(
+            name="finalize_negotiation",
+            description="Finalize the pricing negotiation with the user. Call this when you've decided on the final price after negotiating with the user.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "final_price": {
+                        "type": "number",
+                        "description": "The final negotiated price. Must be 19.99, 29.99, or 39.99",
+                        "enum": [19.99, 29.99, 39.99]
+                    },
+                    "package_id": {
+                        "type": "string",
+                        "description": "The package identifier corresponding to the price",
+                        "enum": ["premium_monthly_20", "premium_monthly_30", "premium_monthly_40"]
+                    },
+                    "negotiation_summary": {
+                        "type": "string",
+                        "description": "A brief, friendly explanation of why the user received this price (1-2 sentences)"
+                    }
+                },
+                "required": ["final_price", "package_id", "negotiation_summary"]
+            },
+            executor=finalize_negotiation_tool,
+            tool_type="custom"
+        )
+
         from agent_registry import register_predefined_agents
 
         await register_predefined_agents(self, self.config)
