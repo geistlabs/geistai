@@ -14,7 +14,10 @@ import { ENV } from '../lib/config/environment';
 import { Memory, memoryService } from '../lib/memoryService';
 import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
-import { LegacyMessage, useChatStorage } from './useChatStorage';
+import {
+  ChatMessage as StorageChatMessage,
+  useChatStorage,
+} from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
 
 // Enhanced message interface matching backend webapp structure
@@ -278,13 +281,13 @@ export function useChatWithStorage(
     ) {
       const chatMessages: ChatMessage[] = storage.messages
         .filter(
-          (msg: LegacyMessage) =>
-            msg && typeof msg === 'object' && msg.role && msg.text,
+          (msg: StorageChatMessage) =>
+            msg && typeof msg === 'object' && msg.role && msg.content,
         )
-        .map((msg: LegacyMessage) => ({
+        .map((msg: StorageChatMessage) => ({
           id: msg.id,
           role: msg.role,
-          content: msg.text,
+          content: msg.content,
           timestamp: msg.timestamp,
         }));
 
@@ -300,13 +303,6 @@ export function useChatWithStorage(
       apiClient.current.cancelAll();
     };
   }, []);
-
-  const convertToLegacyMessage = (message: ChatMessage): LegacyMessage => ({
-    id: message.id || Date.now().toString(),
-    text: message.content || '',
-    role: message.role === 'system' ? 'assistant' : message.role,
-    timestamp: message.timestamp || Date.now(),
-  });
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -351,7 +347,7 @@ export function useChatWithStorage(
       // Save user message to storage asynchronously (don't block streaming)
       if (currentChatId && storage.addMessage) {
         storage
-          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
+          .addMessage(userMessage, currentChatId)
           .then(() => console.log('🧠 [Chat] ✅ User message saved to storage'))
           .catch(err =>
             console.error('[Chat] Failed to save user message:', err),
@@ -364,10 +360,7 @@ export function useChatWithStorage(
       ) => {
         try {
           if (currentChatId && storage.addMessage) {
-            await storage.addMessage(
-              convertToLegacyMessage(assistantMessage),
-              currentChatId,
-            );
+            await storage.addMessage(assistantMessage, currentChatId);
             console.log('🧠 [Chat] ✅ Assistant message saved to storage');
           }
         } catch (err) {
@@ -454,11 +447,9 @@ export function useChatWithStorage(
       // Save user message to storage asynchronously (don't block UI)
       // Use the current chat ID from the ref, which is kept up to date
       if (currentChatId && storage.addMessage) {
-        storage
-          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
-          .catch(err => {
-            console.error('[Chat] Failed to save user message:', err);
-          });
+        storage.addMessage(userMessage, currentChatId).catch(err => {
+          console.error('[Chat] Failed to save user message:', err);
+        });
       }
 
       const assistantMessage: ChatMessage = {
@@ -866,7 +857,7 @@ export function useChatWithStorage(
       // Save user message to storage asynchronously (don't block streaming)
       if (currentChatId && storage.addMessage) {
         storage
-          .addMessage(convertToLegacyMessage(userMessage), currentChatId)
+          .addMessage(userMessage, currentChatId)
           .then(() =>
             console.log('🧠 [Negotiate] ✅ User message saved to storage'),
           )
@@ -881,10 +872,7 @@ export function useChatWithStorage(
       ) => {
         try {
           if (currentChatId && storage.addMessage) {
-            await storage.addMessage(
-              convertToLegacyMessage(assistantMessage),
-              currentChatId,
-            );
+            await storage.addMessage(assistantMessage, currentChatId);
             console.log('🧠 [Negotiate] ✅ Assistant message saved to storage');
           }
         } catch (err) {
