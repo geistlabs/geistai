@@ -243,48 +243,17 @@ export function useChatWithStorage(
     currentChatIdRef.current = options.chatId;
   }, [options.chatId]);
 
-  // Update welcome message when isPremium changes
+  // Update welcome message and clear negotiation result when isPremium changes
   useEffect(() => {
     console.log(`🔄 [Chat] isPremium changed to: ${isPremium}`);
 
-    // If user just became premium and there are messages (indicating a negotiation happened)
-    if (isPremium && messages.length > 1) {
-      console.log(
-        '🎉 [Chat] User became premium! Clearing negotiation chat and starting fresh...',
-      );
-
-      // Clear negotiation result so upgrade button disappears
+    // If user just became premium, clear the negotiation result so upgrade button disappears
+    if (isPremium) {
       setNegotiationResult(null);
-
-      // Clear all messages to start fresh
-      clearMessages();
-
-      // Use setTimeout to ensure clearMessages completes before setting new message
-      setTimeout(() => {
-        // Recreate the premium welcome message
-        const premiumWelcomeMessage =
-          'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.';
-
-        setEnhancedMessages([
-          {
-            id: '1',
-            content: premiumWelcomeMessage,
-            role: 'assistant',
-            timestamp: new Date(),
-            isStreaming: false,
-            agentConversations: [],
-            toolCallEvents: [],
-            collectedLinks: [],
-          },
-        ]);
-
-        console.log(
-          '✅ [Chat] Fresh premium chat initialized with welcome message',
-        );
-      }, 100);
-      return;
+      console.log('✅ [Chat] User became premium - cleared negotiation result');
     }
 
+    // Update the welcome message based on premium status
     const welcomeMessage = isPremium
       ? 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.'
       : "Hello! I'm here to help you find the perfect GeistAI subscription plan for your needs. Let's start by understanding what you're looking to accomplish with GeistAI.";
@@ -294,6 +263,7 @@ export function useChatWithStorage(
     );
 
     setEnhancedMessages(prev => {
+      // Only update the welcome message if it exists (id === '1')
       if (prev.length > 0 && prev[0].id === '1') {
         return [
           {
@@ -305,7 +275,7 @@ export function useChatWithStorage(
       }
       return prev;
     });
-  }, [isPremium, messages.length]);
+  }, [isPremium]);
 
   // Sync storage messages with local messages ONLY on chatId changes or initial load
   // Never during streaming to avoid conflicts
@@ -370,6 +340,7 @@ export function useChatWithStorage(
 
       // Get current chat ID from ref
       const currentChatId = currentChatIdRef.current;
+      console.log(`🔍 [Chat] Current chat ID: ${currentChatId}`);
 
       // Update local state immediately - show user message right away
       setMessages(prev => [...prev, userMessage]);
@@ -433,7 +404,7 @@ export function useChatWithStorage(
                       embedding,
                       relevanceScore: memoryData.relevanceScore || 0.8,
                       extractedAt: Date.now(),
-                      messageIds: [parseInt(userMessage.id)],
+                      messageIds: [parseInt(userMessage.id || '0')],
                       category: memoryData.category || 'other',
                     };
 
@@ -765,7 +736,7 @@ export function useChatWithStorage(
             options.onStreamEnd?.();
 
             // Save final assistant message to storage asynchronously (don't block completion)
-            if (currentChatId && storage.addMessage && accumulatedContent) {
+            if (currentChatId && accumulatedContent) {
               const finalAssistantMessage = {
                 ...assistantMessage,
                 content: accumulatedContent,

@@ -174,10 +174,10 @@ class StreamEventProcessor {
   }
 
   private handleOrchestratorToken(data: any): void {
-    console.log('whatch me handle token pal', data.data?.data);
     if (data.data?.channel === 'content') {
       this.handlers.onToken(data.data.data);
     }
+    // Reasoning tokens are intentionally filtered out
   }
 
   private handleSubAgentEvent(data: any): void {
