@@ -91,6 +91,10 @@ export default function ChatScreen() {
       console.log(
         `💰 [App] Upgrade button should show: $${negotiationResult.final_price.toFixed(2)}/mo`,
       );
+    } else {
+      console.log(
+        '💰 [App] Negotiation result cleared - upgrade button should disappear',
+      );
     }
   }, [negotiationResult]);
 

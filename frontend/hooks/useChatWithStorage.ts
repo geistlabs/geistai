@@ -246,6 +246,45 @@ export function useChatWithStorage(
   // Update welcome message when isPremium changes
   useEffect(() => {
     console.log(`🔄 [Chat] isPremium changed to: ${isPremium}`);
+
+    // If user just became premium and there are messages (indicating a negotiation happened)
+    if (isPremium && messages.length > 1) {
+      console.log(
+        '🎉 [Chat] User became premium! Clearing negotiation chat and starting fresh...',
+      );
+
+      // Clear negotiation result so upgrade button disappears
+      setNegotiationResult(null);
+
+      // Clear all messages to start fresh
+      clearMessages();
+
+      // Use setTimeout to ensure clearMessages completes before setting new message
+      setTimeout(() => {
+        // Recreate the premium welcome message
+        const premiumWelcomeMessage =
+          'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.';
+
+        setEnhancedMessages([
+          {
+            id: '1',
+            content: premiumWelcomeMessage,
+            role: 'assistant',
+            timestamp: new Date(),
+            isStreaming: false,
+            agentConversations: [],
+            toolCallEvents: [],
+            collectedLinks: [],
+          },
+        ]);
+
+        console.log(
+          '✅ [Chat] Fresh premium chat initialized with welcome message',
+        );
+      }, 100);
+      return;
+    }
+
     const welcomeMessage = isPremium
       ? 'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.'
       : "Hello! I'm here to help you find the perfect GeistAI subscription plan for your needs. Let's start by understanding what you're looking to accomplish with GeistAI.";
@@ -266,7 +305,7 @@ export function useChatWithStorage(
       }
       return prev;
     });
-  }, [isPremium]);
+  }, [isPremium, messages.length]);
 
   // Sync storage messages with local messages ONLY on chatId changes or initial load
   // Never during streaming to avoid conflicts
