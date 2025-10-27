@@ -123,6 +123,13 @@ class AgentTool(EventEmitter):
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
 
+        # Set the current agent emitter so tools can emit to this agent's stream
+        # The tool runs in the context of gpt_service, so we set it there
+        self.gpt_service.current_agent_emitter = self
+
+        # Also set it on the main gpt_service for tool execution context
+        main_gpt_service.current_agent_emitter = self
+
     async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """
         Run the agent with structured response and event streaming

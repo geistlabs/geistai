@@ -165,6 +165,10 @@ async def create_agent_direct_event_stream(agent, messages, request):
         await agent.initialize(gpt_service, config)
         agent.gpt_service = gpt_service
 
+        # Set the current agent emitter for tool execution context
+        # This must be done AFTER agent.gpt_service is set
+        agent.gpt_service.current_agent_emitter = agent
+
         # Use asyncio.Queue to stream events in real-time
         event_queue = asyncio.Queue()
         final_response = None
@@ -191,7 +195,7 @@ async def create_agent_direct_event_stream(agent, messages, request):
         agent.on("agent_token", queue_event("agent_token"))
         agent.on("agent_complete", queue_event("agent_complete"))
 
-        # Register negotiation_finalized event from gpt_service
+        # Register negotiation_finalized event from gpt_service (legacy support)
         if hasattr(agent.gpt_service, 'event_emitter'):
             agent.gpt_service.event_emitter.on("negotiation_finalized", queue_event("negotiation_finalized"))
 
@@ -858,8 +862,7 @@ async def negotiate_pricing(
         pricing_agent = create_pricing_agent()
 
         # Stream events using the direct agent stream function
-        event_stream = create_agent_direct_event_stream(pricing_agent, messages, request)
-        for event in event_stream:
+        async for event in create_agent_direct_event_stream(pricing_agent, messages, request):
             yield event
 
     return EventSourceResponse(direct_negotiation_stream())

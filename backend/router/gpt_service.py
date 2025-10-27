@@ -51,6 +51,9 @@ class GptService:
         self._tool_call_count = 0
         self._tool_call_history: List[dict] = []
 
+        # Current agent emitter for tool execution context
+        self.current_agent_emitter: Optional[Any] = None
+
 
     # ------------------------------------------------------------------------
     # Tool Call Tracking
@@ -268,7 +271,7 @@ class GptService:
         async def finalize_negotiation_tool(args: dict) -> Dict:
             """
             Tool for pricing agent to finalize negotiation with structured data.
-            This tool emits an event to frontend with the negotiation result.
+            This tool emits both a negotiation channel event and a legacy event.
 
             Args:
                 final_price: The negotiated price (19.99, 29.99, or 39.99)
@@ -288,19 +291,37 @@ class GptService:
             if package_id not in valid_packages:
                 return {"error": f"Invalid package_id. Must be one of: {valid_packages}"}
 
-            # Emit negotiation_finalized event through event emitter
+            # Create negotiation data
+            negotiation_data = {
+                "final_price": final_price,
+                "package_id": package_id,
+                "negotiation_summary": negotiation_summary,
+                "stage": "finalized",
+                "confidence": 1.0
+            }
+
+            # Emit negotiation_finalized event through event emitter (legacy)
             if hasattr(self, 'event_emitter'):
-                self.event_emitter.emit("negotiation_finalized", {
-                    "final_price": final_price,
-                    "package_id": package_id,
-                    "negotiation_summary": negotiation_summary
+                self.event_emitter.emit("negotiation_finalized", negotiation_data)
+                print(f"💰 [Legacy] Negotiation finalized: ${final_price}/month ({package_id})")
+
+            # NEW: Emit negotiation channel data for real-time updates
+            print(f"🔍 [Debug] Checking current_agent_emitter: {hasattr(self, 'current_agent_emitter')}")
+            if hasattr(self, 'current_agent_emitter') and self.current_agent_emitter:
+                print(f"🔍 [Debug] Emitting to agent: {self.current_agent_emitter}")
+                self.current_agent_emitter.emit("agent_token", {
+                    "channel": "negotiation",
+                    "data": negotiation_data
                 })
-                print(f"💰 Negotiation finalized: ${final_price}/month ({package_id})")
+                print(f"🔥 [Channel] Negotiation data emitted: {negotiation_data}")
+            else:
+                print(f"⚠️ [Channel] No current_agent_emitter available for negotiation channel")
 
             # Return success to agent
             return {
                 "success": True,
-                "message": f"Negotiation finalized at ${final_price}/month ({package_id})"
+                "message": f"Negotiation finalized at ${final_price}/month ({package_id})",
+                "negotiation_data": negotiation_data  # Include data in tool result
             }
 
         self._register_tool(
