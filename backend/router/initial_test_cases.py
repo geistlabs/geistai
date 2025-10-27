@@ -308,3 +308,4 @@ long_conversations = [
         "Based on that itinerary, what kind of clothing and gear would you recommend I pack?"
     ]
 ]
+long_conversations = long_conversations[0:5]

@@ -1,13 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import React, { useState } from 'react';
-import {
-  Alert,
-  Share,
-  Text,
-  TouchableOpacity,
-  View,
-  ScrollView,
-} from 'react-native';
+import { Share, Text, TouchableOpacity, View, ScrollView } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import {
@@ -16,6 +9,8 @@ import {
   AgentConversation,
   CollectedLink,
 } from '../../hooks/useChatWithStorage';
+import { CitedText } from '../../lib/citation/CitedText';
+import { renderMarkdown } from '../../lib/utils/markdownRenderer';
 
 import { LoadingIndicator } from './LoadingIndicator';
 
@@ -74,63 +69,24 @@ interface EnhancedMessageBubbleProps {
   messageIndex?: number;
 }
 
-// Simple markdown text component that handles basic formatting
-const SimpleMarkdownText: React.FC<{ text: string; isUser: boolean }> = ({
+// Enhanced text component that handles markdown and citations
+const EnhancedTextRenderer: React.FC<{ text: string; isUser: boolean }> = ({
   text,
   isUser,
 }) => {
-  const baseStyle = {
-    color: '#111827',
-    fontSize: 15,
-    lineHeight: 24,
-  };
+  // Check for HTML/XML-like tags (complete or incomplete)
+  // Match: <word or <citation or </ (tag-like patterns)
+  // Don't match: standalone < in comparisons (< followed by space or number)
+  const hasTagLikeContent = /<(?=\/?[a-zA-Z])/.test(text);
 
-  const renderText = (text: string) => {
-    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
+  // If text has any tag-like content, use CitedText to handle cleaning
+  // CitedText will clean incomplete tags and render complete citations
+  if (hasTagLikeContent) {
+    return <CitedText text={text} />;
+  }
 
-    return parts.map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return (
-          <Text key={index} style={[baseStyle, { fontWeight: '700' }]}>
-            {part.slice(2, -2)}
-          </Text>
-        );
-      }
-      if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-        return (
-          <Text key={index} style={[baseStyle, { fontStyle: 'italic' }]}>
-            {part.slice(1, -1)}
-          </Text>
-        );
-      }
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return (
-          <Text
-            key={index}
-            style={[
-              baseStyle,
-              {
-                backgroundColor: '#f3f4f6',
-                paddingHorizontal: 4,
-                paddingVertical: 2,
-                borderRadius: 4,
-                fontFamily: 'monospace',
-              },
-            ]}
-          >
-            {part.slice(1, -1)}
-          </Text>
-        );
-      }
-      return (
-        <Text key={index} style={baseStyle}>
-          {part}
-        </Text>
-      );
-    });
-  };
-
-  return <Text>{renderText(text)}</Text>;
+  // Otherwise, use shared markdown renderer
+  return renderMarkdown(text);
 };
 
 // Tool Call Event Component
@@ -256,7 +212,7 @@ const AgentConversationComponent: React.FC<{
                   marginVertical: 2,
                 }}
               >
-                <SimpleMarkdownText text={msg.content} isUser={false} />
+                <EnhancedTextRenderer text={msg.content} isUser={false} />
               </View>
             ))}
           </View>
@@ -269,9 +225,9 @@ const AgentConversationComponent: React.FC<{
 const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({
   links,
 }) => {
-  if (!links || links.length === 0) return null;
-
   const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!links || links.length === 0) return null;
 
   return (
     <View
@@ -334,12 +290,8 @@ const CollectedLinksComponent: React.FC<{ links: CollectedLink[] }> = ({
 
 export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
   message,
-  allMessages = [],
-  messageIndex = 0,
 }) => {
   const [copied, setCopied] = useState(false);
-  const [showActions, setShowActions] = useState(false);
-
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const isStreaming = message.isStreaming;
@@ -349,8 +301,8 @@ export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
       await Clipboard.setStringAsync(message.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy text:', error);
+    } catch {
+      // Failed to copy
     }
   };
 
@@ -359,8 +311,8 @@ export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
       await Share.share({
         message: message.content,
       });
-    } catch (error) {
-      console.error('Failed to share:', error);
+    } catch {
+      // Failed to share
     }
   };
 
@@ -389,7 +341,7 @@ export const EnhancedMessageBubble: React.FC<EnhancedMessageBubbleProps> = ({
       >
         {/* Message Content */}
         <View style={{ marginBottom: 8 }}>
-          <SimpleMarkdownText text={message.content} isUser={isUser} />
+          <EnhancedTextRenderer text={message.content} isUser={isUser} />
           {isStreaming && (
             <View style={{ marginTop: 8 }}>
               <LoadingIndicator size='small' />

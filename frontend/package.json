@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "start:go:android": "expo start --go --android",
     "start": "expo start --clear ",
     "startgo": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo start --go --clear",
     "start-android": "expo start --clear --android",
@@ -51,6 +52,7 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.4",
     "react-native-gesture-handler": "~2.28.0",
+    "react-native-markdown-display": "^7.0.2",
     "react-native-purchases": "^9.6.0",
     "react-native-purchases-ui": "^9.6.0",
     "react-native-reanimated": "~4.1.0",

@@ -30,32 +30,19 @@ export default function MemoryScreen() {
 	const memoryManager = useMemoryManager();
 
 	const loadMemories = useCallback(async () => {
-		console.log('[Memory] 🧠 Loading memories...');
-		console.log(
-			'[Memory] 🧠 Memory manager initialized:',
-			memoryManager.isInitialized,
-		);
-
 		if (!memoryManager.isInitialized) {
-			console.log(
-				'[Memory] 🧠 ❌ Memory manager not initialized, skipping load',
-			);
 			return;
 		}
 
 		try {
 			setIsLoading(true);
-			console.log('[Memory] 🧠 Fetching memories from database...');
 			const [allMemories, stats] = await Promise.all([
 				memoryStorage.getAllMemories(), // Get all memories
 				memoryManager.getMemoryStats(),
 			]);
-			console.log('[Memory] 🧠 Loaded memories count:', allMemories.length);
-			console.log('[Memory] 🧠 Memory stats:', stats);
 			setMemories(allMemories);
 			setMemoryStats(stats);
 		} catch (error) {
-			console.error('[Memory] 🧠 ❌ Failed to load memories:', error);
 			Alert.alert('Error', 'Failed to load memories');
 		} finally {
 			setIsLoading(false);
@@ -78,9 +65,8 @@ export default function MemoryScreen() {
 			const results = await memoryManager.searchMemories(searchText, 0.3);
 			setMemories(results.map(r => r.memory));
 		} catch (error) {
-			console.error('Search failed:', error);
 			Alert.alert('Error', 'Failed to search memories');
-		} finally {
+		} finally{
 			setIsSearching(false);
 		}
 	};
