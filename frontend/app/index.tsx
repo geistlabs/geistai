@@ -392,16 +392,26 @@ export default function ChatScreen() {
                       🔧 Toggle Premium
                     </Text>
                   </TouchableOpacity> */}
-                  <TouchableOpacity
-                    onPress={handleUpgradeNow}
-                    className={`px-4 py-1.5 rounded-lg flex-row items-center ${
-                      negotiationResult ? 'bg-green-500' : 'bg-blue-500'
-                    }`}
-                  >
-                    <Text className='text-white text-sm font-medium'>
-                      Upgrade
-                    </Text>
-                  </TouchableOpacity>
+                  {isPremium ? (
+                    <View className='px-4 py-1.5 bg-green-100 rounded-lg flex-row items-center'>
+                      <Text className='text-green-700 text-sm font-medium'>
+                        ✅ Premium Active
+                      </Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={handleUpgradeNow}
+                      className={`px-4 py-1.5 rounded-lg flex-row items-center ${
+                        negotiationResult ? 'bg-green-500' : 'bg-blue-500'
+                      }`}
+                    >
+                      <Text className='text-white text-sm font-medium'>
+                        {negotiationResult
+                          ? `Upgrade $${negotiationResult.final_price.toFixed(2)}/mo`
+                          : `Upgrade $${INITIAL_PRICE.price}/mo`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={handleStoragePress}
                     className='px-3 py-1.5 bg-blue-100 rounded-lg'
