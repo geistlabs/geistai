@@ -22,7 +22,7 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 "--parallel", "2", \
 "--cont-batching", \
 "--mlock", \
-"--n-gpu-layers", "-1",
+"--n-gpu-layers", "-1", \
 "--jinja", \
 "--reasoning-format", "none", \
 "--context-shift", \
