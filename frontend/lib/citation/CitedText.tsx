@@ -203,7 +203,7 @@ export const CitedText: React.FC<CitedTextProps> = ({
                 <Text
                   style={{ color: '#111827', fontSize: 15, lineHeight: 22 }}
                 >
-                  {part.content}
+                  {(part.content ?? '').replace(/(\r\n|\n|\r)/g, '')}
                 </Text>
               </View>
             );
