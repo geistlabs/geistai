@@ -12,20 +12,28 @@ EXPOSE 8080
 
 # Just provide the arguments (ENTRYPOINT already has /app/llama-server)
 # Use JSON array format to pass arguments to the existing entrypoint
-CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
-     "--host", "0.0.0.0", \
-     "--port", "8080", \
-     "--ctx-size", "16384", \
-     "--threads", "4", \
-     "--batch-size", "512", \
-     "--ubatch-size", "512", \
-     "--parallel", "1", \
-     "--cont-batching", \
-     "--mlock", \
-     "--n-gpu-layers", "-1", \
-     "--jinja", \
-     "--reasoning-format", "none", \
-     "--context-shift"]
+CMD [
+     "--model", "/models/gpt-oss-20b-Q5_K_S.gguf",
+     "--host", "0.0.0.0",
+     "--port", "8080",
+     "--ctx-size", "8192",           # 8K ctx = half memory, faster KV ops
+     "--threads", "8",               # match physical cores; use lscpu to verify
+     "--batch-size", "256",          # smaller = quicker token turnaround
+     "--ubatch-size", "128",         # lower microbatch for snappy response
+     "--parallel", "2",              # allows one stream to generate while another waits (great for tool calls)
+     "--cont-batching",              # keep cached prefix; reuse context across requests
+     "--mlock",
+     "--n-gpu-layers", "-1",
+     "--jinja",
+     "--reasoning-format", "none",
+     "--context-shift",
+     "--temp", "0.4",                # deterministic tool-calling
+     "--top-p", "0.9",               # balanced sampling
+     "--repeat-penalty", "1.1",      # reduces echoing when context shifts
+     "--interactive-first",          # start streaming early
+     "--parallel-threads", "2"       # (optional) enable concurrent token pipelines
+   ]
+   
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.
 
