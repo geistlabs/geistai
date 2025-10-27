@@ -12,28 +12,25 @@ EXPOSE 8080
 
 # Just provide the arguments (ENTRYPOINT already has /app/llama-server)
 # Use JSON array format to pass arguments to the existing entrypoint
-CMD [
-     "--model", "/models/gpt-oss-20b-Q5_K_S.gguf", \
-     "--host", "0.0.0.0", \
-     "--port", "8080", \
-     "--ctx-size", "8192", \
-     "--threads", "8", \
-     "--batch-size", "256", \
-     "--ubatch-size", "128", \
-     "--parallel", "2", \
-     "--cont-batching", \
-     "--mlock", \
-     "--n-gpu-layers", "-1",
-     "--jinja", \
-     "--reasoning-format", "none", \
-     "--context-shift", \
-     "--temp", "0.4", \
-     "--top-p", "0.9", \
-     "--repeat-penalty", "1.1", \
-     "--interactive-first", \
-     "--parallel-threads", "2" \
-   ]
-   
+CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
+"--host", "0.0.0.0", \
+"--port", "8080", \
+"--ctx-size", "8192", \
+"--threads", "8", \
+"--batch-size", "256", \
+"--ubatch-size", "128", \
+"--parallel", "2", \
+"--cont-batching", \
+"--mlock", \
+"--n-gpu-layers", "-1",
+"--jinja", \
+"--reasoning-format", "none", \
+"--context-shift", \
+"--temp", "0.4", \
+"--top-p", "0.9", \
+"--repeat-penalty", "1.1", \
+"--interactive-first", \
+"--parallel-threads", "2" ]
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.
 
