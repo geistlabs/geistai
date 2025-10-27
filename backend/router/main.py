@@ -326,15 +326,6 @@ async def memory_proxy(request: Request):
                 timeout=config.MEMORY_EXTRACTION_TIMEOUT,
             )
 
-            logger.info(f"Memory extraction service responsed with status {response.status_code}")
-            
-            return StreamingResponse(
-                iter([response.content]),
-                status_code=response.status_code,
-                headers=response.headers,
-                media_type=response.headers.get("content-type")
-            )
-
        
         # Return the response with appropriate headers
         response_headers = {}
