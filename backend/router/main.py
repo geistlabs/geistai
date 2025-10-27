@@ -177,6 +177,7 @@ async def create_agent_direct_event_stream(agent, messages, request):
         def queue_event(event_type):
             """Create event handler that queues events with proper sequencing"""
             def handler(data):
+                print(f"🎯 [HANDLER CALLED] Event type: {event_type}, Data: {data}")
                 # No normalization needed - agent now emits same format as orchestrator
                 event_data = {
                     "type": event_type,
@@ -186,6 +187,7 @@ async def create_agent_direct_event_stream(agent, messages, request):
                 sequence_counter["value"] += 1
                 try:
                     event_queue.put_nowait(event_data)
+                    print(f"✅ [QUEUED] Event {event_type} queued successfully, queue size: {event_queue.qsize()}")
                 except asyncio.QueueFull:
                     logger.warning(f"Event queue full, dropping {event_type} event")
             return handler

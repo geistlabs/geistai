@@ -179,9 +179,7 @@ export function useChatWithStorage(
   options: UseChatWithStorageOptions = {},
 ): UseChatWithStorageReturn {
   const { isPremium = false } = options;
-  console.log(
-    `🔄 [Chat] useChatWithStorage called with isPremium: ${isPremium}`,
-  );
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
@@ -752,6 +750,31 @@ export function useChatWithStorage(
             setIsLoading(false); // Ensure loading state is cleared on stream error
             options.onError?.(errorObj);
           },
+          onNegotiationChannel: (data: {
+            final_price: number;
+            package_id: string;
+            negotiation_summary: string;
+            stage: string;
+            confidence: number;
+          }) => {
+            console.log(
+              '🎯 [Hook] onNegotiationChannel handler called with:',
+              data,
+            );
+
+            // Convert channel data to NegotiationResult format for state update
+            const negotiationResult: NegotiationResult = {
+              final_price: data.final_price,
+              package_id: data.package_id,
+              negotiation_summary: data.negotiation_summary,
+            };
+
+            console.log(
+              '🔄 [Hook] Updating negotiationResult state:',
+              negotiationResult,
+            );
+            setNegotiationResult(negotiationResult);
+          },
         };
 
         // Prepare messages with memory context
@@ -1171,7 +1194,41 @@ export function useChatWithStorage(
             );
             setNegotiationResult(result);
           },
+          onNegotiationChannel: (data: {
+            final_price: number;
+            package_id: string;
+            negotiation_summary: string;
+            stage: string;
+            confidence: number;
+          }) => {
+            console.log(
+              '🎯 [Hook] onNegotiationChannel handler called with:',
+              data,
+            );
+
+            // Convert channel data to NegotiationResult format for state update
+            const negotiationResult: NegotiationResult = {
+              final_price: data.final_price,
+              package_id: data.package_id,
+              negotiation_summary: data.negotiation_summary,
+            };
+
+            console.log(
+              '🔄 [Hook] Updating negotiationResult state:',
+              negotiationResult,
+            );
+            setNegotiationResult(negotiationResult);
+          },
         };
+
+        // Debug: Log the eventHandlers before sending
+        console.log('🔍 [Hook] About to send negotiation with handlers:', {
+          onToken: !!eventHandlers.onToken,
+          onComplete: !!eventHandlers.onComplete,
+          onError: !!eventHandlers.onError,
+          onNegotiationChannel: !!eventHandlers.onNegotiationChannel,
+          onNegotiationResult: !!eventHandlers.onNegotiationResult,
+        });
 
         // Use the negotiation endpoint
         await apiSendNegotiationMessage(

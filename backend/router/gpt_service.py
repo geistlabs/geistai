@@ -303,19 +303,8 @@ class GptService:
             # Emit negotiation_finalized event through event emitter (legacy)
             if hasattr(self, 'event_emitter'):
                 self.event_emitter.emit("negotiation_finalized", negotiation_data)
-                print(f"💰 [Legacy] Negotiation finalized: ${final_price}/month ({package_id})")
-
-            # NEW: Emit negotiation channel data for real-time updates
-            print(f"🔍 [Debug] Checking current_agent_emitter: {hasattr(self, 'current_agent_emitter')}")
-            if hasattr(self, 'current_agent_emitter') and self.current_agent_emitter:
-                print(f"🔍 [Debug] Emitting to agent: {self.current_agent_emitter}")
-                self.current_agent_emitter.emit("agent_token", {
-                    "channel": "negotiation",
-                    "data": negotiation_data
-                })
-                print(f"🔥 [Channel] Negotiation data emitted: {negotiation_data}")
-            else:
-                print(f"⚠️ [Channel] No current_agent_emitter available for negotiation channel")
+                print(f"💰 [Negotiation] Finalized: ${final_price}/month ({package_id})")
+                print(f"💰 [Negotiation] Data will be emitted via streaming loop (not directly from tool)")
 
             # Return success to agent
             return {

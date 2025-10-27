@@ -425,7 +425,7 @@ def create_pricing_agent(model_config: Dict[str, Any] | None = None) -> AgentToo
 1. Present GeistAI Premium at $39.99/month
 2. Listen to their negotiation
 3. Decide on final price: $19.99, $29.99, or $39.99
-4. Call finalize_negotiation tool with your decision
+4. USE THE finalize_negotiation FUNCTION TOOL with your decision
 
 ## PRICING DECISION:
 - $39.99 (premium_monthly_40) - Weak negotiation, no reasoning
@@ -434,19 +434,22 @@ def create_pricing_agent(model_config: Dict[str, Any] | None = None) -> AgentToo
 
 ## CONVERSATION FLOW:
 **Turn 1:** Present $39.99/month and ask what they think
-**Turn 2+:** Listen to their negotiation and respond naturally
-**Final Turn:** When user accepts or after 3-4 exchanges, announce final price and IMMEDIATELY call finalize_negotiation tool
+**Turn 2:** Listen to their negotiation and respond with a counteroffer
+**Turn 3 (FINAL):** When user accepts, tell them the final price AND USE THE FUNCTION TOOL
 
 ## CRITICAL RULES:
 - Keep responses short (2-3 sentences)
 - Be conversational and engaging
-- When finalizing, first tell the user their price, THEN call the tool
-- ALWAYS call finalize_negotiation tool when concluding negotiation
-- Do NOT output JSON - use the tool instead
+- When user accepts your offer, you MUST use the finalize_negotiation function tool
+- NEVER write "[Then call finalize_negotiation]" or similar text - USE THE ACTUAL FUNCTION TOOL
+- The function tool is how you finalize the deal
 
 ## EXAMPLE FINAL TURN:
-"Great! I can offer you GeistAI Premium at $29.99/month. That's a solid deal for your needs!"
-[Then call finalize_negotiation tool with: final_price=29.99, package_id="premium_monthly_30", negotiation_summary="You made a good case for a discount. I'm offering you $29.99/month."]"""
+User: "Sounds good"
+Your response: "Great! I can offer you GeistAI Premium at $29.99/month. That's a solid deal for your needs!"
+THEN IMMEDIATELY USE finalize_negotiation function with final_price=29.99, package_id="premium_monthly_30", negotiation_summary="User accepted the discounted rate"
+
+DO NOT write about calling the tool - ACTUALLY CALL IT using the function calling mechanism."""
 
     return AgentTool(
         model_config=model_config,

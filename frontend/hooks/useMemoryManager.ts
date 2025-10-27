@@ -1,17 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { ChatMessage } from '../lib/api/chat';
 import {
-  memoryService,
   Memory,
   MemorySearchResult,
+  memoryService,
 } from '../lib/memoryService';
-import { memoryStorage, MemoryStats } from '../lib/memoryStorage';
+import { MemoryStats, memoryStorage } from '../lib/memoryStorage';
 
 export interface UseMemoryManagerOptions {
   contextThreshold?: number; // Similarity threshold for context inclusion
   searchThreshold?: number; // Similarity threshold for search results
   maxContextMemories?: number; // Max memories to include in context
+  autoExtract?: boolean; // Automatically extract memories from user questions
 }
 
 export interface UseMemoryManagerReturn {
@@ -45,10 +45,10 @@ export interface UseMemoryManagerReturn {
 export function useMemoryManager(
   options: UseMemoryManagerOptions = {},
 ): UseMemoryManagerReturn {
-  const { 
-    contextThreshold = 0.7, 
-    searchThreshold = 0.3, 
-    maxContextMemories = 5 
+  const {
+    contextThreshold = 0.7,
+    searchThreshold = 0.3,
+    maxContextMemories = 5,
   } = options;
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -75,7 +75,6 @@ export function useMemoryManager(
     initializeStorage();
   }, []);
 
-
   /**
    * Search for relevant memories
    */
@@ -94,13 +93,17 @@ export function useMemoryManager(
       try {
         console.log(`🔍 [MemoryManager] Searching for: "${query}"`);
         console.log(`🔍 [MemoryManager] Using threshold: ${searchThreshold}`);
-        
+
         // Generate embedding for query
         const queryEmbedding = await memoryService.getEmbedding(query);
-        console.log(`🔍 [MemoryManager] Query embedding length: ${queryEmbedding.length}`);
+        console.log(
+          `🔍 [MemoryManager] Query embedding length: ${queryEmbedding.length}`,
+        );
 
         if (queryEmbedding.length === 0) {
-          console.log('🔍 [MemoryManager] ❌ Failed to generate query embedding');
+          console.log(
+            '🔍 [MemoryManager] ❌ Failed to generate query embedding',
+          );
           return [];
         }
 
@@ -112,18 +115,22 @@ export function useMemoryManager(
           searchThreshold, // Use lower threshold (0.3) for search
         );
 
-        console.log(`🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`);
-        
+        console.log(
+          `🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`,
+        );
+
         // Log details about found memories for debugging
         if (results.length > 0) {
           console.log('🔍 [MemoryManager] Found memories:');
           results.forEach((result, index) => {
-            console.log(`  ${index + 1}. [${result.memory.category}] Similarity: ${result.similarity.toFixed(3)} - ${result.memory.content.substring(0, 100)}...`);
+            console.log(
+              `  ${index + 1}. [${result.memory.category}] Similarity: ${result.similarity.toFixed(3)} - ${result.memory.content.substring(0, 100)}...`,
+            );
           });
         } else {
           console.log('🔍 [MemoryManager] No memories found above threshold');
         }
-        
+
         return results;
       } catch (err) {
         console.error('Failed to search memories:', err);

@@ -65,6 +65,7 @@ class ToolCallResponse(TypedDict):
     success: bool
     new_conversation_entries: List[Any]
     tool_call_result: Dict[str, Any] | None
+    negotiation_data: Dict[str, Any] | None  # For finalize_negotiation tool
 
 
 
@@ -92,7 +93,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=[],
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
     try:
@@ -129,10 +131,18 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
         print(f"   ✅ Tool call succeeded: {tool_name}")
 
+        # Store negotiation data if this is a finalize_negotiation tool
+        # This will be picked up later to emit a negotiation channel event
+        negotiation_data_to_emit = None
+        if tool_name == "finalize_negotiation" and isinstance(result, dict) and "negotiation_data" in result:
+            negotiation_data_to_emit = result["negotiation_data"]
+            print(f"   💰 [Negotiation] Tool returned negotiation data: {negotiation_data_to_emit}")
+
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation,
-            tool_call_result=tool_call_result
+            tool_call_result=tool_call_result,
+            negotiation_data=negotiation_data_to_emit
         )
 
     except json.JSONDecodeError as e:
@@ -147,7 +157,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
     except Exception as e:
@@ -164,7 +175,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
 
@@ -364,6 +376,7 @@ async def process_llm_response_with_tools(
 
                 # Process all results
                 has_error = False
+                negotiation_data_from_tools = None
                 # handle tool call result and then continue
                 for i, result in enumerate(results):
                     if isinstance(result, BaseException):
@@ -372,10 +385,22 @@ async def process_llm_response_with_tools(
                         break
                     elif isinstance(result, dict) and "success" in result:
                         conversation.extend(result["new_conversation_entries"])
+                        # Check if this tool returned negotiation data
+                        if result.get("negotiation_data"):
+                            negotiation_data_from_tools = result["negotiation_data"]
+                            print(f"🔍 [agent: {agent_name}] 💰 Negotiation data found in tool result")
 
                 if has_error:
                     yield (None, "stop")
                     print("Returning at tool call error")
+
+                # Emit negotiation channel event if we have negotiation data
+                if negotiation_data_from_tools:
+                    print(f"🔥 [Negotiation] Emitting negotiation channel from streaming loop: {negotiation_data_from_tools}")
+                    yield ({
+                        "channel": "negotiation",
+                        "data": negotiation_data_from_tools
+                    }, None)
 
                 print(f"🔍 [agent: {agent_name}] 🔄 Returning 'continue' status to continue")
                 yield (None, "continue")

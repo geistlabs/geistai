@@ -109,6 +109,13 @@ export interface StreamEventHandlers {
   onComplete: () => void;
   onError: (error: string) => void;
   onNegotiationResult?: (result: NegotiationResult) => void;
+  onNegotiationChannel?: (data: {
+    final_price: number;
+    package_id: string;
+    negotiation_summary: string;
+    stage: string;
+    confidence: number;
+  }) => void;
 }
 
 // Event processor class for handling different event types
@@ -117,6 +124,10 @@ class StreamEventProcessor {
 
   constructor(handlers: StreamEventHandlers) {
     this.handlers = handlers;
+    console.log(
+      '🔍 [Debug] StreamEventProcessor created, negotiation handler:',
+      !!handlers.onNegotiationChannel,
+    );
   }
 
   processEvent(data: any): void {
@@ -274,18 +285,56 @@ class StreamEventProcessor {
   // Agent event handlers for /api/negotiate endpoint
   private handleAgentToken(data: any): void {
     // Agent now emits same format as orchestrator: {channel, data}
-    console.log('🤖 Agent token:', data.data?.data);
+    // Only log non-content tokens to reduce noise
+    if (
+      data.data?.channel !== 'content' &&
+      data.data?.channel !== 'reasoning'
+    ) {
+      console.log('🤖 Agent token:', data.data?.data);
+      console.log('🔍 [Debug] Agent token channel:', data.data?.channel);
+    }
+
     if (data.data?.channel === 'content') {
       this.handlers.onToken(data.data.data);
+    } else if (data.data?.channel === 'negotiation') {
+      console.log('🎯 [Debug] Negotiation channel detected, calling handler');
+      this.handleNegotiationChannel(data.data.data);
     }
   }
 
   private handleAgentStart(data: any): void {
+    // Reduced logging - only log agent name
     console.log('🤖 Agent started:', data.data?.agent);
   }
 
   private handleAgentComplete(data: any): void {
+    // Reduced logging - only log agent name
     console.log('✅ Agent completed:', data.data?.agent);
+  }
+
+  private handleNegotiationChannel(data: any): void {
+    console.log('🔥 Real-time negotiation update:', data);
+
+    // Validate the negotiation data structure
+    if (
+      data &&
+      typeof data.final_price === 'number' &&
+      data.package_id &&
+      data.stage
+    ) {
+      console.log(
+        '✅ [Debug] Validation passed, handler exists:',
+        !!this.handlers.onNegotiationChannel,
+      );
+      if (this.handlers.onNegotiationChannel) {
+        console.log('🎯 [Debug] Calling onNegotiationChannel handler');
+        this.handlers.onNegotiationChannel(data);
+      } else {
+        console.warn('⚠️ [Debug] onNegotiationChannel handler is undefined');
+      }
+    } else {
+      console.warn('⚠️ Invalid negotiation channel data:', data);
+    }
   }
 
   private handleNegotiationFinalized(data: any): void {
@@ -796,6 +845,10 @@ export async function sendNegotiationMessage(
   };
 
   // Create event processor
+  console.log(
+    '🔍 [Debug] Creating negotiation processor, handler exists:',
+    !!handlers.onNegotiationChannel,
+  );
   const eventProcessor = new StreamEventProcessor(handlers);
 
   return new Promise<void>(async (resolve, reject) => {

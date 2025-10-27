@@ -84,6 +84,16 @@ export default function ChatScreen() {
     );
   }, [isPremium]);
 
+  // Debug: Log when negotiationResult changes
+  useEffect(() => {
+    console.log('💰 [App] negotiationResult changed to:', negotiationResult);
+    if (negotiationResult) {
+      console.log(
+        `💰 [App] Upgrade button should show: $${negotiationResult.final_price.toFixed(2)}/mo`,
+      );
+    }
+  }, [negotiationResult]);
+
   // Rest of the component for premium users...
   useEffect(() => {
     if (enhancedMessages.length > 0) {
