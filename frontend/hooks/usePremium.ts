@@ -75,6 +75,7 @@ export function usePremium() {
         error: null,
       }));
 
+      console.log('✅ [Premium] Status updated:', { isPremium });
       return isPremium;
     } catch (error) {
       console.error('❌ [Premium] Status check failed:', error);
@@ -94,13 +95,19 @@ export function usePremium() {
       try {
         setStatus(prev => ({ ...prev, isLoading: true, error: null }));
 
-        const result = await revenuecat.purchasePackage(packageToPurchase);
+        const { customerInfo, userCancelled } =
+          await revenuecat.purchasePackage(packageToPurchase);
+
+        if (userCancelled) {
+          setStatus(prev => ({ ...prev, isLoading: false }));
+          return { customerInfo, userCancelled };
+        }
 
         // Update status after successful purchase
         await checkPremiumStatus();
 
-        console.log('✅ [Premium] Purchase successful:', result);
-        return result;
+        console.log('✅ [Premium] Purchase successful');
+        return { customerInfo, userCancelled };
       } catch (error) {
         console.error('❌ [Premium] Purchase failed:', error);
         setStatus(prev => ({
@@ -118,13 +125,13 @@ export function usePremium() {
     try {
       setStatus(prev => ({ ...prev, isLoading: true, error: null }));
 
-      const result = await revenuecat.restorePurchases();
+      const customerInfo = await revenuecat.restorePurchases();
 
       // Update status after restore
       await checkPremiumStatus();
 
-      console.log('✅ [Premium] Purchases restored:', result);
-      return result;
+      console.log('✅ [Premium] Purchases restored');
+      return customerInfo;
     } catch (error) {
       console.error('❌ [Premium] Restore failed:', error);
       setStatus(prev => ({
@@ -147,15 +154,24 @@ export function usePremium() {
 
   // Development helpers for testing
   const setPremiumStatus = useCallback((isPremium: boolean) => {
-    revenuecat.setPremiumStatus(isPremium);
+    console.warn(
+      '🔧 [Premium] setPremiumStatus is deprecated with real RevenueCat',
+    );
+    // For development, we can still update local state for testing
     setStatus(prev => ({ ...prev, isPremium }));
   }, []);
 
   const togglePremiumStatus = useCallback(() => {
-    const newStatus = revenuecat.togglePremiumStatus();
-    setStatus(prev => ({ ...prev, isPremium: newStatus }));
-    return newStatus;
-  }, []);
+    console.warn(
+      '🔧 [Premium] togglePremiumStatus is deprecated with real RevenueCat',
+    );
+    // For development, toggle local state for testing
+    setStatus(prev => {
+      const newStatus = !prev.isPremium;
+      return { ...prev, isPremium: newStatus };
+    });
+    return !status.isPremium;
+  }, [status.isPremium]);
 
   // Initialize on mount
   useEffect(() => {

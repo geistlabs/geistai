@@ -24,9 +24,16 @@ import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { usePremium } from '../hooks/usePremium';
+import { revenuecat } from '../lib/revenuecat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
+
+// Initial premium price configuration
+const INITIAL_PRICE = {
+  price: 39.99,
+  package_id: 'premium_monthly_40',
+};
 
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
@@ -49,7 +56,7 @@ export default function ChatScreen() {
   const {
     isPremium,
     isLoading: premiumLoading,
-    togglePremiumStatus,
+    // togglePremiumStatus,
   } = usePremium();
 
   const {
@@ -64,6 +71,7 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
+    negotiationResult,
   } = useChatWithStorage({ chatId: currentChatId, isPremium });
 
   // Debug: Log when isPremium changes
@@ -170,6 +178,86 @@ export default function ChatScreen() {
 
   const handleStoragePress = () => {
     router.push('/storage');
+  };
+
+  const handleUpgradeNow = async () => {
+    // Use either negotiation result or initial price
+    const priceInfo = negotiationResult || INITIAL_PRICE;
+
+    try {
+      console.log('💰 [Upgrade] Starting purchase process for:', priceInfo);
+
+      // Get RevenueCat offerings
+      const offerings = await revenuecat.getOfferings();
+
+      // DEBUG CODE:
+      console.log('🔍 [Debug] Full offerings:', offerings);
+      console.log('🔍 [Debug] Current offering exists:', !!offerings.current);
+      console.log(
+        '🔍 [Debug] Available packages count:',
+        offerings.current?.availablePackages?.length,
+      );
+      console.log(
+        '🔍 [Debug] Package identifiers:',
+        offerings.current?.availablePackages?.map((p: any) => p.identifier),
+      );
+
+      if (!offerings.current) {
+        Alert.alert('Error', 'No subscription packages available');
+        return;
+      }
+
+      // Find the offering that matches the negotiated price
+      const packageId = priceInfo.package_id;
+      const offeringKey = packageId; // e.g., "premium_monthly_40"
+      const targetOffering = offerings.all[offeringKey];
+
+      if (!targetOffering) {
+        Alert.alert('Error', `Offering ${offeringKey} not found`);
+        console.error('Available offerings:', Object.keys(offerings.all));
+        return;
+      }
+
+      // Get the package from the target offering (should be the first/only one)
+      const package_ = targetOffering.availablePackages[0];
+
+      if (!package_) {
+        Alert.alert('Error', `No packages found in offering ${offeringKey}`);
+        return;
+      }
+
+      console.log(
+        '💰 [Upgrade] Found package:',
+        package_.identifier,
+        'Price:',
+        package_.product.price,
+      );
+
+      // Initiate purchase
+      const { customerInfo, userCancelled } =
+        await revenuecat.purchasePackage(package_);
+
+      if (userCancelled) {
+        console.log('⚠️ [Upgrade] Purchase cancelled by user');
+        return;
+      }
+
+      // Check if purchase was successful
+      if (customerInfo.entitlements.active['premium']) {
+        Alert.alert(
+          'Success!',
+          `Welcome to GeistAI Premium at $${(priceInfo as any).final_price ? (priceInfo as any).final_price.toFixed(2) : (priceInfo as any).price.toFixed(2)}/month!`,
+        );
+      } else {
+        Alert.alert('Purchase Failed', 'Please try again');
+      }
+    } catch (err) {
+      console.error('❌ [Upgrade] Purchase error:', err);
+      Alert.alert(
+        'Purchase Error',
+        'Failed to complete purchase. Please try again.',
+      );
+    }
   };
 
   const handleVoiceInput = async () => {
@@ -296,12 +384,22 @@ export default function ChatScreen() {
                 {/* Right side - Buttons */}
                 <View className='ml-auto flex-row space-x-2'>
                   {/* Development Toggle Button */}
-                  <TouchableOpacity
+                  {/* <TouchableOpacity
                     onPress={togglePremiumStatus}
                     className='px-3 py-1.5 bg-orange-100 rounded-lg'
                   >
                     <Text className='text-sm text-orange-700'>
                       🔧 Toggle Premium
+                    </Text>
+                  </TouchableOpacity> */}
+                  <TouchableOpacity
+                    onPress={handleUpgradeNow}
+                    className={`px-4 py-1.5 rounded-lg flex-row items-center ${
+                      negotiationResult ? 'bg-green-500' : 'bg-blue-500'
+                    }`}
+                  >
+                    <Text className='text-white text-sm font-medium'>
+                      Upgrade
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -396,6 +494,39 @@ export default function ChatScreen() {
                 />
               )}
             </View>
+
+            {/* Negotiation Result Paywall */}
+            {negotiationResult && !isPremium && (
+              <View className='mx-4 mb-4 p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200'>
+                <Text className='text-sm font-semibold text-green-900 mb-2'>
+                  ✅ Deal Finalized!
+                </Text>
+
+                <View className='mb-3'>
+                  <Text className='text-xs text-green-700 mb-1'>
+                    Your Negotiated Price
+                  </Text>
+                  <Text className='text-3xl font-bold text-green-900'>
+                    ${negotiationResult.final_price.toFixed(2)}
+                  </Text>
+                  <Text className='text-xs text-green-600 mt-1'>per month</Text>
+                </View>
+
+                <Text className='text-sm text-green-800 mb-3 italic'>
+                  &ldquo;{negotiationResult.negotiation_summary}&rdquo;
+                </Text>
+
+                <TouchableOpacity
+                  onPress={handleUpgradeNow}
+                  className='bg-green-600 px-4 py-3 rounded-lg'
+                >
+                  <Text className='text-white text-center font-semibold'>
+                    Upgrade Now at ${negotiationResult.final_price.toFixed(2)}
+                    /mo
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Error with Retry */}
             {error && !isStreaming && (
