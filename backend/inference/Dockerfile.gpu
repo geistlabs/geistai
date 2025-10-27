@@ -29,7 +29,6 @@ CMD ["--model", "/models/gpt-oss-20b-Q4_K_S.gguf", \
 "--temp", "0.4", \
 "--top-p", "0.9", \
 "--repeat-penalty", "1.1", \
-"--interactive-first", \
 "--parallel-threads", "2" ]
 
 # In order to use the GPU, we need to install the nvidia-container-toolkit on the host machine.
