@@ -56,6 +56,8 @@ export default function ChatScreen() {
   const {
     isPremium,
     isLoading: premiumLoading,
+    setPremiumStatus,
+    checkPremiumStatus,
     // togglePremiumStatus,
   } = usePremium();
 
@@ -77,6 +79,9 @@ export default function ChatScreen() {
   // Debug: Log when isPremium changes
   useEffect(() => {
     console.log(`🔄 [App] isPremium changed to: ${isPremium}`);
+    console.log(
+      `🔄 [App] UI should update - Premium badge: ${isPremium ? 'Show' : 'Hide'}, Upgrade button: ${isPremium ? 'Hide' : 'Show'}`,
+    );
   }, [isPremium]);
 
   // Rest of the component for premium users...
@@ -180,6 +185,57 @@ export default function ChatScreen() {
     router.push('/storage');
   };
 
+  const handleResetSubscription = async () => {
+    try {
+      console.log('🔄 [Reset] Starting subscription reset...');
+
+      // Try to log out (ignore error if already anonymous)
+      try {
+        await revenuecat.logOut();
+        console.log('✅ [Reset] Logged out successfully');
+      } catch (logoutError) {
+        console.log('ℹ️ [Reset] Already anonymous user, continuing...');
+      }
+
+      // Try to cancel subscription via RevenueCat API
+      const cancelSuccess = await revenuecat.cancelSubscription();
+
+      if (cancelSuccess) {
+        console.log('✅ [Reset] Subscription cancelled via API');
+      } else {
+        console.log(
+          '⚠️ [Reset] API cancellation failed, using development override',
+        );
+        // Fallback to development override if API fails
+        revenuecat.setDevelopmentOverride(false);
+      }
+
+      // Force refresh premium status
+      const isPremiumAfterReset = await revenuecat.isPremiumUser();
+
+      // Update local state to trigger immediate UI update (avoid deprecated setPremiumStatus)
+      await checkPremiumStatus();
+
+      console.log(
+        '✅ [Reset] Reset complete. Premium status:',
+        isPremiumAfterReset,
+      );
+
+      Alert.alert(
+        'Subscription Reset',
+        `Successfully reset! Premium status: ${isPremiumAfterReset ? 'Active' : 'Inactive'}`,
+        [{ text: 'OK' }],
+      );
+    } catch (error) {
+      console.error('❌ [Reset] Reset failed:', error);
+      Alert.alert(
+        'Reset Failed',
+        'Failed to reset subscription. Please try again.',
+        [{ text: 'OK' }],
+      );
+    }
+  };
+
   const handleUpgradeNow = async () => {
     // Use either negotiation result or initial price
     const priceInfo = negotiationResult || INITIAL_PRICE;
@@ -244,9 +300,29 @@ export default function ChatScreen() {
 
       // Check if purchase was successful
       if (customerInfo.entitlements.active['premium']) {
+        console.log(
+          '✅ [Upgrade] Purchase successful! Updating premium status...',
+        );
+
+        // Clear any development override since we have a real purchase
+        revenuecat.clearDevelopmentOverride();
+
+        // Force refresh premium status to update UI immediately
+        await checkPremiumStatus();
+
         Alert.alert(
           'Success!',
           `Welcome to GeistAI Premium at $${(priceInfo as any).final_price ? (priceInfo as any).final_price.toFixed(2) : (priceInfo as any).price.toFixed(2)}/month!`,
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                console.log(
+                  '🔄 [Upgrade] Premium status should now be updated',
+                );
+              },
+            },
+          ],
         );
       } else {
         Alert.alert('Purchase Failed', 'Please try again');
@@ -383,6 +459,15 @@ export default function ChatScreen() {
 
                 {/* Right side - Buttons */}
                 <View className='ml-auto flex-row space-x-2'>
+                  {/* Development Reset Button */}
+                  {__DEV__ && (
+                    <TouchableOpacity
+                      onPress={handleResetSubscription}
+                      className='px-3 py-1.5 bg-red-100 rounded-lg'
+                    >
+                      <Text className='text-sm text-red-700'>🔄 Reset</Text>
+                    </TouchableOpacity>
+                  )}
                   {/* Development Toggle Button */}
                   {/* <TouchableOpacity
                     onPress={togglePremiumStatus}

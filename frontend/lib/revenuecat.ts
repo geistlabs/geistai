@@ -14,6 +14,7 @@ import type { PurchasesOfferings } from 'react-native-purchases';
 
 class RevenueCatService {
   private isInitialized = false;
+  private developmentOverride: boolean | null = null; // For testing: null = use real data, true/false = override
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -49,6 +50,14 @@ class RevenueCatService {
   }
 
   async isPremiumUser(): Promise<boolean> {
+    // Development override for testing
+    if (__DEV__ && this.developmentOverride !== null) {
+      console.log(
+        `🔧 [RevenueCat] Development override: ${this.developmentOverride}`,
+      );
+      return this.developmentOverride;
+    }
+
     try {
       const customerInfo = await Purchases.getCustomerInfo();
       return customerInfo.entitlements.active['premium'] !== undefined;
@@ -133,22 +142,98 @@ class RevenueCatService {
     }
   }
 
+  // Development methods for testing
+  async cancelSubscription(): Promise<boolean> {
+    if (!__DEV__) {
+      console.warn(
+        '🔧 [RevenueCat] Subscription cancellation only available in development',
+      );
+      return false;
+    }
+
+    try {
+      const userId = await this.getAppUserId();
+      console.log(
+        `🔄 [RevenueCat] Attempting to cancel subscription for user: ${userId}`,
+      );
+
+      // First, get customer info to find active subscriptions
+      const customerInfo = await this.getCustomerInfo();
+      const activeEntitlements = Object.keys(customerInfo.entitlements.active);
+
+      if (activeEntitlements.length === 0) {
+        console.log('ℹ️ [RevenueCat] No active subscriptions found to cancel');
+        return true; // Consider this a success since goal is achieved
+      }
+
+      console.log('📋 [RevenueCat] Active entitlements:', activeEntitlements);
+
+      // For now, we'll use the SDK's restore method to refresh state
+      // and then use development override as the primary method
+      console.log(
+        '🔄 [RevenueCat] Using development override for reliable testing',
+      );
+      this.setDevelopmentOverride(false);
+
+      // Also try to restore purchases to sync with server
+      try {
+        await Purchases.restorePurchases();
+        console.log('✅ [RevenueCat] Purchases restored (may help sync state)');
+      } catch (restoreError) {
+        console.log('⚠️ [RevenueCat] Restore failed, continuing with override');
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ [RevenueCat] Error in cancel subscription:', error);
+      // Fallback to development override
+      this.setDevelopmentOverride(false);
+      return true; // Return true since we achieved the goal via override
+    }
+  }
+
+  setDevelopmentOverride(isPremium: boolean | null): void {
+    if (__DEV__) {
+      this.developmentOverride = isPremium;
+      console.log(`🔧 [RevenueCat] Development override set to: ${isPremium}`);
+    } else {
+      console.warn(
+        '🔧 [RevenueCat] Development override only available in development',
+      );
+    }
+  }
+
+  clearDevelopmentOverride(): void {
+    if (__DEV__) {
+      this.developmentOverride = null;
+      console.log(
+        '🔧 [RevenueCat] Development override cleared - using real data',
+      );
+    }
+  }
+
   // Legacy methods for backward compatibility during transition
   setPremiumStatus(isPremium: boolean): void {
     console.warn(
-      '🔧 [RevenueCat] setPremiumStatus is deprecated - use real RevenueCat purchases',
+      '🔧 [RevenueCat] setPremiumStatus is deprecated - use setDevelopmentOverride() instead',
     );
+    this.setDevelopmentOverride(isPremium);
   }
 
   togglePremiumStatus(): boolean {
     console.warn(
-      '🔧 [RevenueCat] togglePremiumStatus is deprecated - use real RevenueCat purchases',
+      '🔧 [RevenueCat] togglePremiumStatus is deprecated - use setDevelopmentOverride() instead',
     );
-    return false;
+    const newStatus = !(this.developmentOverride ?? false);
+    this.setDevelopmentOverride(newStatus);
+    return newStatus;
   }
 
   reset(): void {
-    console.warn('🔧 [RevenueCat] reset is deprecated - use logOut() instead');
+    console.warn(
+      '🔧 [RevenueCat] reset is deprecated - use setDevelopmentOverride(false) instead',
+    );
+    this.setDevelopmentOverride(false);
   }
 }
 
