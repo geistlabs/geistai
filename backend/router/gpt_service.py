@@ -685,7 +685,6 @@ class GptService:
        
 
             # Add tools if available
-            print(f"tools_for_llm: {tools_for_llm}")
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"

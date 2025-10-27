@@ -74,7 +74,7 @@ API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 
 # Token settings
-MAX_TOKENS = 4096
+MAX_TOKENS = 16384
 
 # Tool calling settings
 ENABLE_TOOL_CALLS = os.getenv("ENABLE_TOOL_CALLS", "true").lower() == "true"

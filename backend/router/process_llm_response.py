@@ -389,7 +389,7 @@ async def process_llm_response_with_tools(
                 
                 # Log final accumulated content and reasoning
                 if not accumulated_content and not accumulated_tool_calls:
-                    if failed_tool_calls >= MAX_FAILED_COMPLETIONS or "_final" in agent_name:
+                    if failed_tool_calls >= MAX_FAILED_COMPLETIONS:
                         print(f"🔍 [agent: {agent_name}] 🛑 MAX FAILED COMPLETIONS REACHED: {MAX_FAILED_COMPLETIONS}")
                         print(f"Reasoning: {accumulated_reasoning}")
                         print(f"Content: {accumulated_content}")

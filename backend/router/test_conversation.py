@@ -4,6 +4,7 @@ Test script for streaming functionality - mimics frontend behavior.
 Includes reasonableness rating of responses.
 """
 
+import datetime
 import time
 import httpx
 import asyncio
@@ -13,7 +14,7 @@ from reasonableness_service import reasonableness_service
 from initial_test_cases import  long_conversations
 
 
-async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float) -> dict:
+async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float, time_to_first_token: float, tool_call_count: int) -> dict:
     """
     Evaluate an AI response for quality and reasonableness
 
@@ -53,20 +54,24 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
         'reasonableness_rating': reasonableness_rating,
         'issues': issues,
         'response_length': len(ai_response),
-        'elapsed_time': elapsed_time
+        'elapsed_time': elapsed_time,
+        'time_to_first_token': time_to_first_token,
+        'tool_call_count': tool_call_count
 
     }
 
 async def test_parallel_conversation(long_conversations):
+    concurrency  = 1
+    test_start_time_all = int(time.time())
     """Run multiple conversations with a max of 3 in parallel"""
-    print(f"🔄 Running {len(long_conversations)} conversations with concurrency=3...")
+    print(f"🔄 Running {len(long_conversations)} conversations with concurrency={concurrency}...")
 
-    semaphore = asyncio.Semaphore(len(long_conversations))
+    semaphore = asyncio.Semaphore(concurrency)
 
     async def run_with_limit(idx: int, conversation):
         async with semaphore:
             try:
-                result = await test_conversation(conversation)
+                result = await test_conversation(conversation, test_start_time_all)
                 print(f"✅ Conversation {idx+1} completed successfully")
                 return result
             except Exception as e:
@@ -88,7 +93,7 @@ async def test_parallel_conversation(long_conversations):
         raise
 
 
-async def test_conversation(conversation_turns):
+async def test_conversation(conversation_turns, test_start_time_all):
     """Test a multi-turn conversation with evaluation and adaptive questioning"""
     url = f"http://localhost:8000/api/stream"
     
@@ -107,7 +112,6 @@ async def test_conversation(conversation_turns):
 
     for turn, turn_data in enumerate(conversation_turns, 1):
         user_message = turn_data
-        print(f"User message: {user_message} Turn: {turn}")
     
         
         # Build payload with conversation history
@@ -133,20 +137,32 @@ async def test_conversation(conversation_turns):
                     full_response = ""
                     chunk_count = 0
                     start_time = time.time()
+                    time_to_first_token = 0
+                    tool_call_count = 0
                     
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
                             data_str = line[6:]  # Remove "data: " prefix
                             
+                            
                             try:
                                 data = json.loads(data_str)
-                                
+                                if data.get("type") == "tool_call_event":
+                                    tool_call_count += 1
+                                    print(f"Tool call count: {tool_call_count}")
                                 # Handle different event types from the new streaming endpoint
                                 if data.get("type") == "orchestrator_token":
-                                    token = data.get("data", {}).get("content", "")
-                                    if token:
-                                        full_response += token
-                                        chunk_count += 1
+                                    is_correct_channel = data.get("data", {}).get("channel", "") == "content"
+                                    if is_correct_channel:
+                                        token = data.get("data", {}).get("data", "")
+                                        if token:                                            
+                                            full_response += token
+                                            chunk_count += 1
+                                            
+                                            if time_to_first_token == 0:
+                                                time_to_first_token = time.time() - start_time
+                                                print(f"Time to first token: {time_to_first_token} seconds")
+                                
                                 elif data.get("type") == "sub_agent_event":
                                     # Log sub-agent activity for debugging
                                     sub_agent_data = data.get("data", {})
@@ -168,10 +184,9 @@ async def test_conversation(conversation_turns):
                                     
                             except json.JSONDecodeError as e:
                                 continue
-                    
                     # Add to conversation history
                     conversation_history.append({"role": "user", "content": user_message})
-                    print(f"Assistant response: {full_response}")
+               
                     conversation_history.append({"role": "assistant", "content": full_response})
                     elapsed_time = time.time() - start_time
                     # Evaluate the response
@@ -179,8 +194,11 @@ async def test_conversation(conversation_turns):
                         user_question=user_message,
                         ai_response=full_response,
                         turn_number=turn,
-                        elapsed_time=elapsed_time
+                        elapsed_time=elapsed_time,
+                        time_to_first_token=time_to_first_token,
+                        tool_call_count=tool_call_count
                     )
+
                     
                     evaluation_results.append(evaluation)
                     total_rating += evaluation['reasonableness_rating']
@@ -204,7 +222,6 @@ async def test_conversation(conversation_turns):
         except Exception as e:
             print(f"❌ Turn {turn} failed: {e}")
             continue
-    print(f"Conversation history: {conversation_history}")
     # Conversation summary
     print("\n" + "=" * 80)
     print("📊 CONVERSATION SUMMARY")
@@ -270,7 +287,11 @@ async def test_conversation(conversation_turns):
                 evaluation=eval_result.get('reasonableness_rating', 0),
                 rationality=eval_result.get('reasonableness_rating', 0),  # Using same value for now
                 coherency=eval_result.get('reasonableness_rating', 0),    # Using same value for now
-                elapsed_time=eval_result.get('elapsed_time', 0)
+                elapsed_time=eval_result.get('elapsed_time', 0),
+                first_token_time=eval_result.get('time_to_first_token', 0),
+                num_tool_calls=eval_result.get('tool_call_count', 0),
+                test_run_time=datetime.datetime.fromtimestamp(test_start_time_all),
+                
             )
             db.add(response_obj)
             db.flush()  # To get response_obj.id
@@ -307,6 +328,7 @@ async def test_conversation(conversation_turns):
 async def main():
     """Main function to run the conversation tests"""
     try:
+        test_start_time_all = int(time.time())
         # Check command line arguments
         if len(sys.argv) > 1:
             if sys.argv[1] == "--help" or sys.argv[1] == "-h":
@@ -318,14 +340,14 @@ async def main():
                 return
             elif sys.argv[1] == "--single":
                 print("🚀 Running single conversation test...")
-                await test_conversation(long_conversations[0])
+                await test_conversation(long_conversations[0], test_start_time_all)
                 print("✅ Single conversation test completed!")
                 return
             elif sys.argv[1] == "--long":
                 print("🚀 Starting long conversation tests...")
                 print(f"📋 Running {len(long_conversations)} long conversation(s)")
                 # Run long conversations
-                tasks = [asyncio.create_task(test_conversation(conversation)) for conversation in long_conversations]
+                tasks = [asyncio.create_task(test_conversation(conversation, test_start_time_all)) for conversation in long_conversations]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 successful = sum(1 for r in results if not isinstance(r, Exception))
                 failed = len(results) - successful

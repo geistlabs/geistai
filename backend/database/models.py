@@ -36,6 +36,9 @@ class ConversationResponse(Base):
     rationality = Column(Float, nullable=True)  # Rationality score
     coherency = Column(Float, nullable=True)    # Coherency score
     elapsed_time = Column(Float, nullable=True)  # Response time in seconds
+    first_token_time = Column(Float, nullable=True)  # Time to first token
+    num_tool_calls = Column(Integer, nullable=True)  # Number of tool calls
+    test_run_time = Column(DateTime(timezone=True), nullable=True)  # Timestamp for test suite iteration
     
     # Foreign key to conversation (many responses belong to one conversation)
     conversation_id = Column(Integer, ForeignKey('conversation.internal_id', ondelete='CASCADE'), nullable=True)

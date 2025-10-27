@@ -56,10 +56,6 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
-    // Rich event data (legacy - kept for backward compatibility)
-    toolCallEvents,
-    agentEvents,
-    orchestratorStatus,
   } = useChatWithStorage({ chatId: currentChatId });
 
   useEffect(() => {
