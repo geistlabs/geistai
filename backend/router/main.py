@@ -29,7 +29,6 @@ class HealthCheckResponse(BaseModel):
     status: str
 
 
-
 class ChatRequest(BaseModel):
     message: str
     messages: Optional[List[ChatMessage]] = None
@@ -78,13 +77,14 @@ logger.info(f"Whisper STT client initialized with service URL: {whisper_service_
 
 gpt_service_instance: GptService | None = None
 
+
 async def get_gpt_service():
     """
     Factory function that returns a GptService with a fresh event emitter.
     This allows us to reuse the same service instance but with different event emitters per request.
     """
     global gpt_service_instance
-    
+
     # Initialize the service once if not already done
     if gpt_service_instance is None:
         # Create a temporary event emitter for initialization
@@ -92,22 +92,25 @@ async def get_gpt_service():
         gpt_service_instance = GptService(config, temp_emitter, can_log=True)
         await gpt_service_instance.init_tools()
         logger.info("GptService initialized with tools")
-    
+
     # Create a new instance with a fresh event emitter for each request
     fresh_emitter = EventEmitter()
     new_service = GptService(config, fresh_emitter, can_log=True)
-    
+
     # Copy the tool registry from the initialized instance
     new_service._tool_registry = gpt_service_instance._tool_registry.copy()
     new_service._mcp_client = gpt_service_instance._mcp_client
-    
+
     return new_service
+
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize GptService on server startup"""
     await get_gpt_service()
     logger.info("Server startup complete - GptService initialized")
+
+
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
@@ -124,6 +127,7 @@ def health_check():
 # ============================================================================
 # Nested Orchestrator Factory Functions
 # ============================================================================
+
 
 def create_nested_research_system(config):
     """
@@ -147,12 +151,16 @@ def create_nested_research_system(config):
     permitted_mcp_tools = ["custom_mcp_fetch", "brave_web_search", "brave_summarizer"]
     # INSERT_YOUR_CODE
     # Filter existing_agents to only include agents whose names are in permitted_agents
-    existing_agents = [agent for agent in existing_agents if getattr(agent, "name", None) in permitted_agents]
+    existing_agents = [
+        agent
+        for agent in existing_agents
+        if getattr(agent, "name", None) in permitted_agents
+    ]
     # Configure each agent to use brave_search and brave_summarizer tools
 
-   # for agent in existing_agents:
-   #     # Update each agent to only use MCP tools
-   #     agent.available_tools = mcp_tools
+    # for agent in existing_agents:
+    #     # Update each agent to only use MCP tools
+    #     agent.available_tools = mcp_tools
 
     # Create main orchestrator with all agents at the top level
     main_orchestrator = NestedOrchestrator(
@@ -161,7 +169,7 @@ def create_nested_research_system(config):
         description="Main coordination hub with all agents at top level",
         system_prompt=get_prompt("main_orchestrator"),
         sub_agents=existing_agents,  # All agents at top level
-        available_tools=permitted_mcp_tools  # Set specific tools here
+        available_tools=permitted_mcp_tools,  # Set specific tools here
     )
 
     return main_orchestrator
@@ -179,6 +187,20 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
     else:
         messages = [{"role": "user", "content": chat_request.message}]
 
+    # Extract memory context from system messages if present
+    memory_context = ""
+    filtered_messages = []
+    for msg in messages:
+        if msg.get("role") == "system" and msg.get("content", "").startswith(
+            "## Relevant Context from Previous Conversations"
+        ):
+            memory_context = msg["content"]
+        else:
+            filtered_messages.append(msg)
+
+    # Use filtered messages (without memory context system message)
+    messages = filtered_messages
+
     try:
         # Create a nested orchestrator structure
         orchestrator = create_nested_research_system(config)
@@ -189,6 +211,16 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
         else:
             current_gpt_service = gpt_service_instance
         await orchestrator.initialize(current_gpt_service, config)
+
+        # Integrate memory context into orchestrator system prompt if present
+        if memory_context:
+            base_prompt = orchestrator.system_prompt
+            enhanced_prompt = f"""{base_prompt}
+
+{memory_context}
+
+Use this context to provide more personalized and informed responses based on the user's previous conversations and preferences."""
+            orchestrator.system_prompt = enhanced_prompt
 
         # Configure available tools (only sub-agents) if tool calls are enabled
         if config.ENABLE_TOOL_CALLS:
@@ -203,7 +235,16 @@ async def chat_with_orchestrator(chat_request: ChatRequest):
         orchestrator.gpt_service = current_gpt_service
 
         # Run the orchestrator and get the final response
-        chat_messages = [ChatMessage(role="user", content=chat_request.message)]
+        # Convert filtered messages back to ChatMessage objects
+        chat_messages = []
+        for msg in messages:
+            if isinstance(msg, dict):
+                chat_messages.append(
+                    ChatMessage(role=msg["role"], content=msg["content"])
+                )
+            else:
+                chat_messages.append(msg)
+
         final_response = await orchestrator.run(chat_messages)
 
         return {
@@ -254,6 +295,7 @@ async def handle_memory(chat_request: ChatRequest):
             print(f"[Backend] 🧠 Extracted JSON: {json_array}")
 
             import json as json_lib
+
             # Validate JSON
             try:
 
@@ -368,7 +410,22 @@ async def memory_proxy(request: Request):
 @app.post("/api/stream")
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
-    
+
+    print(f"[Backend] 🚀 Received streaming request to /api/stream")
+    print(
+        f"[Backend] 📝 Message: {chat_request.message[:100]}{'...' if len(chat_request.message) > 100 else ''}"
+    )
+    print(
+        f"[Backend] 📚 Messages array length: {len(chat_request.messages) if chat_request.messages else 0}"
+    )
+
+    if chat_request.messages:
+        print(f"[Backend] 📋 Full messages received:")
+        for i, msg in enumerate(chat_request.messages):
+            print(
+                f"[Backend] {i + 1}. [{msg.role}] {msg.content[:150]}{'...' if len(msg.content) > 150 else ''}"
+            )
+
     gpt_service = await get_gpt_service()
     # Build messages array with conversation history
     messages = chat_request.messages
@@ -376,6 +433,33 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         messages = [ChatMessage(role="user", content=chat_request.message)]
     else:
         messages.append(ChatMessage(role="user", content=chat_request.message))
+
+    print(f"[Backend] 🔍 Looking for memory context in {len(messages)} messages...")
+
+    # Extract memory context from system messages if present
+    memory_context = ""
+    filtered_messages = []
+    for msg in messages:
+        if msg.role == "system" and msg.content.startswith(
+            "## Relevant Context from Previous Conversations"
+        ):
+            memory_context = msg.content
+            print(
+                f"[Backend] 🧠 Found memory context! Length: {len(memory_context)} characters"
+            )
+            print(f"[Backend] 📄 Memory context preview: {memory_context[:200]}...")
+        else:
+            filtered_messages.append(msg)
+
+    # Use filtered messages (without memory context system message)
+    messages = filtered_messages
+
+    if memory_context:
+        print(
+            f"[Backend] ✅ Memory context extracted and will be integrated into system prompt"
+        )
+    else:
+        print(f"[Backend] ❌ No memory context found in messages")
 
     async def orchestrator_event_stream():
         orchestrator_task = None
@@ -388,6 +472,25 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             await orchestrator.initialize(gpt_service, config)
             orchestrator.gpt_service = gpt_service
 
+            # Integrate memory context into orchestrator system prompt if present
+            if memory_context:
+                base_prompt = orchestrator.system_prompt
+                enhanced_prompt = f"""{base_prompt}
+
+{memory_context}
+
+Use this context to provide more personalized and informed responses based on the user's previous conversations and preferences."""
+                orchestrator.system_prompt = enhanced_prompt
+                print(f"[Backend] 🔧 Enhanced system prompt with memory context")
+                print(
+                    f"[Backend] 📄 Final system prompt length: {len(enhanced_prompt)} characters"
+                )
+                print(
+                    f"[Backend] 📋 Final system prompt preview: {enhanced_prompt[:300]}..."
+                )
+            else:
+                print(f"[Backend] ⚠️ No memory context to integrate into system prompt")
+
             # Use asyncio.Queue to stream events in real-time
             event_queue = asyncio.Queue()
             final_response = None
@@ -395,23 +498,27 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
             def queue_event(event_type):
                 """Create event handler that queues events with proper sequencing"""
+
                 def handler(data):
                     event_data = {
                         "type": event_type,
                         "data": data,
-                        "sequence": sequence_counter["value"]
+                        "sequence": sequence_counter["value"],
                     }
                     sequence_counter["value"] += 1
                     try:
                         event_queue.put_nowait(event_data)
                     except asyncio.QueueFull:
                         logger.warning(f"Event queue full, dropping {event_type} event")
+
                 return handler
 
             # Register event listeners - orchestrator handles sub-agent event propagation
             orchestrator.on("orchestrator_start", queue_event("orchestrator_start"))
             orchestrator.on("agent_token", queue_event("orchestrator_token"))
-            orchestrator.on("orchestrator_complete", queue_event("orchestrator_complete"))
+            orchestrator.on(
+                "orchestrator_complete", queue_event("orchestrator_complete")
+            )
             orchestrator.on("sub_agent_event", queue_event("sub_agent_event"))
             orchestrator.on("tool_call_event", queue_event("tool_call_event"))
 
@@ -423,11 +530,8 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                 try:
                     # Wait for either an event or orchestrator completion
                     done, pending = await asyncio.wait(
-                        [
-                            asyncio.create_task(event_queue.get()),
-                            orchestrator_task
-                        ],
-                        return_when=asyncio.FIRST_COMPLETED
+                        [asyncio.create_task(event_queue.get()), orchestrator_task],
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
 
                     # Check if orchestrator is done
@@ -447,7 +551,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
                                 yield {
                                     "data": json.dumps(event),
-                                    "event": event.get("type", "unknown")
+                                    "event": event.get("type", "unknown"),
                                 }
                             except asyncio.QueueEmpty:
                                 break
@@ -465,7 +569,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
                             if isinstance(event, dict):
                                 yield {
                                     "data": json.dumps(event),
-                                    "event": event.get("type", "unknown")
+                                    "event": event.get("type", "unknown"),
                                 }
 
                     # Cancel pending event queue tasks (not the orchestrator)
@@ -480,40 +584,37 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             # Send final response
             if final_response:
                 yield {
-                    "data": json.dumps({
-                        "type": "final_response",
-                        "text": final_response.text,
-                        "status": final_response.status,
-                        "meta": final_response.meta,
-                        "sequence": sequence_counter["value"]
-                    }),
-                    "event": "final_response"
+                    "data": json.dumps(
+                        {
+                            "type": "final_response",
+                            "text": final_response.text,
+                            "status": final_response.status,
+                            "meta": final_response.meta,
+                            "sequence": sequence_counter["value"],
+                        }
+                    ),
+                    "event": "final_response",
                 }
                 sequence_counter["value"] += 1
 
             # Send end event
             yield {
-                "data": json.dumps({
-                    "finished": True,
-                    "sequence": sequence_counter["value"]
-                }),
-                "event": "end"
+                "data": json.dumps(
+                    {"finished": True, "sequence": sequence_counter["value"]}
+                ),
+                "event": "end",
             }
 
         except asyncio.TimeoutError:
             logger.error("Request timeout")
-            yield {
-                "data": json.dumps({"error": "Request timeout"}),
-                "event": "error"
-            }
+            yield {"data": json.dumps({"error": "Request timeout"}), "event": "error"}
         except Exception as e:
             logger.error(f"Stream error: {str(e)}", exc_info=True)
             yield {
-                "data": json.dumps({
-                    "error": "Internal server error",
-                    "details": str(e)
-                }),
-                "event": "error"
+                "data": json.dumps(
+                    {"error": "Internal server error", "details": str(e)}
+                ),
+                "event": "error",
             }
         finally:
             # Cleanup: cancel orchestrator task if still running
@@ -527,6 +628,7 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
     return EventSourceResponse(orchestrator_event_stream())
 
+
 @app.post("/api/summarize")
 async def summarize_conversation(conversation_dict: List[dict]):
     """Summarize text using the orchestrator"""
@@ -534,31 +636,32 @@ async def summarize_conversation(conversation_dict: List[dict]):
     conversation_json = json.dumps(conversation_dict, ensure_ascii=False)
     content = f"{summarizer_prompt}\n\n[CONVERSATION_JSON]:\n{conversation_json}\n"
     conversation_dict = [{"role": "user", "content": content}]
-    
-    gpt_service = await get_gpt_service()  
+
+    gpt_service = await get_gpt_service()
     headers, model, url = gpt_service.get_chat_completion_params()
     async with httpx.AsyncClient() as client:
-       response = await client.post(
-        f"{url}/v1/chat/completions",
-        json={
-            "messages": conversation_dict,
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "max_tokens": 32767,
-            "stream": False,
-            "model": model,
-            "reasoning_effort": "medium",
-        },
-        headers=headers,
-        timeout=config.INFERENCE_TIMEOUT
-    )
+        response = await client.post(
+            f"{url}/v1/chat/completions",
+            json={
+                "messages": conversation_dict,
+                "temperature": 1.0,
+                "top_p": 1.0,
+                "max_tokens": 32767,
+                "stream": False,
+                "model": model,
+                "reasoning_effort": "medium",
+            },
+            headers=headers,
+            timeout=config.INFERENCE_TIMEOUT,
+        )
     result = response.json()
 
-        # Validate response structure
+    # Validate response structure
     if "choices" not in result or not result["choices"]:
         raise ValueError(f"Invalid response from inference service: {result}")
     choice = result["choices"][0]
     return choice["message"]["content"]
+
 
 @app.post("/api/speech-to-text")
 async def transcribe_audio(

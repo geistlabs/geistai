@@ -214,8 +214,8 @@ export function useChatWithStorage(
 
   // Memory integration
   const memoryManager = useMemoryManager({
-    autoExtract: true,
     contextThreshold: 0.7,
+    searchThreshold: 0.3, // Lower threshold for better recall
     maxContextMemories: 5,
   });
 
@@ -304,6 +304,7 @@ export function useChatWithStorage(
       setMessages(prev => [...prev, userMessage]);
 
       // 1. IMMEDIATELY extract memories from the question using /api/memory
+      console.log(`[ChatWithStorage] 🧠 Starting memory extraction for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
       const memoryExtractionPromise =
         memoryService.extractMemoriesFromQuestion(content);
 
@@ -335,13 +336,20 @@ export function useChatWithStorage(
       // 3. When /api/memory returns, store the memories asynchronously
       memoryExtractionPromise
         .then(async extractedMemories => {
+          console.log(`[ChatWithStorage] 🧠 Memory extraction completed`);
+          console.log(`[ChatWithStorage] 📊 Extracted ${extractedMemories.length} memories`);
+          
           try {
             if (extractedMemories.length > 0) {
+              console.log(`[ChatWithStorage] 💾 Processing extracted memories for storage...`);
+              
               // Convert extracted memories to full Memory objects and store them
               if (memoryManager.isInitialized && currentChatId) {
                 const memories: Memory[] = [];
 
                 for (const memoryData of extractedMemories) {
+                  console.log(`[ChatWithStorage] 🔄 Processing memory: "${memoryData.content.substring(0, 80)}..."`);
+                  
                   const embedding = await memoryService.getEmbedding(
                     memoryData.content,
                   );
@@ -360,35 +368,55 @@ export function useChatWithStorage(
                     };
 
                     memories.push(memory);
+                    console.log(`[ChatWithStorage] ✅ Memory processed and ready for storage`);
+                  } else {
+                    console.log(`[ChatWithStorage] ❌ Failed to generate embedding for memory`);
                   }
                 }
 
                 if (memories.length > 0) {
+                  console.log(`[ChatWithStorage] 💾 Storing ${memories.length} memories in database...`);
                   await memoryManager.storeMemories(memories);
+                  console.log(`[ChatWithStorage] ✅ Successfully stored ${memories.length} memories`);
+                } else {
+                  console.log(`[ChatWithStorage] ⚠️ No memories to store (embedding generation failed)`);
                 }
+              } else {
+                console.log(`[ChatWithStorage] ❌ Cannot store memories: Memory manager not initialized (${memoryManager.isInitialized}) or no chat ID (${currentChatId})`);
               }
+            } else {
+              console.log(`[ChatWithStorage] ⚠️ No memories extracted from user message`);
             }
           } catch (err) {
-            // Failed to store memories
+            console.error(`[ChatWithStorage] ❌ Failed to store memories:`, err);
           }
         })
         .catch(err => {
-          // Memory extraction failed
+          console.error(`[ChatWithStorage] ❌ Memory extraction failed:`, err);
         });
 
       // Get relevant memory context asynchronously (don't block streaming)
       let memoryContext = '';
       const getMemoryContextAsync = async () => {
+        console.log(`[ChatWithStorage] 🧠 Starting memory context retrieval...`);
+        console.log(`[ChatWithStorage] ✅ Memory manager initialized: ${memoryManager.isInitialized}`);
+        console.log(`[ChatWithStorage] 🆔 Current chat ID: ${currentChatId}`);
+        
         if (memoryManager.isInitialized && currentChatId) {
           try {
-            return await memoryManager.getRelevantContext(
+            console.log(`[ChatWithStorage] 🔍 Calling getRelevantContext for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+            const context = await memoryManager.getRelevantContext(
               content,
               currentChatId,
             );
+            console.log(`[ChatWithStorage] 📋 Memory context retrieved, length: ${context.length}`);
+            return context;
           } catch (err) {
+            console.error(`[ChatWithStorage] ❌ Error retrieving memory context:`, err);
             return '';
           }
         }
+        console.log(`[ChatWithStorage] ⚠️ Memory manager not initialized or no chat ID, returning empty context`);
         return '';
       };
 
@@ -722,15 +750,23 @@ export function useChatWithStorage(
         // Prepare messages with memory context
         const messagesWithContext = [...currentMessages];
 
+        console.log(`[ChatWithStorage] 📦 Preparing messages with memory context...`);
+        console.log(`[ChatWithStorage] 📨 Current messages count: ${currentMessages.length}`);
+
         // Wait for memory context to be retrieved (if it finishes quickly)
         // But don't wait more than 500ms to avoid blocking streaming
         try {
+          console.log(`[ChatWithStorage] ⏱️ Waiting for memory context (max 500ms)...`);
           const contextWithTimeout = await Promise.race([
             memoryContextPromise,
             new Promise<string>(resolve => setTimeout(() => resolve(''), 500)),
           ]);
 
           if (contextWithTimeout) {
+            console.log(`[ChatWithStorage] ✅ Memory context retrieved successfully!`);
+            console.log(`[ChatWithStorage] 📄 Memory context length: ${contextWithTimeout.length} characters`);
+            console.log(`[ChatWithStorage] 📋 Memory context preview:`, contextWithTimeout.substring(0, 300) + '...');
+            
             // Insert memory context as a system message at the beginning
             messagesWithContext.unshift({
               id: 'memory-context',
@@ -738,10 +774,19 @@ export function useChatWithStorage(
               content: contextWithTimeout,
               timestamp: Date.now(),
             });
+            console.log(`[ChatWithStorage] 🔄 Added memory context as system message`);
+          } else {
+            console.log(`[ChatWithStorage] ⏰ Memory context retrieval timed out or returned empty`);
           }
         } catch (err) {
-          // Memory context retrieval timed out or failed
+          console.error(`[ChatWithStorage] ❌ Memory context retrieval failed:`, err);
         }
+
+        console.log(`[ChatWithStorage] 📤 Final messages to send count: ${messagesWithContext.length}`);
+        console.log(`[ChatWithStorage] 📋 Full prompt being sent to /api/stream:`);
+        messagesWithContext.forEach((msg, index) => {
+          console.log(`[ChatWithStorage] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+        });
 
         // 2. Start streaming to /api/stream
         await sendStreamingMessage(content, messagesWithContext, eventHandlers);
