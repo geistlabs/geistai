@@ -58,7 +58,9 @@ export class MemoryService {
     };
 
     console.log(`[MemoryService] 🔗 Hitting embedding URL: ${embeddingUrl}`);
-    console.log(`[MemoryService] 📝 Embedding request for text: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+    console.log(
+      `[MemoryService] 📝 Embedding request for text: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`,
+    );
 
     try {
       const response = await fetch(embeddingUrl, {
@@ -71,7 +73,9 @@ export class MemoryService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[MemoryService] ❌ Embedding generation failed: ${response.status} - ${errorText}`);
+        console.error(
+          `[MemoryService] ❌ Embedding generation failed: ${response.status} - ${errorText}`,
+        );
         throw new Error(
           `Embedding generation failed: ${response.status} - ${errorText}`,
         );
@@ -80,10 +84,12 @@ export class MemoryService {
       const result = await response.json();
       const embedding = result.data[0]?.embedding || [];
 
-      console.log(`[MemoryService] ✅ Embedding generated successfully, length: ${embedding.length}`);
+      console.log(
+        `[MemoryService] ✅ Embedding generated successfully, length: ${embedding.length}`,
+      );
       return embedding;
     } catch (error) {
-      console.error(`[MemoryService] ❌ Embedding generation error:`, error);
+      console.error('[MemoryService] ❌ Embedding generation error:', error);
       return [];
     }
   }
@@ -141,13 +147,15 @@ This context helps me provide more personalized responses based on your preferen
     question: string,
     systemPrompt?: string,
   ): Promise<any[]> {
-    console.log(`[MemoryService] 🧠 Extracting memories from question: "${question.substring(0, 100)}${question.length > 100 ? '...' : ''}"`);
-    
+    console.log(
+      `[MemoryService] 🧠 Extracting memories from question: "${question.substring(0, 100)}${question.length > 100 ? '...' : ''}"`,
+    );
+
     const defaultSystemPrompt = `Extract key facts from user input and return ONLY a JSON array. No explanations, no reasoning, no other text.
 
 Extract facts about:
 1. Personal info (name, location, job, interests)
-2. Technical preferences (tools, languages, frameworks)  
+2. Technical preferences (tools, languages, frameworks)
 3. User preferences (communication style, needs)
 4. Important context (projects, goals, constraints)
 
@@ -172,10 +180,25 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
     };
 
     const memoryUrl = `${this.baseUrl}/api/memory`;
-    console.log(`[MemoryService] 🔗 Hitting memory extraction URL: ${memoryUrl}`);
-    console.log(`[MemoryService] 📝 Memory extraction request body:`, JSON.stringify(requestBody, null, 2));
+    console.log(
+      `[MemoryService] 🔗 Hitting memory extraction URL: ${memoryUrl}`,
+    );
+    console.log(
+      '[MemoryService] 📝 Memory extraction request body:',
+      JSON.stringify(requestBody, null, 2),
+    );
 
     try {
+      console.log(`[MemoryService] 🚀 Making fetch request to: ${memoryUrl}`);
+      console.log('[MemoryService] 📋 Request headers:', {
+        'Content-Type': 'application/json',
+      });
+      console.log(
+        '[MemoryService] 📦 Request body size:',
+        JSON.stringify(requestBody).length,
+        'bytes',
+      );
+
       const response = await fetch(memoryUrl, {
         method: 'POST',
         headers: {
@@ -184,34 +207,49 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
         body: JSON.stringify(requestBody),
       });
 
+      console.log('[MemoryService] 📡 Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: Object.fromEntries(response.headers.entries()),
+      });
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[MemoryService] ❌ Memory extraction API failed: ${response.status} - ${errorText}`);
+        console.error(
+          `[MemoryService] ❌ Memory extraction API failed: ${response.status} - ${errorText}`,
+        );
         throw new Error(
           `Memory extraction failed: ${response.status} - ${errorText}`,
         );
       }
 
       const result = await response.json();
-      console.log(`[MemoryService] 📥 Memory extraction API response:`, result);
+      console.log('[MemoryService] 📥 Memory extraction API response:', result);
 
       // Extract the content from the response
       let content = '';
       if (result.choices && result.choices[0] && result.choices[0].message) {
         content = result.choices[0].message.content;
-        console.log(`[MemoryService] 📄 Extracted content from choices[0].message.content`);
+        console.log(
+          '[MemoryService] 📄 Extracted content from choices[0].message.content',
+        );
       } else if (result.response) {
         content = result.response;
-        console.log(`[MemoryService] 📄 Extracted content from response field`);
+        console.log('[MemoryService] 📄 Extracted content from response field');
       } else if (typeof result === 'string') {
         content = result;
-        console.log(`[MemoryService] 📄 Using result as string content`);
+        console.log('[MemoryService] 📄 Using result as string content');
       } else {
-        console.log(`[MemoryService] ❌ No recognizable content structure in response`);
+        console.log(
+          '[MemoryService] ❌ No recognizable content structure in response',
+        );
         return [];
       }
 
-      console.log(`[MemoryService] 📝 Raw content to parse: "${content.substring(0, 200)}${content.length > 200 ? '...' : ''}"`);
+      console.log(
+        `[MemoryService] 📝 Raw content to parse: "${content.substring(0, 200)}${content.length > 200 ? '...' : ''}"`,
+      );
 
       // Parse the JSON array from the response
       try {
@@ -219,16 +257,22 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
         const startIndex = jsonContent.indexOf('[');
         const endIndex = jsonContent.lastIndexOf(']');
 
-        console.log(`[MemoryService] 🔍 Looking for JSON array in content...`);
-        console.log(`[MemoryService] 📍 Start index: ${startIndex}, End index: ${endIndex}`);
+        console.log('[MemoryService] 🔍 Looking for JSON array in content...');
+        console.log(
+          `[MemoryService] 📍 Start index: ${startIndex}, End index: ${endIndex}`,
+        );
 
         if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-          console.log(`[MemoryService] ❌ No valid JSON array found in content`);
+          console.log(
+            '[MemoryService] ❌ No valid JSON array found in content',
+          );
           return [];
         }
 
         let jsonArrayString = jsonContent.substring(startIndex, endIndex + 1);
-        console.log(`[MemoryService] 📄 Extracted JSON string: "${jsonArrayString.substring(0, 300)}${jsonArrayString.length > 300 ? '...' : ''}"`);
+        console.log(
+          `[MemoryService] 📄 Extracted JSON string: "${jsonArrayString.substring(0, 300)}${jsonArrayString.length > 300 ? '...' : ''}"`,
+        );
 
         // Clean up malformed JSON with trailing commas
         // Remove trailing commas before closing braces and brackets
@@ -236,28 +280,45 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
           .replace(/,(\s*[}\]])/g, '$1') // Remove trailing commas before } or ]
           .replace(/,(\s*\n\s*[}\]])/g, '$1'); // Handle newlines too
 
-        console.log(`[MemoryService] 🧹 Cleaned JSON string: "${jsonArrayString.substring(0, 300)}${jsonArrayString.length > 300 ? '...' : ''}"`);
+        console.log(
+          `[MemoryService] 🧹 Cleaned JSON string: "${jsonArrayString.substring(0, 300)}${jsonArrayString.length > 300 ? '...' : ''}"`,
+        );
 
         const memories = JSON.parse(jsonArrayString);
 
         if (!Array.isArray(memories)) {
-          console.log(`[MemoryService] ❌ Parsed result is not an array:`, typeof memories);
+          console.log(
+            '[MemoryService] ❌ Parsed result is not an array:',
+            typeof memories,
+          );
           return [];
         }
 
-        console.log(`[MemoryService] ✅ Successfully parsed ${memories.length} memories`);
+        console.log(
+          `[MemoryService] ✅ Successfully parsed ${memories.length} memories`,
+        );
         memories.forEach((memory, index) => {
-          console.log(`[MemoryService] ${index + 1}. [${memory.category || 'unknown'}] "${memory.content?.substring(0, 60) || 'no content'}..."`);
+          console.log(
+            `[MemoryService] ${index + 1}. [${memory.category || 'unknown'}] "${memory.content?.substring(0, 60) || 'no content'}..."`,
+          );
         });
 
         return memories;
       } catch (parseError) {
-        console.error(`[MemoryService] ❌ JSON parsing error:`, parseError);
+        console.error('[MemoryService] ❌ JSON parsing error:', parseError);
         console.log(`[MemoryService] 📄 Failed to parse content: "${content}"`);
         return [];
       }
     } catch (error) {
-      console.error(`[MemoryService] ❌ Memory extraction error:`, error);
+      console.error('[MemoryService] ❌ Memory extraction error:', error);
+      console.error('[MemoryService] 🔍 Error details:', {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack,
+        type: typeof error,
+        url: memoryUrl,
+        baseUrl: this.baseUrl
+      });
       return [];
     }
   }
