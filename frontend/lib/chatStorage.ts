@@ -27,25 +27,48 @@ export interface ChatWithMessages extends Chat {
 
 // Database instance
 let db: SQLite.SQLiteDatabase | null = null;
-
+let opening: Promise<void> | null = null;
+let closing: Promise<void> | null = null;
 /**
  * Initialize the database with proper schema
  */
 export const initializeDatabase = async (): Promise<void> => {
-  try {
-    // Open database
-    db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+  if (db) return;
+  if (opening) return opening; // another open 
+  if (closing) await closing; // wait for close to finish
 
-    // Enable WAL mode for better concurrent access
-    await db.execAsync('PRAGMA journal_mode = WAL;');
-    await db.execAsync('PRAGMA synchronous = NORMAL;');
+  // Open database
 
-    // Run migrations
-    await runMigrations();
-  } catch (error) {
-    console.error('Database initialization failed:', error);
-    throw error;
-  }
+  console.log('opening database', DATABASE_NAME);
+  opening = new Promise(async (resolve, reject) => {
+    try {
+      db = await SQLite.openDatabaseAsync(DATABASE_NAME, {
+        useNewConnection: true,
+      });
+
+      // Enable WAL mode for better concurrent access
+      try {
+        await db.execAsync('PRAGMA journal_mode = WAL;');
+      } catch (error) {
+        console.error('Failed to enable WAL mode:', error);
+        throw error;
+      }
+      try {
+        await db.execAsync('PRAGMA synchronous = NORMAL;');
+      } catch (error) {
+        console.error('Failed to enable synchronous mode:', error);
+        throw error;
+      }
+
+      // Run migrations
+      await runMigrations();
+      resolve();
+    } catch (error) {
+      console.error('Database initialization failed:', error);
+      reject(error);
+    }
+  });
+  return opening;
 };
 
 /**
@@ -277,9 +300,7 @@ export const deleteChat = async (chatId: number): Promise<void> => {
 
   try {
     // Delete messages first (though CASCADE should handle this)
-    await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [
-      chatId,
-    ]);
+    await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [chatId]);
 
     // Delete chat
     await database.runAsync('DELETE FROM chats WHERE id = ?', [chatId]);
@@ -314,14 +335,20 @@ export const getMessageCount = async (chatId: number): Promise<number> => {
  * Close database connection
  */
 export const closeDatabase = async (): Promise<void> => {
+  if (!db) return;
+  if (closing) return closing; // another close in progress
   if (db) {
-    try {
-      await db.closeAsync();
-      db = null;
-      // Database connection closed
-    } catch (error) {
-      console.error('Failed to close database:', error);
-      throw error;
-    }
+    closing = new Promise(async (resolve, reject) => {
+      try {
+        await db.closeAsync();
+        db = null;
+        console.log('database closed');
+        resolve();
+      } catch (error) {
+        console.error('Failed to close database:', error);
+        reject(error);
+      }
+    });
+    return closing;
   }
 };

@@ -56,6 +56,7 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
+    loadChat,
   } = useChatWithStorage({ chatId: currentChatId });
 
   useEffect(() => {
@@ -65,6 +66,14 @@ export default function ChatScreen() {
       }, 100);
     }
   }, [enhancedMessages.length]);
+
+  useEffect(() => {
+    if (currentChatId) {
+      setTimeout(() => {
+        loadChat(currentChatId);
+      }, 200);
+    }
+  }, [currentChatId]);
 
   useEffect(() => {
     if (error) {
