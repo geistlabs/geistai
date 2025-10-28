@@ -16,14 +16,43 @@ let LOG_LEVEL_CONSTANTS: any = null;
 const getPurchases = () => {
   if (!Purchases) {
     try {
-      const rcModule = require('react-native-purchases');
-      Purchases = rcModule.default || rcModule;
-      LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
-      console.log('✅ RevenueCat native module loaded successfully');
+      // Suppress the NativeEventEmitter error that occurs during require
+      // This is expected when running in Expo Development Client
+      const originalWarn = console.warn;
+      const originalError = console.error;
+      let suppressedError = false;
+
+      console.warn = (...args: any[]) => {
+        if (args[0]?.includes?.('NativeEventEmitter')) {
+          suppressedError = true;
+          return;
+        }
+        originalWarn(...args);
+      };
+
+      console.error = (...args: any[]) => {
+        if (
+          args[0]?.includes?.('NativeEventEmitter') ||
+          args[0]?.includes?.('Invariant Violation')
+        ) {
+          suppressedError = true;
+          return;
+        }
+        originalError(...args);
+      };
+
+      try {
+        const rcModule = require('react-native-purchases');
+        Purchases = rcModule.default || rcModule;
+        LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
+        console.log('✅ RevenueCat native module loaded successfully');
+      } finally {
+        console.warn = originalWarn;
+        console.error = originalError;
+      }
     } catch (error) {
       console.warn(
-        '⚠️ RevenueCat native module not available, using mock implementation:',
-        error,
+        '⚠️ RevenueCat native module not available, using mock implementation',
       );
       // Return a mock object to prevent crashes
       const mockEntitlements = { active: {} };
