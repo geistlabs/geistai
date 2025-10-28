@@ -2,7 +2,7 @@
   "expo": {
     "name": "Geist AI",
     "slug": "geist-v2",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/geist-logo.png",
     "scheme": "geist",
@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "im.geist.ios",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "simulator": {
         "deviceId": "0198E212-CDFE-4C69-9832-4625D9296986"
       },
