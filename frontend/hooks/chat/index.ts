@@ -152,9 +152,14 @@ export function useChat(options: UseChatOptions = {}) {
         });
 
         // Extract memories in parallel (non-blocking)
-        memoryService.current.extractMemories(content, userMessage.id).catch(error => {
-          console.warn('[Chat] Memory extraction failed (non-blocking):', error);
-        });
+        memoryService.current
+          .extractMemories(content, userMessage.id)
+          .catch(error => {
+            console.warn(
+              '[Chat] Memory extraction failed (non-blocking):',
+              error,
+            );
+          });
 
         // Get memory context
         const memoryContext =
