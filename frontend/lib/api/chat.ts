@@ -256,6 +256,16 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
+  console.log(`[StreamingAPI] 🚀 Sending streaming message to /api/stream`);
+  console.log(`[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
+  console.log(`[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`);
+  console.log(`[StreamingAPI] 📋 Full request body:`);
+  console.log(`[StreamingAPI] Message: "${requestBody.message}"`);
+  console.log(`[StreamingAPI] Messages array:`);
+  requestBody.messages?.forEach((msg, index) => {
+    console.log(`[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`);
+  });
+
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
 
