@@ -163,20 +163,17 @@ Format: [{"content": "fact summary", "category": "personal|technical|preference|
 
 CRITICAL: Your response must start with [ and end with ]. Nothing else. No reasoning. No explanations. Just the JSON array.`;
 
+    // Simplified request for debugging
     const requestBody = {
       model: 'llama3.1',
       messages: [
-        {
-          role: 'system',
-          content: systemPrompt || defaultSystemPrompt,
-        },
         {
           role: 'user',
           content: question,
         },
       ],
       temperature: 0.1,
-      max_tokens: 1000,
+      max_tokens: 100,
     };
 
     const memoryUrl = `${this.baseUrl}/api/memory`;
@@ -320,13 +317,17 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
       }
     } catch (error) {
       console.error('[MemoryService] ❌ Memory extraction error:', error);
-      
+
       if (error.name === 'AbortError') {
-        console.error('[MemoryService] ⏰ Request was aborted (likely timeout)');
+        console.error(
+          '[MemoryService] ⏰ Request was aborted (likely timeout)',
+        );
       } else if (error.message === 'Network request failed') {
-        console.error('[MemoryService] 🌐 Network request failed - possible CORS or connectivity issue');
+        console.error(
+          '[MemoryService] 🌐 Network request failed - possible CORS or connectivity issue',
+        );
       }
-      
+
       console.error('[MemoryService] 🔍 Error details:', {
         name: error?.name,
         message: error?.message,
