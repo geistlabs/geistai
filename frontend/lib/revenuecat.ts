@@ -5,7 +5,6 @@
 
 import type {
   CustomerInfo,
-  LOG_LEVEL,
   PurchasesOfferings,
   PurchasesPackage,
 } from 'react-native-purchases';
@@ -23,13 +22,23 @@ const getPurchases = () => {
     } catch (error) {
       console.error('Failed to load react-native-purchases:', error);
       // Return a mock object to prevent crashes
+      const mockEntitlements = { active: {} };
+      const mockCustomerInfo = {
+        originalAppUserId: 'anonymous',
+        entitlements: mockEntitlements,
+      };
+      
       Purchases = {
         setLogLevel: () => {},
         configure: () => Promise.resolve(),
-        getCustomerInfo: () => Promise.resolve({ originalAppUserId: 'anonymous' }),
+        getCustomerInfo: () => Promise.resolve(mockCustomerInfo),
         getOfferings: () => Promise.resolve({ current: null, all: {} }),
-        purchasePackage: () => Promise.resolve({ customerInfo: { entitlements: { active: {} } }, userCancelled: false }),
-        restorePurchases: () => Promise.resolve({ entitlements: { active: {} } }),
+        purchasePackage: () =>
+          Promise.resolve({
+            customerInfo: mockCustomerInfo,
+            userCancelled: false,
+          }),
+        restorePurchases: () => Promise.resolve(mockCustomerInfo),
         logIn: () => Promise.resolve(),
         logOut: () => Promise.resolve(),
       };
