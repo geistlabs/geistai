@@ -377,28 +377,21 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
-  // 🔍 DEBUG: Log the FULL prompt being sent to backend
+  console.log('[StreamingAPI] 🚀 Sending streaming message to /api/stream');
   console.log(
-    '🚀 [Chat API] ===== FULL PROMPT BEING SENT TO /api/stream =====',
-  );
-  console.log('🚀 [Chat API] User Message:', message);
-  console.log(
-    '🚀 [Chat API] Conversation History Length:',
-    conversationHistory.length,
+    `[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`,
   );
   console.log(
-    '🚀 [Chat API] Full Request Body:',
-    JSON.stringify(requestBody, null, 2),
+    `[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`,
   );
-
-  // Log each message in the conversation history for debugging
-  conversationHistory.forEach((msg, index) => {
+  console.log('[StreamingAPI] 📋 Full request body:');
+  console.log(`[StreamingAPI] Message: "${requestBody.message}"`);
+  console.log('[StreamingAPI] Messages array:');
+  requestBody.messages?.forEach((msg, index) => {
     console.log(
-      `🚀 [Chat API] Message ${index + 1} [${msg.role}]:`,
-      msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : ''),
+      `[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`,
     );
   });
-  console.log('🚀 [Chat API] ============================================');
 
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);

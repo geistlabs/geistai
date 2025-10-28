@@ -253,9 +253,26 @@ class MemoryStorageService {
     limit: number = 5,
     threshold: number = 0.3,
   ): Promise<MemorySearchResult[]> {
+    console.log(`[MemoryStorage] 🔍 Starting cosine similarity search`);
+    console.log(`[MemoryStorage] 📊 Query embedding length: ${queryEmbedding.length}`);
+    console.log(`[MemoryStorage] 🎯 Threshold: ${threshold}, Limit: ${limit}`);
+    console.log(`[MemoryStorage] 🚫 Excluding chat ID: ${excludeChatId || 'none'}`);
+
     const memories = excludeChatId
       ? await this.getAllMemoriesExcludingChat(excludeChatId)
       : await this.getAllMemories();
+
+    console.log(`[MemoryStorage] 💾 Found ${memories.length} total memories in database`);
+    
+    // Log some sample memories if they exist
+    if (memories.length > 0) {
+      console.log(`[MemoryStorage] 📋 Sample memories in database:`);
+      memories.slice(0, 3).forEach((memory, index) => {
+        console.log(`[MemoryStorage] ${index + 1}. [${memory.category}] "${memory.content.substring(0, 80)}..." (Chat: ${memory.chatId})`);
+      });
+    } else {
+      console.log(`[MemoryStorage] ⚠️ No memories found in database! This might be why no context is being retrieved.`);
+    }
 
     const results: MemorySearchResult[] = [];
 
@@ -265,11 +282,16 @@ class MemoryStorageService {
         memory.embedding,
       );
 
+      console.log(`[MemoryStorage] 📈 Memory "${memory.content.substring(0, 50)}..." similarity: ${similarity.toFixed(4)}`);
+
       if (similarity >= threshold) {
         results.push({
           memory,
           similarity,
         });
+        console.log(`[MemoryStorage] ✅ Memory above threshold, added to results`);
+      } else {
+        console.log(`[MemoryStorage] ❌ Memory below threshold (${threshold}), skipped`);
       }
     }
 
@@ -277,6 +299,11 @@ class MemoryStorageService {
     const sortedResults = results
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
+
+    console.log(`[MemoryStorage] 🏆 Final results: ${sortedResults.length} memories above threshold`);
+    sortedResults.forEach((result, index) => {
+      console.log(`[MemoryStorage] ${index + 1}. "${result.memory.content.substring(0, 80)}..." (${(result.similarity * 100).toFixed(1)}%)`);
+    });
 
     return sortedResults;
   }
