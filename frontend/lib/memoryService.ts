@@ -115,11 +115,18 @@ export class MemoryService {
       .slice(0, 5) // Top 5 most relevant
       .map((result, index) => {
         const { memory } = result;
-        return `${index + 1}. [${memory.category.toUpperCase()}] ${memory.content}`;
+        const similarity = (result.similarity * 100).toFixed(1);
+        return `${index + 1}. [${memory.category.toUpperCase()}] ${memory.content} (${similarity}% relevant)`;
       })
       .join('\n');
 
-    return `Previous conversation context:\n${formattedMemories}\n\n`;
+    return `## Relevant Context from Previous Conversations
+
+Based on your conversation history, here are some relevant facts about you:
+
+${formattedMemories}
+
+This context helps me provide more personalized responses based on your preferences and previous discussions.`;
   }
 
   /**
