@@ -411,6 +411,21 @@ async def memory_proxy(request: Request):
 async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
     """Enhanced streaming endpoint with orchestrator and sub-agent visibility"""
 
+    print(f"[Backend] 🚀 Received streaming request to /api/stream")
+    print(
+        f"[Backend] 📝 Message: {chat_request.message[:100]}{'...' if len(chat_request.message) > 100 else ''}"
+    )
+    print(
+        f"[Backend] 📚 Messages array length: {len(chat_request.messages) if chat_request.messages else 0}"
+    )
+
+    if chat_request.messages:
+        print(f"[Backend] 📋 Full messages received:")
+        for i, msg in enumerate(chat_request.messages):
+            print(
+                f"[Backend] {i + 1}. [{msg.role}] {msg.content[:150]}{'...' if len(msg.content) > 150 else ''}"
+            )
+
     gpt_service = await get_gpt_service()
     # Build messages array with conversation history
     messages = chat_request.messages
@@ -418,6 +433,8 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
         messages = [ChatMessage(role="user", content=chat_request.message)]
     else:
         messages.append(ChatMessage(role="user", content=chat_request.message))
+
+    print(f"[Backend] 🔍 Looking for memory context in {len(messages)} messages...")
 
     # Extract memory context from system messages if present
     memory_context = ""
@@ -427,11 +444,22 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
             "## Relevant Context from Previous Conversations"
         ):
             memory_context = msg.content
+            print(
+                f"[Backend] 🧠 Found memory context! Length: {len(memory_context)} characters"
+            )
+            print(f"[Backend] 📄 Memory context preview: {memory_context[:200]}...")
         else:
             filtered_messages.append(msg)
 
     # Use filtered messages (without memory context system message)
     messages = filtered_messages
+
+    if memory_context:
+        print(
+            f"[Backend] ✅ Memory context extracted and will be integrated into system prompt"
+        )
+    else:
+        print(f"[Backend] ❌ No memory context found in messages")
 
     async def orchestrator_event_stream():
         orchestrator_task = None
@@ -453,6 +481,15 @@ async def stream_with_orchestrator(chat_request: ChatRequest, request: Request):
 
 Use this context to provide more personalized and informed responses based on the user's previous conversations and preferences."""
                 orchestrator.system_prompt = enhanced_prompt
+                print(f"[Backend] 🔧 Enhanced system prompt with memory context")
+                print(
+                    f"[Backend] 📄 Final system prompt length: {len(enhanced_prompt)} characters"
+                )
+                print(
+                    f"[Backend] 📋 Final system prompt preview: {enhanced_prompt[:300]}..."
+                )
+            else:
+                print(f"[Backend] ⚠️ No memory context to integrate into system prompt")
 
             # Use asyncio.Queue to stream events in real-time
             event_queue = asyncio.Queue()

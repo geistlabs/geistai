@@ -124,18 +124,30 @@ export function useMemoryManager(
    */
   const getRelevantContext = useCallback(
     async (query: string, excludeChatId?: number): Promise<string> => {
+      console.log(`[MemoryManager] 🎯 Getting relevant context for query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
+      console.log(`[MemoryManager] 🚫 Excluding chat ID: ${excludeChatId || 'none'}`);
+      
       try {
         const results = await searchMemories(query, excludeChatId);
 
+        console.log(`[MemoryManager] 📋 Search returned ${results.length} results`);
+
         if (results.length === 0) {
+          console.log(`[MemoryManager] ❌ No relevant memories found, returning empty context`);
           return '';
         }
 
         // Take top results up to maxContextMemories
         const topResults = results.slice(0, maxContextMemories);
+        console.log(`[MemoryManager] 🔝 Taking top ${topResults.length} results (max: ${maxContextMemories})`);
 
-        return memoryService.formatMemoriesForContext(topResults);
+        const formattedContext = memoryService.formatMemoriesForContext(topResults);
+        console.log(`[MemoryManager] 📝 Formatted context length: ${formattedContext.length} characters`);
+        console.log(`[MemoryManager] 📄 Formatted context preview:`, formattedContext.substring(0, 200) + '...');
+
+        return formattedContext;
       } catch (err) {
+        console.error(`[MemoryManager] ❌ Error getting relevant context:`, err);
         return '';
       }
     },
