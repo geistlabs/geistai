@@ -3,14 +3,30 @@
  * Real RevenueCat SDK implementation
  */
 
-import Purchases, {
+import type {
   CustomerInfo,
   LOG_LEVEL,
   PurchasesPackage,
+  PurchasesOfferings,
 } from 'react-native-purchases';
 
-// Import Offerings type separately due to export structure
-import type { PurchasesOfferings } from 'react-native-purchases';
+// Lazy import to avoid NativeEventEmitter initialization issues
+let Purchases: any = null;
+
+const getPurchases = () => {
+  if (!Purchases) {
+    const rcModule = require('react-native-purchases');
+    Purchases = rcModule.default || rcModule;
+  }
+  return Purchases;
+};
+
+const getLOG_LEVEL = () => {
+  if (!Purchases) {
+    getPurchases();
+  }
+  return Purchases.LOG_LEVEL;
+};
 
 class RevenueCatService {
   private isInitialized = false;
@@ -20,6 +36,10 @@ class RevenueCatService {
     if (this.isInitialized) return;
 
     try {
+      // Get lazy-loaded Purchases and LOG_LEVEL
+      const Purchases = getPurchases();
+      const LOG_LEVEL = getLOG_LEVEL();
+      
       // Configure RevenueCat
       Purchases.setLogLevel(LOG_LEVEL.INFO);
 
@@ -41,6 +61,7 @@ class RevenueCatService {
 
   async getAppUserId(): Promise<string> {
     try {
+      const Purchases = getPurchases();
       const customerInfo = await Purchases.getCustomerInfo();
       return customerInfo.originalAppUserId;
     } catch (error) {
@@ -59,6 +80,7 @@ class RevenueCatService {
     }
 
     try {
+      const Purchases = getPurchases();
       const customerInfo = await Purchases.getCustomerInfo();
       return customerInfo.entitlements.active['premium'] !== undefined;
     } catch (error) {
@@ -69,6 +91,7 @@ class RevenueCatService {
 
   async getOfferings(): Promise<PurchasesOfferings> {
     try {
+      const Purchases = getPurchases();
       const offerings = await Purchases.getOfferings();
       return offerings;
     } catch (error) {
@@ -87,6 +110,7 @@ class RevenueCatService {
         packageToPurchase.identifier,
       );
 
+      const Purchases = getPurchases();
       const result = await Purchases.purchasePackage(packageToPurchase);
 
       if (!result.userCancelled) {
@@ -105,6 +129,7 @@ class RevenueCatService {
   async restorePurchases(): Promise<CustomerInfo> {
     try {
       console.log('🔄 [RevenueCat] Restoring purchases');
+      const Purchases = getPurchases();
       const customerInfo = await Purchases.restorePurchases();
       console.log('✅ [RevenueCat] Purchases restored');
       return customerInfo;
@@ -116,6 +141,7 @@ class RevenueCatService {
 
   async getCustomerInfo(): Promise<CustomerInfo> {
     try {
+      const Purchases = getPurchases();
       return await Purchases.getCustomerInfo();
     } catch (error) {
       console.error('❌ [RevenueCat] Failed to get customer info:', error);
@@ -126,6 +152,7 @@ class RevenueCatService {
   // Development helpers (keep for testing)
   async setDebugUserId(userId: string): Promise<void> {
     try {
+      const Purchases = getPurchases();
       await Purchases.logIn(userId);
       console.log(`🔧 [RevenueCat] Debug user ID set to: ${userId}`);
     } catch (error) {
@@ -135,6 +162,7 @@ class RevenueCatService {
 
   async logOut(): Promise<void> {
     try {
+      const Purchases = getPurchases();
       await Purchases.logOut();
       console.log('🔄 [RevenueCat] User logged out');
     } catch (error) {
@@ -152,6 +180,7 @@ class RevenueCatService {
     }
 
     try {
+      const Purchases = getPurchases();
       const userId = await this.getAppUserId();
       console.log(
         `🔄 [RevenueCat] Attempting to cancel subscription for user: ${userId}`,
