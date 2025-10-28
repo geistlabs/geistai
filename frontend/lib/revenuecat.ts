@@ -19,28 +19,52 @@ const getPurchases = () => {
       const rcModule = require('react-native-purchases');
       Purchases = rcModule.default || rcModule;
       LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
+      console.log('✅ RevenueCat native module loaded successfully');
     } catch (error) {
-      console.error('Failed to load react-native-purchases:', error);
+      console.warn(
+        '⚠️ RevenueCat native module not available, using mock implementation:',
+        error,
+      );
       // Return a mock object to prevent crashes
       const mockEntitlements = { active: {} };
       const mockCustomerInfo = {
         originalAppUserId: 'anonymous',
         entitlements: mockEntitlements,
       };
-      
+
       Purchases = {
         setLogLevel: () => {},
-        configure: () => Promise.resolve(),
-        getCustomerInfo: () => Promise.resolve(mockCustomerInfo),
-        getOfferings: () => Promise.resolve({ current: null, all: {} }),
-        purchasePackage: () =>
-          Promise.resolve({
+        configure: () => {
+          console.log('📝 [Mock] RevenueCat configure called');
+          return Promise.resolve();
+        },
+        getCustomerInfo: () => {
+          console.log('📝 [Mock] RevenueCat getCustomerInfo called');
+          return Promise.resolve(mockCustomerInfo);
+        },
+        getOfferings: () => {
+          console.log('📝 [Mock] RevenueCat getOfferings called');
+          return Promise.resolve({ current: null, all: {} });
+        },
+        purchasePackage: () => {
+          console.log('📝 [Mock] RevenueCat purchasePackage called');
+          return Promise.resolve({
             customerInfo: mockCustomerInfo,
             userCancelled: false,
-          }),
-        restorePurchases: () => Promise.resolve(mockCustomerInfo),
-        logIn: () => Promise.resolve(),
-        logOut: () => Promise.resolve(),
+          });
+        },
+        restorePurchases: () => {
+          console.log('📝 [Mock] RevenueCat restorePurchases called');
+          return Promise.resolve(mockCustomerInfo);
+        },
+        logIn: () => {
+          console.log('📝 [Mock] RevenueCat logIn called');
+          return Promise.resolve();
+        },
+        logOut: () => {
+          console.log('📝 [Mock] RevenueCat logOut called');
+          return Promise.resolve();
+        },
       };
       LOG_LEVEL_CONSTANTS = { INFO: 'INFO' };
     }
