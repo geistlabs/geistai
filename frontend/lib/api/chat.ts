@@ -100,7 +100,7 @@ export interface StreamEventHandlers {
     context?: string;
   }) => void;
   onToolCallEvent: (toolCallEvent: {
-    type: string;
+    type: 'start' | 'complete' | 'error';
     toolName: string;
     arguments?: any;
     result?: any;
@@ -684,6 +684,22 @@ export class ChatAPI {
     return response.response;
   }
 
+  async sendStreamingMessage(
+    message: string,
+    conversationHistory: ChatMessage[],
+    handlers: StreamEventHandlers,
+  ): Promise<void> {
+    return sendStreamingMessage(message, conversationHistory, handlers);
+  }
+
+  async sendNegotiationMessage(
+    message: string,
+    conversationHistory: ChatMessage[],
+    handlers: StreamEventHandlers,
+  ): Promise<void> {
+    return sendNegotiationMessage(message, conversationHistory, handlers);
+  }
+
   async streamMessage(
     message: string,
     onChunk: (token: string) => void,
@@ -949,7 +965,7 @@ export async function sendNegotiationMessage(
       }
     });
 
-    es.addEventListener('negotiation_finalized', (event: any) => {
+    es.addEventListener('negotiation_finalized' as any, (event: any) => {
       try {
         console.log('🔍 [DEBUG] negotiation_finalized event received:', event);
         if (event.data && typeof event.data === 'string') {

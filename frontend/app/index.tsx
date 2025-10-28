@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -7,6 +7,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -35,6 +36,197 @@ const INITIAL_PRICE = {
   package_id: 'premium_monthly_40',
 };
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  flexCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  flexRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  header: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#000',
+  },
+  menuButton: {
+    marginLeft: -8,
+    marginRight: 8,
+    padding: 8,
+  },
+  buttonContainer: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  button: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  buttonText: {
+    fontSize: 14,
+  },
+  resetButton: {
+    backgroundColor: '#fee2e2',
+  },
+  resetButtonText: {
+    color: '#b91c1c',
+  },
+  premiumBadge: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  premiumBadgeText: {
+    color: '#15803d',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  upgradeButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  upgradeButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  storageButton: {
+    backgroundColor: '#dbeafe',
+  },
+  storageButtonText: {
+    color: '#1d4ed8',
+  },
+  memoryButton: {
+    backgroundColor: '#dcfce7',
+  },
+  memoryButtonText: {
+    color: '#15803d',
+  },
+  newChatButton: {
+    backgroundColor: '#f3f4f6',
+  },
+  newChatButtonText: {
+    color: '#374151',
+  },
+  messageList: {
+    flex: 1,
+    paddingBottom: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  flatList: {
+    flex: 1,
+    backgroundColor: 'white',
+  },
+  flatListContent: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  paywall: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  paywallTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#14532d',
+    marginBottom: 8,
+  },
+  priceContainer: {
+    marginBottom: 12,
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: '#15803d',
+    marginBottom: 4,
+  },
+  priceAmount: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: '#14532d',
+  },
+  priceUnit: {
+    fontSize: 12,
+    color: '#16a34a',
+    marginTop: 4,
+  },
+  paywallSummary: {
+    fontSize: 14,
+    color: '#166534',
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  paywallButton: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  paywallButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  retryButton: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#dc2626',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.01)',
+    zIndex: 5,
+  },
+});
+
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
@@ -56,7 +248,7 @@ export default function ChatScreen() {
   const {
     isPremium,
     isLoading: premiumLoading,
-    setPremiumStatus,
+    // setPremiumStatus, // Unused
     checkPremiumStatus,
     // togglePremiumStatus,
   } = usePremium();
@@ -132,8 +324,8 @@ export default function ChatScreen() {
 
         // Wait a frame for React to update the hook
         await new Promise(resolve => setTimeout(resolve, 0));
-      } catch (err) {
-        console.error('Failed to create new chat:', err);
+      } catch (error) {
+        console.error('Failed to create new chat:', error);
         Alert.alert('Error', 'Failed to create new chat');
         return;
       }
@@ -159,7 +351,8 @@ export default function ChatScreen() {
       setCurrentChatId(newChatId);
       clearMessages();
       setIsDrawerVisible(false);
-    } catch (err) {
+    } catch (error) {
+      console.error('Failed to create new chat:', error);
       Alert.alert('Error', 'Failed to create new chat');
     }
   };
@@ -207,7 +400,7 @@ export default function ChatScreen() {
       try {
         await revenuecat.logOut();
         console.log('✅ [Reset] Logged out successfully');
-      } catch (logoutError) {
+      } catch {
         console.log('ℹ️ [Reset] Already anonymous user, continuing...');
       }
 
@@ -360,6 +553,7 @@ export default function ChatScreen() {
       setIsRecording(true);
       await recording.startRecording();
     } catch (error) {
+      console.error('Failed to start recording:', error);
       setIsRecording(false);
       Alert.alert('Recording Error', 'Failed to start recording');
     }
@@ -384,6 +578,7 @@ export default function ChatScreen() {
         }
       }
     } catch (error) {
+      console.error('Failed to process recording:', error);
       Alert.alert('Recording Error', 'Failed to process recording');
     } finally {
       setIsRecording(false);
@@ -395,7 +590,7 @@ export default function ChatScreen() {
     try {
       await recording.stopRecording();
     } catch (error) {
-      // Ignore error when canceling
+      console.debug('Ignoring error during recording cancel:', error);
     } finally {
       setIsRecording(false);
       setIsTranscribing(false);
@@ -426,9 +621,11 @@ export default function ChatScreen() {
   // Now we can do conditional rendering
   if (premiumLoading) {
     return (
-      <SafeAreaView className='flex-1 bg-white'>
-        <View className='flex-1 justify-center items-center'>
-          <Text className='text-lg text-gray-600'>Initializing app...</Text>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.flexCenter}>
+          <Text style={{ fontSize: 18, color: '#4b5563' }}>
+            Initializing app...
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -445,9 +642,9 @@ export default function ChatScreen() {
           transform: [{ translateX: slideAnim }],
         }}
       >
-        <SafeAreaView className='flex-1 bg-white'>
+        <SafeAreaView style={styles.container}>
           <KeyboardAvoidingView
-            className='flex-1'
+            style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
             {/* Network Status */}
@@ -456,55 +653,62 @@ export default function ChatScreen() {
             )}
 
             {/* Header */}
-            <View className='relative border-b border-gray-200 px-4 py-3'>
-              <View className='flex-row items-center'>
+            <View style={styles.header}>
+              <View style={styles.flexRow}>
                 {/* Left side - Hamburger Menu */}
                 <TouchableOpacity
                   onPress={handleDrawerOpen}
-                  className='-ml-2 mr-2 p-2'
+                  style={styles.menuButton}
                 >
                   <HamburgerIcon size={20} color='#374151' />
                 </TouchableOpacity>
 
                 {/* Center - Title */}
-                <View className='flex-row items-center'>
-                  <Text className='text-lg font-medium text-black'>Geist</Text>
+                <View style={styles.flexRow}>
+                  <Text style={styles.title}>Geist</Text>
                 </View>
 
                 {/* Right side - Buttons */}
-                <View className='ml-auto flex-row space-x-2'>
+                <View style={styles.buttonContainer}>
                   {/* Development Reset Button */}
                   {__DEV__ && (
                     <TouchableOpacity
                       onPress={handleResetSubscription}
-                      className='px-3 py-1.5 bg-red-100 rounded-lg'
+                      style={[styles.button, styles.resetButton]}
                     >
-                      <Text className='text-sm text-red-700'>🔄 Reset</Text>
+                      <Text style={[styles.buttonText, styles.resetButtonText]}>
+                        🔄 Reset
+                      </Text>
                     </TouchableOpacity>
                   )}
                   {/* Development Toggle Button */}
                   {/* <TouchableOpacity
                     onPress={togglePremiumStatus}
-                    className='px-3 py-1.5 bg-orange-100 rounded-lg'
+                    style={[styles.button, { backgroundColor: '#ffedd5' }]}
                   >
-                    <Text className='text-sm text-orange-700'>
+                    <Text style={[styles.buttonText, { color: '#9a3412' }]}>
                       🔧 Toggle Premium
                     </Text>
                   </TouchableOpacity> */}
                   {isPremium ? (
-                    <View className='px-4 py-1.5 bg-green-100 rounded-lg flex-row items-center'>
-                      <Text className='text-green-700 text-sm font-medium'>
+                    <View style={styles.premiumBadge}>
+                      <Text style={styles.premiumBadgeText}>
                         ✅ Premium Active
                       </Text>
                     </View>
                   ) : (
                     <TouchableOpacity
                       onPress={handleUpgradeNow}
-                      className={`px-4 py-1.5 rounded-lg flex-row items-center ${
-                        negotiationResult ? 'bg-green-500' : 'bg-blue-500'
-                      }`}
+                      style={[
+                        styles.upgradeButton,
+                        {
+                          backgroundColor: negotiationResult
+                            ? '#22c55e'
+                            : '#3b82f6',
+                        },
+                      ]}
                     >
-                      <Text className='text-white text-sm font-medium'>
+                      <Text style={styles.upgradeButtonText}>
                         {negotiationResult
                           ? `Upgrade $${negotiationResult.final_price.toFixed(2)}/mo`
                           : `Upgrade $${INITIAL_PRICE.price}/mo`}
@@ -513,35 +717,39 @@ export default function ChatScreen() {
                   )}
                   <TouchableOpacity
                     onPress={handleStoragePress}
-                    className='px-3 py-1.5 bg-blue-100 rounded-lg'
+                    style={[styles.button, styles.storageButton]}
                   >
-                    <Text className='text-sm text-blue-700'>Storage</Text>
+                    <Text style={[styles.buttonText, styles.storageButtonText]}>
+                      Storage
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => router.push('/memory')}
-                    className='px-3 py-1.5 bg-green-100 rounded-lg'
+                    style={[styles.button, styles.memoryButton]}
                   >
-                    <Text className='text-sm text-green-700'>Memory</Text>
+                    <Text style={[styles.buttonText, styles.memoryButtonText]}>
+                      Memory
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleNewChat}
-                    className='px-3 py-1.5 bg-gray-100 rounded-lg'
+                    style={[styles.button, styles.newChatButton]}
                   >
-                    <Text className='text-sm text-gray-700'>New Chat</Text>
+                    <Text style={[styles.buttonText, styles.newChatButtonText]}>
+                      New Chat
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
 
             {/* Messages List */}
-            <View className='flex-1 pb-2'>
+            <View style={styles.messageList}>
               {isLoading && enhancedMessages.length === 0 ? (
-                <View className='flex-1 items-center justify-center p-8'>
+                <View style={styles.loadingContainer}>
                   <LoadingIndicator size='medium' />
                   {storageError && (
-                    <Text className='text-red-500 text-sm text-center mt-2'>
-                      {storageError}
-                    </Text>
+                    <Text style={styles.errorText}>{storageError}</Text>
                   )}
                 </View>
               ) : (
@@ -595,8 +803,8 @@ export default function ChatScreen() {
                       return null;
                     }
                   }}
-                  contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-                  className='flex-1 bg-white'
+                  contentContainerStyle={styles.flatListContent}
+                  style={styles.flatList}
                   onContentSizeChange={() =>
                     flatListRef.current?.scrollToEnd({ animated: true })
                   }
@@ -606,30 +814,26 @@ export default function ChatScreen() {
 
             {/* Negotiation Result Paywall */}
             {negotiationResult && !isPremium && (
-              <View className='mx-4 mb-4 p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200'>
-                <Text className='text-sm font-semibold text-green-900 mb-2'>
-                  ✅ Deal Finalized!
-                </Text>
+              <View style={styles.paywall}>
+                <Text style={styles.paywallTitle}>✅ Deal Finalized!</Text>
 
-                <View className='mb-3'>
-                  <Text className='text-xs text-green-700 mb-1'>
-                    Your Negotiated Price
-                  </Text>
-                  <Text className='text-3xl font-bold text-green-900'>
+                <View style={styles.priceContainer}>
+                  <Text style={styles.priceLabel}>Your Negotiated Price</Text>
+                  <Text style={styles.priceAmount}>
                     ${negotiationResult.final_price.toFixed(2)}
                   </Text>
-                  <Text className='text-xs text-green-600 mt-1'>per month</Text>
+                  <Text style={styles.priceUnit}>per month</Text>
                 </View>
 
-                <Text className='text-sm text-green-800 mb-3 italic'>
+                <Text style={styles.paywallSummary}>
                   &ldquo;{negotiationResult.negotiation_summary}&rdquo;
                 </Text>
 
                 <TouchableOpacity
                   onPress={handleUpgradeNow}
-                  className='bg-green-600 px-4 py-3 rounded-lg'
+                  style={styles.paywallButton}
                 >
-                  <Text className='text-white text-center font-semibold'>
+                  <Text style={styles.paywallButtonText}>
                     Upgrade Now at ${negotiationResult.final_price.toFixed(2)}
                     /mo
                   </Text>
@@ -641,9 +845,9 @@ export default function ChatScreen() {
             {error && !isStreaming && (
               <TouchableOpacity
                 onPress={retryLastMessage}
-                className='mx-4 mb-2 p-3 bg-red-50 border border-red-200 rounded-lg'
+                style={styles.retryButton}
               >
-                <Text className='text-red-600 text-sm text-center'>
+                <Text style={styles.retryButtonText}>
                   Failed to send. Tap to retry.
                 </Text>
               </TouchableOpacity>
@@ -667,19 +871,7 @@ export default function ChatScreen() {
         </SafeAreaView>
 
         {/* Overlay for main content when drawer is open */}
-        {isDrawerVisible && (
-          <View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.01)',
-              zIndex: 5,
-            }}
-          />
-        )}
+        {isDrawerVisible && <View style={styles.overlay} />}
       </Animated.View>
 
       {/* Chat Drawer */}
