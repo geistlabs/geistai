@@ -6,26 +6,44 @@
 import type {
   CustomerInfo,
   LOG_LEVEL,
-  PurchasesPackage,
   PurchasesOfferings,
+  PurchasesPackage,
 } from 'react-native-purchases';
 
 // Lazy import to avoid NativeEventEmitter initialization issues
 let Purchases: any = null;
+let LOG_LEVEL_CONSTANTS: any = null;
 
 const getPurchases = () => {
   if (!Purchases) {
-    const rcModule = require('react-native-purchases');
-    Purchases = rcModule.default || rcModule;
+    try {
+      const rcModule = require('react-native-purchases');
+      Purchases = rcModule.default || rcModule;
+      LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
+    } catch (error) {
+      console.error('Failed to load react-native-purchases:', error);
+      // Return a mock object to prevent crashes
+      Purchases = {
+        setLogLevel: () => {},
+        configure: () => Promise.resolve(),
+        getCustomerInfo: () => Promise.resolve({ originalAppUserId: 'anonymous' }),
+        getOfferings: () => Promise.resolve({ current: null, all: {} }),
+        purchasePackage: () => Promise.resolve({ customerInfo: { entitlements: { active: {} } }, userCancelled: false }),
+        restorePurchases: () => Promise.resolve({ entitlements: { active: {} } }),
+        logIn: () => Promise.resolve(),
+        logOut: () => Promise.resolve(),
+      };
+      LOG_LEVEL_CONSTANTS = { INFO: 'INFO' };
+    }
   }
   return Purchases;
 };
 
 const getLOG_LEVEL = () => {
-  if (!Purchases) {
+  if (!LOG_LEVEL_CONSTANTS) {
     getPurchases();
   }
-  return Purchases.LOG_LEVEL;
+  return LOG_LEVEL_CONSTANTS || { INFO: 'INFO' };
 };
 
 class RevenueCatService {
@@ -39,7 +57,7 @@ class RevenueCatService {
       // Get lazy-loaded Purchases and LOG_LEVEL
       const Purchases = getPurchases();
       const LOG_LEVEL = getLOG_LEVEL();
-      
+
       // Configure RevenueCat
       Purchases.setLogLevel(LOG_LEVEL.INFO);
 
