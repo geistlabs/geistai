@@ -199,13 +199,22 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
         'bytes',
       );
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('[MemoryService] ⏰ Request timeout, aborting...');
+        controller.abort();
+      }, 30000); // 30 second timeout
+
       const response = await fetch(memoryUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       console.log('[MemoryService] 📡 Response received:', {
         status: response.status,
@@ -311,13 +320,20 @@ CRITICAL: Your response must start with [ and end with ]. Nothing else. No reaso
       }
     } catch (error) {
       console.error('[MemoryService] ❌ Memory extraction error:', error);
+      
+      if (error.name === 'AbortError') {
+        console.error('[MemoryService] ⏰ Request was aborted (likely timeout)');
+      } else if (error.message === 'Network request failed') {
+        console.error('[MemoryService] 🌐 Network request failed - possible CORS or connectivity issue');
+      }
+      
       console.error('[MemoryService] 🔍 Error details:', {
         name: error?.name,
         message: error?.message,
         stack: error?.stack,
         type: typeof error,
         url: memoryUrl,
-        baseUrl: this.baseUrl
+        baseUrl: this.baseUrl,
       });
       return [];
     }
