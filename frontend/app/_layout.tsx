@@ -1,74 +1,113 @@
 import {
-	DarkTheme,
-	DefaultTheme,
-	ThemeProvider,
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
 } from '@react-navigation/native';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { initializeDatabase } from '@/lib/chatStorage';
+import { queryClient } from '@/lib/queryClient';
+
+import { useAppInitialization } from '../hooks/useAppInitialization';
+
+function AppContent() {
+  const colorScheme = useColorScheme();
+
+  // Initialize app services using TanStack Query
+  const {
+    isAnyLoading,
+    isDbLoading,
+    isRevenueCatLoading,
+    dbError,
+    hasCriticalError,
+    hasNonCriticalError,
+    retryDb,
+    retryRevenueCat,
+  } = useAppInitialization();
+
+  // Show loading screen while services initialize
+  if (isAnyLoading) {
+    return (
+      <View className='flex-1 items-center justify-center bg-white p-4'>
+        <Text className='text-lg text-gray-600 mb-2'>Initializing...</Text>
+        {isDbLoading && (
+          <Text className='text-sm text-gray-500'>Setting up database...</Text>
+        )}
+        {isRevenueCatLoading && (
+          <Text className='text-sm text-gray-500'>
+            Configuring subscriptions...
+          </Text>
+        )}
+      </View>
+    );
+  }
+
+  // Show error screen if critical services failed
+  if (hasCriticalError) {
+    return (
+      <View className='flex-1 items-center justify-center bg-white p-4'>
+        <Text className='text-lg text-red-600 mb-2'>Database Error</Text>
+        <Text className='text-sm text-gray-600 mb-4 text-center'>
+          {dbError?.message || 'Failed to initialize database'}
+        </Text>
+        <TouchableOpacity
+          onPress={() => retryDb()}
+          className='bg-blue-500 px-4 py-2 rounded'
+        >
+          <Text className='text-white'>Retry Database</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <Stack>
+        <Stack.Screen name='index' options={{ headerShown: false }} />
+        <Stack.Screen name='storage' options={{ headerShown: false }} />
+        <Stack.Screen name='memory' options={{ headerShown: false }} />
+        <Stack.Screen name='+not-found' />
+      </Stack>
+      <StatusBar style='auto' />
+
+      {/* Show warning for non-critical errors */}
+      {hasNonCriticalError && (
+        <View className='absolute top-12 left-4 right-4 bg-yellow-100 border border-yellow-400 rounded p-3'>
+          <Text className='text-yellow-800 text-sm'>
+            ⚠️ Subscription features unavailable. You can still use the free
+            version.
+          </Text>
+          <TouchableOpacity onPress={() => retryRevenueCat()} className='mt-2'>
+            <Text className='text-yellow-700 text-xs underline'>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ThemeProvider>
+  );
+}
 
 export default function RootLayout() {
-	const colorScheme = useColorScheme();
-	const [loaded] = useFonts({
-		SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-		// 'Geist-Regular': require('../assets/fonts/geist/Geist-Regular.otf'),
-		// 'Geist-Medium': require('../assets/fonts/geist/Geist-Medium.otf'),
-		// 'Geist-SemiBold': require('../assets/fonts/geist/Geist-SemiBold.otf'),
-		// 'Geist-Bold': require('../assets/fonts/geist/Geist-Bold.otf'),
-		// 'GeistMono-Regular': require('../assets/fonts/geist/GeistMono-Regular.otf'),
-		// 'GeistMono-Medium': require('../assets/fonts/geist/GeistMono-Medium.otf'),
-	});
-	const [dbReady, setDbReady] = useState(false);
-	const [dbError, setDbError] = useState<string | null>(null);
+  const [loaded] = useFonts({
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    // 'Geist-Regular': require('../assets/fonts/geist/Geist-Regular.otf'),
+    // 'Geist-Medium': require('../assets/fonts/geist/Geist-Medium.otf'),
+    // 'Geist-SemiBold': require('../assets/fonts/geist/Geist-SemiBold.otf'),
+    // 'Geist-Bold': require('../assets/fonts/geist/Geist-Bold.otf'),
+    // 'GeistMono-Regular': require('../assets/fonts/geist/GeistMono-Regular.otf'),
+    // 'GeistMono-Medium': require('../assets/fonts/geist/GeistMono-Medium.otf'),
+  });
 
-	// Initialize database on app start
-	useEffect(() => {
-		const initDb = async () => {
-			try {
-				await initializeDatabase();
-				setDbReady(true);
-			} catch (error) {
-				console.error('App-level database initialization failed:', error);
-				setDbError(
-					error instanceof Error
-						? error.message
-						: 'Database initialization failed',
-				);
-			}
-		};
-		initDb();
-	}, []);
+  if (!loaded) {
+    return null;
+  }
 
-	if (!loaded) {
-		// Async font loading only occurs in development.
-		return null;
-	}
-
-	// Show loading screen while database initializes
-	if (!dbReady) {
-		return (
-			<View className='flex-1 items-center justify-center bg-white'>
-				<Text className='text-lg text-gray-600'>
-					{dbError ? `Database Error: ${dbError}` : 'Initializing...'}
-				</Text>
-			</View>
-		);
-	}
-
-	return (
-		<ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-			<Stack>
-				<Stack.Screen name='index' options={{ headerShown: false }} />
-				<Stack.Screen name='storage' options={{ headerShown: false }} />
-				<Stack.Screen name='memory' options={{ headerShown: false }} />
-				<Stack.Screen name='+not-found' />
-			</Stack>
-			<StatusBar style='auto' />
-		</ThemeProvider>
-	);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
+  );
 }
