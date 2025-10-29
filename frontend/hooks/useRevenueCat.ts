@@ -34,7 +34,43 @@ export function useRevenueCat(
     refetch: refetchCustomerInfo,
   } = useQuery({
     queryKey: queryKeys.revenueCat.customerInfo(),
-    queryFn: getCustomerInfo,
+    queryFn: async () => {
+      const result = await getCustomerInfo();
+      console.log('👤 [RevenueCat] Customer info loaded:');
+      console.log(`  - User ID: ${result.originalAppUserId}`);
+      console.log(
+        `  - Active Entitlements: ${Object.keys(result.entitlements.active).length}`,
+      );
+      console.log(
+        `  - All Entitlements: ${Object.keys(result.entitlements.all).length}`,
+      );
+      console.log(
+        `  - Active Subscriptions: ${Object.keys(result.activeSubscriptions).length}`,
+      );
+      console.log(
+        `  - Non-Subscription Purchases: ${Object.keys(result.nonSubscriptionTransactions).length}`,
+      );
+
+      if (Object.keys(result.entitlements.active).length > 0) {
+        console.log('✅ [RevenueCat] Active entitlements:');
+        Object.entries(result.entitlements.active).forEach(
+          ([key, entitlement]) => {
+            console.log(
+              `  - ${key}: ${entitlement.isActive ? 'Active' : 'Inactive'}`,
+            );
+            console.log(
+              `    Expires: ${entitlement.expirationDate || 'Never'}`,
+            );
+          },
+        );
+      } else {
+        console.log(
+          '❌ [RevenueCat] No active entitlements - user is not premium',
+        );
+      }
+
+      return result;
+    },
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 5 * 60 * 1000, // 5 minutes
   });
@@ -47,7 +83,26 @@ export function useRevenueCat(
     refetch: refetchOfferings,
   } = useQuery({
     queryKey: queryKeys.revenueCat.offerings(),
-    queryFn: getOfferings,
+    queryFn: async () => {
+      const result = await getOfferings();
+      console.log(
+        '🎁 [RevenueCat] Offerings loaded:',
+        JSON.stringify(result, null, 2),
+      );
+      if (result?.availablePackages) {
+        console.log('📦 [RevenueCat] Available packages:');
+        result.availablePackages.forEach((pkg, index) => {
+          console.log(`  ${index + 1}. ${pkg.identifier}`);
+          console.log(`     - Product: ${pkg.product.title}`);
+          console.log(`     - Price: ${pkg.product.priceString}`);
+          console.log(`     - Period: ${pkg.packageType}`);
+          console.log(
+            `     - Intro Price: ${pkg.product.introPrice?.priceString || 'None'}`,
+          );
+        });
+      }
+      return result;
+    },
     staleTime: 10 * 60 * 1000, // 10 minutes (offerings change less frequently)
     gcTime: 30 * 60 * 1000, // 30 minutes
   });

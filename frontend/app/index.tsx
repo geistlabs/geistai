@@ -23,6 +23,7 @@ import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useRevenueCat } from '../hooks/useRevenueCat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
@@ -30,6 +31,7 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
+  const { isSubscribed: isPremium } = useRevenueCat('premium');
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(
     undefined,
@@ -266,6 +268,13 @@ export default function ChatScreen() {
                 {/* Center - Title */}
                 <View className='flex-row items-center'>
                   <Text className='text-lg font-medium text-black'>Geist</Text>
+                  {isPremium && (
+                    <View className='ml-2 bg-yellow-400 px-2 py-1 rounded'>
+                      <Text className='text-black text-xs font-bold'>
+                        PREMIUM
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Right side - Buttons */}

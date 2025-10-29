@@ -12,7 +12,9 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { queryClient } from '@/lib/queryClient';
 
+import { PaywallModal } from '../components/paywall/PaywallModal';
 import { useAppInitialization } from '../hooks/useAppInitialization';
+import { usePaywall } from '../hooks/usePaywall';
 
 function AppContent() {
   const colorScheme = useColorScheme();
@@ -27,6 +29,13 @@ function AppContent() {
     retryDb,
     retryRevenueCat,
   } = useAppInitialization();
+
+  // Paywall management
+  const { isPaywallVisible, hidePaywall, isPremium, handlePurchaseSuccess } =
+    usePaywall({
+      showOnStartup: true,
+      entitlementIdentifier: 'premium',
+    });
 
   // Show loading screen while services initialize
   if (isDbLoading || isRevenueCatLoading) {
@@ -73,6 +82,13 @@ function AppContent() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        visible={isPaywallVisible}
+        onClose={hidePaywall}
+        onPurchaseSuccess={handlePurchaseSuccess}
+      />
     </ThemeProvider>
   );
 }
