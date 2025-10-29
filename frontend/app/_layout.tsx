@@ -3,14 +3,27 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from '@react-navigation/native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { View, Text } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { initializeDatabase } from '@/lib/chatStorage';
+
+import { AppProvider } from '../contexts/AppContext';
+
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 2,
+    },
+  },
+});
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -61,14 +74,20 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name='index' options={{ headerShown: false }} />
-        <Stack.Screen name='storage' options={{ headerShown: false }} />
-        <Stack.Screen name='memory' options={{ headerShown: false }} />
-        <Stack.Screen name='+not-found' />
-      </Stack>
-      <StatusBar style='auto' />
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <ThemeProvider
+          value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
+        >
+          <Stack>
+            <Stack.Screen name='index' options={{ headerShown: false }} />
+            <Stack.Screen name='storage' options={{ headerShown: false }} />
+            <Stack.Screen name='memory' options={{ headerShown: false }} />
+            <Stack.Screen name='+not-found' />
+          </Stack>
+          <StatusBar style='auto' />
+        </ThemeProvider>
+      </AppProvider>
+    </QueryClientProvider>
   );
 }

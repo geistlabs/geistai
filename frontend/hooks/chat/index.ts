@@ -11,9 +11,12 @@ import { StreamService } from './services/StreamService';
 import { chatReducer, initialState } from './state/chatReducer';
 import { ChatMessage, EnhancedMessage } from './types/ChatTypes';
 
+export type ChatMode = 'streaming' | 'negotiation';
+
 export interface UseChatOptions {
   chatId?: number;
   isPremium?: boolean;
+  chatMode?: ChatMode;
   onError?: (error: Error) => void;
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
@@ -22,7 +25,7 @@ export interface UseChatOptions {
 
 export function useChat(options: UseChatOptions = {}) {
   const [state, dispatch] = useReducer(chatReducer, initialState);
-  const { isPremium = false } = options;
+  const { chatMode = 'streaming' } = options;
 
   // Refs
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -175,8 +178,8 @@ export function useChat(options: UseChatOptions = {}) {
           });
         }
 
-        // Send message to appropriate endpoint
-        if (isPremium) {
+        // Send message to appropriate endpoint based on chatMode
+        if (chatMode === 'streaming') {
           await chatApi.current.sendStreamingMessage(
             content,
             messagesWithContext,
@@ -211,7 +214,7 @@ export function useChat(options: UseChatOptions = {}) {
       state.messages,
       options,
       storage,
-      isPremium,
+      chatMode,
     ],
   );
 

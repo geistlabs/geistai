@@ -69,6 +69,7 @@ export function collectLinksFromEnhancedMessage(
 export interface UseChatWithStorageOptions {
   chatId?: number;
   isPremium?: boolean;
+  chatMode?: 'streaming' | 'negotiation';
   onError?: (error: Error) => void;
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
@@ -76,12 +77,13 @@ export interface UseChatWithStorageOptions {
 }
 
 export function useChatWithStorage(options: UseChatWithStorageOptions = {}) {
-  const { isPremium = false } = options;
+  const { isPremium = false, chatMode = 'streaming' } = options;
 
   // Use the new modular chat hook
   const chat = useChat({
     chatId: options.chatId,
     isPremium,
+    chatMode,
     onError: options.onError,
     onStreamStart: options.onStreamStart,
     onStreamEnd: options.onStreamEnd,

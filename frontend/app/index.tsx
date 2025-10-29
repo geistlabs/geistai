@@ -20,25 +20,29 @@ import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
+import { useApp } from '../contexts/AppContext';
 import '../global.css';
-import type { NegotiationResult } from '../hooks/chat/types/ChatTypes';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
-import { usePremium } from '../hooks/usePremium';
 import { revenuecat } from '../lib/revenuecat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 
+// Type definitions
+interface PriceInfo {
+  price?: number;
+  package_id: string;
+  final_price?: number;
+  negotiation_summary?: string;
+}
+
 // Initial premium price configuration
-const INITIAL_PRICE = {
+const INITIAL_PRICE: PriceInfo = {
   price: 39.99,
   package_id: 'premium_monthly_40',
 } as const;
-
-// Type for price information (either from negotiation or initial)
-type PriceInfo = NegotiationResult | typeof INITIAL_PRICE;
 
 // Animation and timing constants
 const ANIMATION_DELAYS = {
@@ -254,14 +258,20 @@ export default function ChatScreen() {
   // Animation for sliding the app content
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Call ALL hooks FIRST before any conditional logic
+  // Get app state from context
+  const { state: appState, actions: appActions } = useApp();
   const {
+    isExpoGo,
+    isNativeBuild,
     isPremium,
     isLoading: premiumLoading,
-    // setPremiumStatus, // Unused
-    checkPremiumStatus,
-    // togglePremiumStatus,
-  } = usePremium();
+  } = appState;
+
+  const activeChatMode: 'streaming' | 'negotiation' = isExpoGo
+    ? 'streaming'
+    : isPremium
+      ? 'streaming'
+      : 'negotiation';
 
   const {
     enhancedMessages,
@@ -276,15 +286,21 @@ export default function ChatScreen() {
     storageError,
     chatApi,
     negotiationResult,
-  } = useChatWithStorage({ chatId: currentChatId, isPremium });
+  } = useChatWithStorage({
+    chatId: currentChatId,
+    isPremium,
+    chatMode: activeChatMode,
+  });
 
-  // Debug: Log when isPremium changes
+  // Debug: Log when app state or chat mode changes
   useEffect(() => {
-    console.log(`🔄 [App] isPremium changed to: ${isPremium}`);
-    console.log(
-      `🔄 [App] UI should update - Premium badge: ${isPremium ? 'Show' : 'Hide'}, Upgrade button: ${isPremium ? 'Hide' : 'Show'}`,
-    );
-  }, [isPremium]);
+    console.log('🌍 [App] App state updated:', {
+      isExpoGo,
+      isNativeBuild,
+      isPremium,
+      activeChatMode,
+    });
+  }, [isExpoGo, isNativeBuild, isPremium, activeChatMode]);
 
   // Debug: Log when negotiationResult changes
   useEffect(() => {
@@ -432,8 +448,8 @@ export default function ChatScreen() {
       // Force refresh premium status
       const isPremiumAfterReset = await revenuecat.isPremiumUser();
 
-      // Update local state to trigger immediate UI update (avoid deprecated setPremiumStatus)
-      await checkPremiumStatus();
+      // Update local state to trigger immediate UI update
+      await appActions.checkPremiumStatus();
 
       console.log(
         '✅ [Reset] Reset complete. Premium status:',
@@ -483,12 +499,14 @@ export default function ChatScreen() {
     revenuecat.clearDevelopmentOverride();
 
     // Force refresh premium status to update UI immediately
-    await checkPremiumStatus();
+    // await checkPremiumStatus();
 
     const displayPrice =
-      'final_price' in priceInfo
+      'final_price' in priceInfo && priceInfo.final_price
         ? priceInfo.final_price.toFixed(2)
-        : priceInfo.price.toFixed(2);
+        : priceInfo.price
+          ? priceInfo.price.toFixed(2)
+          : '0.00';
     Alert.alert(
       'Success!',
       `Welcome to GeistAI Premium at $${displayPrice}/month!`,
@@ -691,6 +709,18 @@ export default function ChatScreen() {
                 {/* Center - Title */}
                 <View style={styles.flexRow}>
                   <Text style={styles.title}>Geist</Text>
+                  {__DEV__ && (
+                    <Text
+                      style={[
+                        styles.title,
+                        { fontSize: 12, color: '#6b7280', marginLeft: 8 },
+                      ]}
+                    >
+                      {activeChatMode === 'streaming'
+                        ? '📱 Streaming'
+                        : '💰 Negotiation'}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Right side - Buttons */}
