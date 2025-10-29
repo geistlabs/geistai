@@ -810,7 +810,7 @@ async def create_agent_event_stream(
     messages: List,
     agent,
     gpt_service,
-    request: Request = None,
+    request: Request,
     logger_prefix: str = "[Agent]"
 ):
     """
