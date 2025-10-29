@@ -1,17 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { ChatMessage } from '../lib/api/chat';
 import {
-  memoryService,
   Memory,
   MemorySearchResult,
+  memoryService,
 } from '../lib/memoryService';
-import { memoryStorage, MemoryStats } from '../lib/memoryStorage';
+import { MemoryStats, memoryStorage } from '../lib/memoryStorage';
 
 export interface UseMemoryManagerOptions {
   contextThreshold?: number; // Similarity threshold for context inclusion
   searchThreshold?: number; // Similarity threshold for search results
   maxContextMemories?: number; // Max memories to include in context
+  autoExtract?: boolean; // Automatically extract memories from user questions
 }
 
 export interface UseMemoryManagerReturn {
@@ -45,10 +45,10 @@ export interface UseMemoryManagerReturn {
 export function useMemoryManager(
   options: UseMemoryManagerOptions = {},
 ): UseMemoryManagerReturn {
-  const { 
-    contextThreshold = 0.7, 
-    searchThreshold = 0.3, 
-    maxContextMemories = 5 
+  const {
+    contextThreshold = 0.7,
+    searchThreshold = 0.3,
+    maxContextMemories = 5,
   } = options;
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -63,6 +63,7 @@ export function useMemoryManager(
         await memoryStorage.initDatabase();
         setIsInitialized(true);
       } catch (err) {
+        console.error('Failed to initialize memory storage:', err);
         setError(
           err instanceof Error
             ? err.message
@@ -73,7 +74,6 @@ export function useMemoryManager(
 
     initializeStorage();
   }, []);
-
 
   /**
    * Search for relevant memories
@@ -91,10 +91,19 @@ export function useMemoryManager(
       setError(null);
 
       try {
+        console.log(`🔍 [MemoryManager] Searching for: "${query}"`);
+        console.log(`🔍 [MemoryManager] Using threshold: ${searchThreshold}`);
+
         // Generate embedding for query
         const queryEmbedding = await memoryService.getEmbedding(query);
+        console.log(
+          `🔍 [MemoryManager] Query embedding length: ${queryEmbedding.length}`,
+        );
 
         if (queryEmbedding.length === 0) {
+          console.log(
+            '🔍 [MemoryManager] ❌ Failed to generate query embedding',
+          );
           return [];
         }
 
@@ -105,9 +114,26 @@ export function useMemoryManager(
           5, // Return top 5 results
           searchThreshold, // Use lower threshold (0.3) for search
         );
-        
+
+        console.log(
+          `🔍 [MemoryManager] ✅ Search completed, found ${results.length} results`,
+        );
+
+        // Log details about found memories for debugging
+        if (results.length > 0) {
+          console.log('🔍 [MemoryManager] Found memories:');
+          results.forEach((result, index) => {
+            console.log(
+              `  ${index + 1}. [${result.memory.category}] Similarity: ${result.similarity.toFixed(3)} - ${result.memory.content.substring(0, 100)}...`,
+            );
+          });
+        } else {
+          console.log('🔍 [MemoryManager] No memories found above threshold');
+        }
+
         return results;
       } catch (err) {
+        console.error('Failed to search memories:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to search memories',
         );
@@ -124,30 +150,49 @@ export function useMemoryManager(
    */
   const getRelevantContext = useCallback(
     async (query: string, excludeChatId?: number): Promise<string> => {
-      console.log(`[MemoryManager] 🎯 Getting relevant context for query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
-      console.log(`[MemoryManager] 🚫 Excluding chat ID: ${excludeChatId || 'none'}`);
-      
+      console.log(
+        `[MemoryManager] 🎯 Getting relevant context for query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`,
+      );
+      console.log(
+        `[MemoryManager] 🚫 Excluding chat ID: ${excludeChatId || 'none'}`,
+      );
+
       try {
         const results = await searchMemories(query, excludeChatId);
 
-        console.log(`[MemoryManager] 📋 Search returned ${results.length} results`);
+        console.log(
+          `[MemoryManager] 📋 Search returned ${results.length} results`,
+        );
 
         if (results.length === 0) {
-          console.log(`[MemoryManager] ❌ No relevant memories found, returning empty context`);
+          console.log(
+            '[MemoryManager] ❌ No relevant memories found, returning empty context',
+          );
           return '';
         }
 
         // Take top results up to maxContextMemories
         const topResults = results.slice(0, maxContextMemories);
-        console.log(`[MemoryManager] 🔝 Taking top ${topResults.length} results (max: ${maxContextMemories})`);
+        console.log(
+          `[MemoryManager] 🔝 Taking top ${topResults.length} results (max: ${maxContextMemories})`,
+        );
 
-        const formattedContext = memoryService.formatMemoriesForContext(topResults);
-        console.log(`[MemoryManager] 📝 Formatted context length: ${formattedContext.length} characters`);
-        console.log(`[MemoryManager] 📄 Formatted context preview:`, formattedContext.substring(0, 200) + '...');
+        const formattedContext =
+          memoryService.formatMemoriesForContext(topResults);
+        console.log(
+          `[MemoryManager] 📝 Formatted context length: ${formattedContext.length} characters`,
+        );
+        console.log(
+          '[MemoryManager] 📄 Formatted context preview:',
+          formattedContext.substring(0, 200) + '...',
+        );
 
         return formattedContext;
       } catch (err) {
-        console.error(`[MemoryManager] ❌ Error getting relevant context:`, err);
+        console.error(
+          '[MemoryManager] ❌ Error getting relevant context:',
+          err,
+        );
         return '';
       }
     },
@@ -166,6 +211,7 @@ export function useMemoryManager(
       try {
         await memoryStorage.storeMemories(memories);
       } catch (err) {
+        console.error('Failed to store memories:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to store memories',
         );
@@ -187,6 +233,7 @@ export function useMemoryManager(
       try {
         return await memoryStorage.getMemoriesByChat(chatId);
       } catch (err) {
+        console.error('Failed to get memories by chat:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to get memories by chat',
         );
@@ -208,6 +255,7 @@ export function useMemoryManager(
       try {
         await memoryStorage.deleteMemory(memoryId);
       } catch (err) {
+        console.error('Failed to delete memory:', err);
         setError(
           err instanceof Error ? err.message : 'Failed to delete memory',
         );
@@ -229,6 +277,7 @@ export function useMemoryManager(
       try {
         await memoryStorage.deleteMemoriesByChat(chatId);
       } catch (err) {
+        console.error('Failed to delete memories by chat:', err);
         setError(
           err instanceof Error
             ? err.message
@@ -248,10 +297,11 @@ export function useMemoryManager(
       throw new Error('Memory storage not initialized');
     }
 
-      try {
-        await memoryStorage.clearAllMemories();
-      } catch (err) {
-        setError(
+    try {
+      await memoryStorage.clearAllMemories();
+    } catch (err) {
+      console.error('Failed to clear all memories:', err);
+      setError(
         err instanceof Error ? err.message : 'Failed to clear all memories',
       );
       throw err;
@@ -269,6 +319,7 @@ export function useMemoryManager(
     try {
       return await memoryStorage.getMemoryStats();
     } catch (err) {
+      console.error('Failed to get memory stats:', err);
       setError(
         err instanceof Error ? err.message : 'Failed to get memory stats',
       );

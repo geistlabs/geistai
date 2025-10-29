@@ -1,6 +1,8 @@
 export interface Environment {
   API_URL: string;
   NODE_ENV: 'development' | 'production' | 'test';
+  REVENUECAT_API_KEY: string;
+  BYPASS_PREMIUM: boolean;
 }
 
 const getEnvironment = (): Environment => {
@@ -22,6 +24,10 @@ const getEnvironment = (): Environment => {
   return {
     API_URL: apiUrl,
     NODE_ENV: isProduction ? 'production' : 'development',
+    REVENUECAT_API_KEY: isProduction
+      ? process.env.EXPO_PUBLIC_REVENUECAT_PRODUCTION_API_KEY!
+      : process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY!,
+    BYPASS_PREMIUM: !isProduction, // Always bypass in development
   };
 };
 

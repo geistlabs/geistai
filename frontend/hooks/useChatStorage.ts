@@ -10,17 +10,17 @@ import {
   getChatTitle,
 } from '../lib/chatStorage';
 
-// Legacy Message type for backward compatibility with existing useChat hook
-export interface LegacyMessage {
-  id: string;
-  text: string;
-  role: 'user' | 'assistant';
-  timestamp: number;
+// Modern ChatMessage type matching the new format
+export interface ChatMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp?: number;
 }
 
 export const useChatStorage = (chatId?: number) => {
   const [currentChat, setCurrentChat] = useState<ChatWithMessages | null>(null);
-  const [messages, setMessages] = useState<LegacyMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +55,14 @@ export const useChatStorage = (chatId?: number) => {
         };
 
         setCurrentChat(chatWithComputedTitle);
-        // Convert SQLite messages to legacy format for compatibility
-        const legacyMessages: LegacyMessage[] = chat.messages.map(msg => ({
+        // Convert SQLite messages to modern ChatMessage format
+        const chatMessages: ChatMessage[] = chat.messages.map(msg => ({
           id: msg.id.toString(),
-          text: msg.content,
+          content: msg.content,
           role: msg.role,
           timestamp: msg.created_at,
         }));
-        setMessages(legacyMessages);
+        setMessages(chatMessages);
       } else {
         setError('Chat not found');
       }
@@ -85,7 +85,7 @@ export const useChatStorage = (chatId?: number) => {
   };
 
   const addMessage = async (
-    message: LegacyMessage,
+    message: ChatMessage,
     targetChatId?: number,
   ): Promise<void> => {
     const effectiveChatId = targetChatId || chatId;
@@ -94,8 +94,9 @@ export const useChatStorage = (chatId?: number) => {
     }
 
     try {
-      // Add message to SQLite
-      await addMessageToChat(effectiveChatId, message.role, message.text);
+      // Add message to SQLite (convert system role to assistant for database compatibility)
+      const dbRole = message.role === 'system' ? 'assistant' : message.role;
+      await addMessageToChat(effectiveChatId, dbRole, message.content);
 
       // Update local state only if this is for the current chat (don't reload during streaming to avoid conflicts)
       if (effectiveChatId === chatId) {
@@ -119,13 +120,13 @@ export const useChatStorage = (chatId?: number) => {
 
     const formattedHistory = messages.map(msg => ({
       role: msg.role,
-      content: msg.text,
-      timestamp: new Date(msg.timestamp).toISOString(),
+      content: msg.content,
+      timestamp: new Date(msg.timestamp || Date.now()).toISOString(),
     }));
 
     const openAIFormat = messages.map(msg => ({
       role: msg.role,
-      content: msg.text,
+      content: msg.content,
     }));
 
     // Store in global for developer tools access

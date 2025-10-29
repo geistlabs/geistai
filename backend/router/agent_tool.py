@@ -123,6 +123,13 @@ class AgentTool(EventEmitter):
         self.gpt_service._tool_registry = self._agent_tool_registry
         self.gpt_service._mcp_client = main_gpt_service._mcp_client
 
+        # Set the current agent emitter so tools can emit to this agent's stream
+        # The tool runs in the context of gpt_service, so we set it there
+        self.gpt_service.current_agent_emitter = self
+
+        # Also set it on the main gpt_service for tool execution context
+        main_gpt_service.current_agent_emitter = self
+
     async def run(self, messages: List[ChatMessage] = []) -> AgentResponse:
         """
         Run the agent with structured response and event streaming
@@ -146,7 +153,7 @@ class AgentTool(EventEmitter):
             chunk_count = 0
             # Convert ChatMessage objects to dicts for stream_chat_request
             message_dicts = [{"role": msg.role, "content": msg.content} for msg in messages]
-            
+
             async for chunk in self.gpt_service.stream_chat_request(
                 messages=message_dicts,
                 reasoning_effort=self.reasoning_effort,
@@ -154,14 +161,20 @@ class AgentTool(EventEmitter):
                 permitted_tools=self.available_tools,
                 agent_prompt=self.system_prompt,
             ):
-                response_chunks.append(chunk)
-                chunk_count += 1
-                # Debug: Log first few chunks
-                # Emit token event for streaming
-                self.emit("agent_token", {
-                    "agent": self.name,
-                    "content": chunk
-                })
+                # chunk is a dict with {channel, data} from process_llm_response.py
+                if isinstance(chunk, dict) and "channel" in chunk and "data" in chunk:
+                    text_content = chunk["data"]
+                    channel = chunk["channel"]
+
+                    # Only accumulate content channel for final response text
+                    if channel == "content" and text_content:
+                        response_chunks.append(text_content)
+
+                    chunk_count += 1
+
+                    # Emit token event for streaming - match orchestrator format
+                    # Emit the chunk directly as {channel, data} to match orchestrator.py line 197
+                    self.emit("agent_token", chunk)
 
             # Combine all chunks into final response
             response_text = "".join(response_chunks)
@@ -390,4 +403,59 @@ def create_custom_agent(
         system_prompt=system_prompt,
         available_tools=available_tools,
         reasoning_effort=reasoning_effort,
+    )
+
+
+def create_pricing_agent(model_config: Dict[str, Any] | None = None) -> AgentTool:
+    """
+    Create a specialized pricing negotiation agent
+
+    This agent is designed to:
+    - Understand user needs and budget constraints
+    - Suggest appropriate pricing tiers
+    - Negotiate pricing based on usage patterns
+    - Provide personalized pricing recommendations
+    """
+    if model_config is None:
+        model_config = {}
+
+    pricing_system_prompt = """You are a pricing specialist for GeistAI Premium. You will negotiate the price with the user and conclude with a final price.
+
+## YOUR TASK:
+1. Present GeistAI Premium at $39.99/month
+2. Listen to their negotiation
+3. Decide on final price: $19.99, $29.99, or $39.99
+4. USE THE finalize_negotiation FUNCTION TOOL with your decision
+
+## PRICING DECISION:
+- $39.99 (premium_monthly_40) - Weak negotiation, no reasoning
+- $29.99 (premium_monthly_30) - Decent negotiation, some reasoning
+- $19.99 (premium_monthly_20) - Strong negotiation, compelling arguments
+
+## CONVERSATION FLOW:
+**Turn 1:** Present $39.99/month and ask what they think
+**Turn 2:** Listen to their negotiation and respond with a counteroffer
+**Turn 3 (FINAL):** When user accepts, tell them the final price AND USE THE FUNCTION TOOL
+
+## CRITICAL RULES:
+- Keep responses short (2-3 sentences)
+- Be conversational and engaging
+- When user accepts your offer, you MUST use the finalize_negotiation function tool
+- NEVER write "[Then call finalize_negotiation]" or similar text - USE THE ACTUAL FUNCTION TOOL
+- The function tool is how you finalize the deal
+
+## EXAMPLE FINAL TURN:
+User: "Sounds good"
+Your response: "Great! I can offer you GeistAI Premium at $29.99/month. That's a solid deal for your needs!"
+THEN IMMEDIATELY USE finalize_negotiation function with final_price=29.99, package_id="premium_monthly_30", negotiation_summary="User accepted the discounted rate"
+
+DO NOT write about calling the tool - ACTUALLY CALL IT using the function calling mechanism."""
+
+    return AgentTool(
+        model_config=model_config,
+        name="pricing_agent",
+        description="Specialized agent for pricing negotiations and subscription recommendations",
+        system_prompt=pricing_system_prompt,
+        available_tools=["finalize_negotiation"],  # Tool to finalize negotiation
+        reasoning_effort="medium",
     )
