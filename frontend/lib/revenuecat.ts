@@ -3,11 +3,14 @@
  * Real RevenueCat SDK implementation with mock fallback
  */
 
+import { Platform } from 'react-native';
 import type {
   CustomerInfo,
   PurchasesOfferings,
   PurchasesPackage,
 } from 'react-native-purchases';
+
+import { ENV } from './config/environment';
 
 // Lazy import to avoid NativeEventEmitter initialization issues
 let Purchases: any = null;
@@ -183,6 +186,9 @@ const createMockOfferings = () => ({
   },
 });
 
+// Mock state to persist premium status
+let mockIsPremium = false;
+
 const getPurchases = () => {
   if (!Purchases) {
     // Check if we're in a web environment or Expo Go where native modules don't work
@@ -199,7 +205,7 @@ const getPurchases = () => {
         },
         getCustomerInfo: () => {
           console.log('📝 [Mock] RevenueCat getCustomerInfo called');
-          return Promise.resolve(createMockCustomerInfo(false));
+          return Promise.resolve(createMockCustomerInfo(mockIsPremium));
         },
         getOfferings: () => {
           console.log('📝 [Mock] RevenueCat getOfferings called');
@@ -210,6 +216,8 @@ const getPurchases = () => {
             '📝 [Mock] RevenueCat purchasePackage called with:',
             packageToPurchase?.identifier,
           );
+          // Update mock state to premium
+          mockIsPremium = true;
           return Promise.resolve({
             customerInfo: createMockCustomerInfo(true),
             userCancelled: false,
@@ -217,7 +225,7 @@ const getPurchases = () => {
         },
         restorePurchases: () => {
           console.log('📝 [Mock] RevenueCat restorePurchases called');
-          return Promise.resolve(createMockCustomerInfo(false));
+          return Promise.resolve(createMockCustomerInfo(mockIsPremium));
         },
         logIn: () => {
           console.log('📝 [Mock] RevenueCat logIn called');
@@ -225,6 +233,8 @@ const getPurchases = () => {
         },
         logOut: () => {
           console.log('📝 [Mock] RevenueCat logOut called');
+          // Reset premium status on logout
+          mockIsPremium = false;
           return Promise.resolve();
         },
       };
@@ -289,30 +299,37 @@ const getLOG_LEVEL = () => {
 class RevenueCatService {
   private isInitialized = false;
   private developmentOverride: boolean | null = null; // For testing: null = use real data, true/false = override
+  private isMockMode = true; // Default to mock mode
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
-      // Get lazy-loaded Purchases and LOG_LEVEL
-      const Purchases = getPurchases();
-      const LOG_LEVEL = getLOG_LEVEL();
+      // Check if we're in a native environment (Xcode, physical device)
+      if (Platform.OS === 'ios' || Platform.OS === 'android') {
+        // Try to use real RevenueCat SDK
+        const Purchases = getPurchases();
+        const LOG_LEVEL = getLOG_LEVEL();
 
-      // Configure RevenueCat
-      Purchases.setLogLevel(LOG_LEVEL.INFO);
-
-      // Initialize with your RevenueCat API keys
-      const apiKey = __DEV__
-        ? 'test_KWoKSNKRwCVgtwxTRwDXTOFVNLb' // Sandbox key for development
-        : 'appl_your_production_api_key_here'; // Production key for release
-
-      await Purchases.configure({ apiKey });
+        Purchases.setLogLevel(LOG_LEVEL.INFO);
+        await Purchases.configure({ apiKey: ENV.REVENUECAT_API_KEY });
+        this.isMockMode = false;
+        console.log('✅ [RevenueCat] Real SDK initialized with API key');
+      } else {
+        // Fallback to mock for web/Expo Go
+        this.isMockMode = true;
+        console.log('⚠️ [RevenueCat] Using mock implementation (web/Expo Go)');
+      }
 
       this.isInitialized = true;
-      console.log('✅ [RevenueCat] Initialized successfully');
     } catch (error) {
-      console.error('❌ [RevenueCat] Initialization failed:', error);
-      throw error;
+      // Fallback to mock if native module fails
+      this.isMockMode = true;
+      console.warn(
+        '⚠️ [RevenueCat] Native module failed, using mock implementation',
+        error,
+      );
+      this.isInitialized = true; // Mark as initialized to prevent retries
     }
   }
 
@@ -336,7 +353,22 @@ class RevenueCatService {
       return this.developmentOverride;
     }
 
+    // Use environment-based premium bypass logic
+    if (ENV.BYPASS_PREMIUM) {
+      console.log('🔧 [RevenueCat] Development: Bypassing premium check');
+      return false; // Always show negotiation in development
+    }
+
+    // Production: Real premium checks
     try {
+      if (this.isMockMode) {
+        // Use mock implementation
+        return (
+          this.getMockCustomerInfo().entitlements.active['premium'] !==
+          undefined
+        );
+      }
+
       const Purchases = getPurchases();
       const customerInfo = await Purchases.getCustomerInfo();
       const isPremium =
@@ -355,6 +387,11 @@ class RevenueCatService {
 
   async getOfferings(): Promise<PurchasesOfferings> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat getOfferings called');
+        return this.getMockOfferings();
+      }
+
       const Purchases = getPurchases();
       const offerings = await Purchases.getOfferings();
       return offerings;
@@ -369,6 +406,15 @@ class RevenueCatService {
     userCancelled: boolean;
   }> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat purchasePackage called');
+        // Simulate successful purchase
+        return {
+          customerInfo: this.getMockCustomerInfo(true), // Premium customer
+          userCancelled: false,
+        };
+      }
+
       const Purchases = getPurchases();
       const result = await Purchases.purchasePackage(packageToPurchase);
       return result;
@@ -380,6 +426,11 @@ class RevenueCatService {
 
   async restorePurchases(): Promise<CustomerInfo> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat restorePurchases called');
+        return this.getMockCustomerInfo();
+      }
+
       const Purchases = getPurchases();
       const customerInfo = await Purchases.restorePurchases();
       return customerInfo;
@@ -391,6 +442,11 @@ class RevenueCatService {
 
   async getCustomerInfo(): Promise<CustomerInfo> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat getCustomerInfo called');
+        return this.getMockCustomerInfo();
+      }
+
       const Purchases = getPurchases();
       const customerInfo = await Purchases.getCustomerInfo();
       return customerInfo;
@@ -402,6 +458,11 @@ class RevenueCatService {
 
   async logIn(userId: string): Promise<void> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat logIn called');
+        return;
+      }
+
       const Purchases = getPurchases();
       await Purchases.logIn(userId);
     } catch (error) {
@@ -412,6 +473,11 @@ class RevenueCatService {
 
   async logOut(): Promise<void> {
     try {
+      if (this.isMockMode) {
+        console.log('📝 [Mock] RevenueCat logOut called');
+        return;
+      }
+
       const Purchases = getPurchases();
       await Purchases.logOut();
     } catch (error) {
@@ -423,6 +489,10 @@ class RevenueCatService {
   // Development helpers for testing
   setDevelopmentOverride(isPremium: boolean | null): void {
     this.developmentOverride = isPremium;
+    // Also update mock state for consistency
+    if (isPremium !== null) {
+      mockIsPremium = isPremium;
+    }
     console.log(`🔧 [RevenueCat] Development override set to: ${isPremium}`);
   }
 
@@ -434,7 +504,15 @@ class RevenueCatService {
   async cancelSubscription(): Promise<boolean> {
     try {
       console.log('📝 [RevenueCat] Cancel subscription called');
-      // In mock mode, just return true to simulate successful cancellation
+
+      if (this.isMockMode) {
+        // In mock mode, reset premium status and return true
+        mockIsPremium = false;
+        return true;
+      }
+
+      // In real mode, this would typically call RevenueCat's API
+      // For now, just return true as a placeholder
       return true;
     } catch (error) {
       console.error('❌ [RevenueCat] Failed to cancel subscription:', error);
@@ -445,6 +523,15 @@ class RevenueCatService {
   clearDevelopmentOverride(): void {
     this.developmentOverride = null;
     console.log('🔧 [RevenueCat] Development override cleared');
+  }
+
+  // Mock helper methods
+  private getMockCustomerInfo(isPremium: boolean = false): CustomerInfo {
+    return createMockCustomerInfo(isPremium) as CustomerInfo;
+  }
+
+  private getMockOfferings(): PurchasesOfferings {
+    return createMockOfferings() as PurchasesOfferings;
   }
 }
 
