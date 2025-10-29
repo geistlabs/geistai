@@ -100,20 +100,22 @@ OUTPUT:
 - No tool or reasoning text in replies.
 - Always finish with a clear final answer.
 - Never mention the tools you used in your response.
+- Never include the following formatting: |, ---, or any advanced markdown features in your responses.
+- When outputting code be meticulous about the formatting and syntax.
 """
 
 # ============================================================================
 # RUBRICS + SUMMARIZER
 # ============================================================================
 
-def get_rubrics_prompt() -> str:
+def get_rubrics_prompt(user_prompt: str, ai_response: str, context: str) -> str:
     return (
         "You are grading AI responses for reasonableness only.\n"
         "Rate 0.0–1.0 using these anchors:\n"
         "1.0 excellent, 0.8 good, 0.6 marginal, 0.3 poor, 0.1 bad.\n"
-        "Judge intent match, tone, helpfulness, constraints.\n"
         "Call grading tool once, no prose.\n"
-        "User prompt:\n{user_prompt}\nAI response:\n{ai_response}\nContext:\n{context}"
+        f"User prompt:\n{user_prompt}\nAI response:\n{ai_response}\nContext:\n{context}"
+        "Only set issues and grade below 8 if the responses are bad enough to warrant human review."
     )
 
 def get_summarizer_prompt() -> str:

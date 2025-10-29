@@ -6,13 +6,13 @@ Includes reasonableness rating of responses.
 
 import datetime
 import time
+import config
 import httpx
 import asyncio
 import json
 import sys
 from reasonableness_service import reasonableness_service
-from initial_test_cases import  long_conversations
-
+from initial_test_cases import long_conversations
 
 async def evaluate_response(user_question: str, ai_response: str, turn_number: int, elapsed_time: float, time_to_first_token: float, tool_call_count: int) -> dict:
     """
@@ -26,7 +26,6 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
     Returns:
         dict: Evaluation results with ratings and analysis
     """
-    # Get reasonableness rating
     try:
         rating_result = await reasonableness_service.rate_response(
             user_prompt=user_question,
@@ -37,19 +36,15 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
         issues = rating_result.get('issues', [])
     except Exception as e:
         print(f"⚠️  Reasonableness rating unavailable: {e}")
-        reasonableness_rating = 0.7  # Default rating
+        reasonableness_rating = 0.7
         issues = []
-
-    # Additional quality checks
     if len(ai_response) < 50:
         issues.append("Response too short")
     elif len(ai_response) > 1000:
         issues.append("Response too long")
-
     if not ai_response.strip():
         issues.append("Empty response")
         reasonableness_rating = 0.0
-
     return {
         'reasonableness_rating': reasonableness_rating,
         'issues': issues,
@@ -57,17 +52,13 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
         'elapsed_time': elapsed_time,
         'time_to_first_token': time_to_first_token,
         'tool_call_count': tool_call_count
-
     }
 
 async def test_parallel_conversation(long_conversations):
-    concurrency  = 1
+    concurrency = 5
     test_start_time_all = int(time.time())
-    """Run multiple conversations with a max of 3 in parallel"""
     print(f"🔄 Running {len(long_conversations)} conversations with concurrency={concurrency}...")
-
     semaphore = asyncio.Semaphore(concurrency)
-
     async def run_with_limit(idx: int, conversation):
         async with semaphore:
             try:
@@ -76,45 +67,30 @@ async def test_parallel_conversation(long_conversations):
                 return result
             except Exception as e:
                 print(f"❌ Conversation {idx+1} failed: {e}")
-                return e
-
+                return {'error': str(e)}
     tasks = [asyncio.create_task(run_with_limit(i, conv)) for i, conv in enumerate(long_conversations)]
-
     try:
         results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        successful = sum(1 for r in results if not isinstance(r, Exception))
+        successful = sum(1 for r in results if not isinstance(r, Exception) and not r.get('error'))
         failed = len(results) - successful
-
         print(f"\n📊 Results: {successful} successful, {failed} failed")
-
+        return results
     except Exception as e:
         print(f"❌ Error in parallel execution: {e}")
         raise
 
-
 async def test_conversation(conversation_turns, test_start_time_all):
     """Test a multi-turn conversation with evaluation and adaptive questioning"""
     url = f"http://localhost:8000/api/stream"
-    
     if not conversation_turns:
         print("⚠️ No conversation turns provided")
         return None
-    
-    # Define conversation turns with next questions
-   
-    
     conversation_history = []
     total_rating = 0
     response_count = 0
     evaluation_results = []
-    
-
     for turn, turn_data in enumerate(conversation_turns, 1):
         user_message = turn_data
-    
-        
-        # Build payload with conversation history
         payload = {
             "message": user_message,
             "messages": conversation_history
@@ -129,49 +105,39 @@ async def test_conversation(conversation_turns, test_start_time_all):
                     headers={"Accept": "text/event-stream"},
                     timeout=30.0
                 ) as response:
-                    
                     if response.status_code != 200:
                         print(f"❌ Error: {response.status_code}")
                         continue
-          
                     full_response = ""
                     chunk_count = 0
                     start_time = time.time()
                     time_to_first_token = 0
                     tool_call_count = 0
-                    
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
-                            data_str = line[6:]  # Remove "data: " prefix
-                            
-                            
+                            data_str = line[6:]
                             try:
                                 data = json.loads(data_str)
                                 if data.get("type") == "tool_call_event":
                                     tool_call_count += 1
                                     print(f"Tool call count: {tool_call_count}")
-                                # Handle different event types from the new streaming endpoint
                                 if data.get("type") == "orchestrator_token":
                                     is_correct_channel = data.get("data", {}).get("channel", "") == "content"
                                     if is_correct_channel:
                                         token = data.get("data", {}).get("data", "")
-                                        if token:                                            
+                                        if token:
                                             full_response += token
                                             chunk_count += 1
-                                            
                                             if time_to_first_token == 0:
                                                 time_to_first_token = time.time() - start_time
                                                 print(f"Time to first token: {time_to_first_token} seconds")
-                                
                                 elif data.get("type") == "sub_agent_event":
-                                    # Log sub-agent activity for debugging
                                     sub_agent_data = data.get("data", {})
                                     if sub_agent_data.get("type") == "agent_start":
                                         print(f"   🤖 Agent {sub_agent_data.get('data', {}).get('agent', 'unknown')} started")
                                     elif sub_agent_data.get("type") == "agent_complete":
                                         print(f"   ✅ Agent {sub_agent_data.get('data', {}).get('agent', 'unknown')} completed")
                                 elif data.get("type") == "final_response":
-                                    # Final response contains the complete text
                                     final_text = data.get("text", "")
                                     if final_text and not full_response:
                                         full_response = final_text
@@ -181,15 +147,12 @@ async def test_conversation(conversation_turns, test_start_time_all):
                                     break
                                 elif "finished" in data:
                                     break
-                                    
-                            except json.JSONDecodeError as e:
+                            except json.JSONDecodeError:
                                 continue
                     # Add to conversation history
                     conversation_history.append({"role": "user", "content": user_message})
-               
                     conversation_history.append({"role": "assistant", "content": full_response})
                     elapsed_time = time.time() - start_time
-                    # Evaluate the response
                     evaluation = await evaluate_response(
                         user_question=user_message,
                         ai_response=full_response,
@@ -198,21 +161,11 @@ async def test_conversation(conversation_turns, test_start_time_all):
                         time_to_first_token=time_to_first_token,
                         tool_call_count=tool_call_count
                     )
-
-                    
                     evaluation_results.append(evaluation)
                     total_rating += evaluation['reasonableness_rating']
                     response_count += 1
-                    
-                    # Display evaluation results
-                    
                     if evaluation['issues']:
                         print(f"   ⚠️  Issues: {', '.join(evaluation['issues'])}")
-
-                    
-
-                    
-
         except httpx.TimeoutException as e:
             print(f"❌ Turn {turn} failed: {e}")
             continue
@@ -222,7 +175,6 @@ async def test_conversation(conversation_turns, test_start_time_all):
         except Exception as e:
             print(f"❌ Turn {turn} failed: {e}")
             continue
-    # Conversation summary
     print("\n" + "=" * 80)
     print("📊 CONVERSATION SUMMARY")
     print("=" * 80)
@@ -231,75 +183,54 @@ async def test_conversation(conversation_turns, test_start_time_all):
     print(f"📈 Average reasonableness rating: {(total_rating/response_count):.2f}/1.0" if response_count > 0 else "📈 Average rating: N/A")
     print(f"💬 Conversation history length: {len(conversation_history)} messages")
     avg_reasonableness = 0
-    # Detailed analysis
     if evaluation_results:
         avg_reasonableness = sum(e['reasonableness_rating'] for e in evaluation_results) / len(evaluation_results)
         total_issues = sum(len(e['issues']) for e in evaluation_results)
-        
         print(f"\n🔍 DETAILED ANALYSIS:")
         print(f"   🎯 Average reasonableness: {avg_reasonableness:.2f}/1.0")
         print(f"   ⚠️  Total issues found: {total_issues}")
         print(f"   📏 Average response length: {sum(e['response_length'] for e in evaluation_results) / len(evaluation_results):.0f} characters")
-        
-        # Turn-by-turn breakdown
         print(f"\n📋 TURN-BY-TURN BREAKDOWN:")
         for i, eval_result in enumerate(evaluation_results, 1):
             status = "✅" if eval_result['reasonableness_rating'] > 0.7 else "⚠️" if eval_result['reasonableness_rating'] > 0.5 else "❌"
             print(f"   Turn {i}: {status} {eval_result['reasonableness_rating']:.2f} (Quality: {eval_result['reasonableness_rating']:.2f})")
-    
-    # Analyze conversation flow
     if len(conversation_history) >= 4:
         print(f"\n🔍 CONVERSATION FLOW ANALYSIS:")
         print(f"   - Context maintained: {'✅ Yes' if len(conversation_history) == len(conversation_turns) * 2 else '❌ No'}")
         print(f"   - Response quality: {'✅ Good' if (total_rating/response_count) > 0.7 else '⚠️  Needs improvement'}")
         print(f"   - Conversation flow: {'✅ Natural' if response_count == len(conversation_turns) else '❌ Interrupted'}")
-    
     print("\n✨ Multi-turn conversation test completed!")
-
-
     # INSERT_YOUR_CODE
     # Save the conversation and evaluation results to the database using SQLAlchemy models
-
-    # Import here to avoid circular import issues
     import sys
     import os
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     from database import get_db_session, Conversation, ConversationResponse, ConversationResponseEvaluation, Issue
-
-    # Open a new database session
     with get_db_session() as db:
-        # Store the conversation as a Conversation row
         conversation_obj = Conversation(
             conversation_json=conversation_history
         )
-        
         db.add(conversation_obj)
-        db.flush()  # To get conversation_obj.id
-
-        # Store each response and its evaluation
+        db.flush()
         for i, eval_result in enumerate(evaluation_results):
-            # The response text is the AI's message at each turn (even indices in conversation_history, starting after user)
             response_message = conversation_history[i * 2 + 1] if (i * 2 + 1) < len(conversation_history) else {}
             response_text = response_message.get('content', '') if isinstance(response_message, dict) else str(response_message)
             response_obj = ConversationResponse(
                 conversation_id=conversation_obj.internal_id,
                 response=response_text,
                 evaluation=eval_result.get('reasonableness_rating', 0),
-                rationality=eval_result.get('reasonableness_rating', 0),  # Using same value for now
-                coherency=eval_result.get('reasonableness_rating', 0),    # Using same value for now
+                rationality=eval_result.get('reasonableness_rating', 0),
+                coherency=eval_result.get('reasonableness_rating', 0),
                 elapsed_time=eval_result.get('elapsed_time', 0),
                 first_token_time=eval_result.get('time_to_first_token', 0),
                 num_tool_calls=eval_result.get('tool_call_count', 0),
                 test_run_time=datetime.datetime.fromtimestamp(test_start_time_all),
-                
             )
             db.add(response_obj)
-            db.flush()  # To get response_obj.id
-
-            # Store evaluation details
+            db.flush()
             evaluation_obj = ConversationResponseEvaluation(
                 conversation_response_id=response_obj.id,
-                conversation_json=eval_result,  # Store the full evaluation result as JSON
+                conversation_json=eval_result,
                 elapsed=eval_result.get('elapsed_time', 0),
                 rationality=eval_result.get('reasonableness_rating', 0),
                 coherency=eval_result.get('reasonableness_rating', 0)
@@ -311,7 +242,6 @@ async def test_conversation(conversation_turns, test_start_time_all):
             )
             db.add(issuesObj)
             db.add(evaluation_obj)
-
         db.commit()
     return {
         'conversation_history': conversation_history,
@@ -324,14 +254,96 @@ async def test_conversation(conversation_turns, test_start_time_all):
         }
     }
 
+async def get_improvement_advice(all_issues: list, all_results: list):
+    """
+    Analyze all issues from test runs and get LLM advice for improvement
+
+    Args:
+        all_issues: List of all issues found across conversations
+        all_results: List of all conversation results with evaluation data
+    """
+    if not all_issues:
+        print("\n✅ No issues found - all responses were of good quality!")
+        return
+    issue_counts = {}
+    for issue in all_issues:
+        issue_counts[issue] = issue_counts.get(issue, 0) + 1
+    total_responses = sum(len(r.get('evaluation_results', [])) for r in all_results if isinstance(r, dict) and not r.get('error'))
+    avg_rating = (
+        sum(
+            r.get('summary', {}).get('average_reasonableness', 0)
+            for r in all_results if isinstance(r, dict) and not r.get('error')
+        ) / len([r for r in all_results if isinstance(r, dict) and not r.get('error')])
+        if all_results else 0
+    )
+    issues_summary = "\n".join([f"- {issue}: {count} occurrences" for issue, count in sorted(issue_counts.items(), key=lambda x: x[1], reverse=True)])
+    prompt = f"""You are an AI system performance analyst. I've run {len(all_results)} conversation tests with {total_responses} total responses.
+
+Overall Performance:
+- Average reasonableness rating: {avg_rating:.2f}/1.0
+- Total issues found: {len(all_issues)}
+- Unique issue types: {len(issue_counts)}
+
+Issues Summary:
+{issues_summary}
+
+Based on these issues, provide specific, actionable advice on how to improve the AI's rationality, coherence, and response quality. Focus on:
+1. The most critical issues that need addressing
+2. Specific improvements to system prompts or behavior
+3. Potential configuration changes
+4. Any patterns you notice in the failures
+
+Keep your advice concise and practical."""
+    print("\n" + "=" * 80)
+    print("🤔 REQUESTING IMPROVEMENT ADVICE FROM LLM")
+    print("=" * 80)
+    try:
+        import httpx
+        from config import RATING_INFERENCE_URL, RATING_INFERENCE_KEY
+        # Gemini API: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro:generateContent
+        gemini_api_key = config.RATING_INFERENCE_KEY
+        gemini_base_url = config.RATING_INFERENCE_URL
+        gemini_model = config.RATING_INFERENCE_MODEL
+        api_url = f"{gemini_base_url}/models/{gemini_model}:generateContent?key={gemini_api_key}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        # Gemini expects a "contents" list instead of OpenAI-style "messages"
+        contents = [
+            {"role": "user", "parts": [{"text": prompt}]}
+        ]
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.7
+            }
+            # Model is in the endpoint URL for Gemini
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                api_url,
+                headers=headers,
+                json=payload,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                advice = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "No advice available")
+                print("\n💡 IMPROVEMENT RECOMMENDATIONS:")
+                print("=" * 80)
+                print(advice)
+                print("=" * 80)
+            else:
+                print(f"\n⚠️  Could not get improvement advice: API returned {resp.status_code}\nResponse: {resp.text}")
+    except Exception as e:
+        print(f"\n⚠️  Could not get improvement advice: {e}")
 
 async def main():
     """Main function to run the conversation tests"""
     try:
         test_start_time_all = int(time.time())
-        # Check command line arguments
+        results = []
         if len(sys.argv) > 1:
-            if sys.argv[1] == "--help" or sys.argv[1] == "-h":
+            if sys.argv[1] in ("--help", "-h"):
                 print("Usage: python test_conversation.py [options]")
                 print("Options:")
                 print("  --help, -h     Show this help message")
@@ -340,26 +352,29 @@ async def main():
                 return
             elif sys.argv[1] == "--single":
                 print("🚀 Running single conversation test...")
-                await test_conversation(long_conversations[0], test_start_time_all)
+                result = await test_conversation(long_conversations[0], test_start_time_all)
+                results = [result] if result else []
                 print("✅ Single conversation test completed!")
-                return
             elif sys.argv[1] == "--long":
                 print("🚀 Starting long conversation tests...")
                 print(f"📋 Running {len(long_conversations)} long conversation(s)")
-                # Run long conversations
                 tasks = [asyncio.create_task(test_conversation(conversation, test_start_time_all)) for conversation in long_conversations]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 successful = sum(1 for r in results if not isinstance(r, Exception))
                 failed = len(results) - successful
                 print(f"📊 Results: {successful} successful, {failed} failed")
-                return
-        
-        # Default: run short conversations in parallel
-        print("🚀 Starting conversation tests...")
-        print(f"📋 Running {len(long_conversations)} conversation(s)")
-        await test_parallel_conversation(long_conversations)
-        print("✅ All conversation tests completed!")
-        
+        else:
+            print("🚀 Starting conversation tests...")
+            print(f"📋 Running {len(long_conversations)} conversation(s)")
+            results = await test_parallel_conversation(long_conversations)
+            print("✅ All conversation tests completed!")
+        all_issues = []
+        for result in results:
+            if isinstance(result, dict) and 'evaluation_results' in result:
+                for eval_result in result['evaluation_results']:
+                    all_issues.extend(eval_result.get('issues', []))
+        if all_issues or results:
+            await get_improvement_advice(all_issues, results)
     except Exception as e:
         print(f"❌ Error running tests: {e}")
         import traceback

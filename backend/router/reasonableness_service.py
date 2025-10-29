@@ -1,8 +1,8 @@
 """
 Reasonableness Rating Service
 
-Uses OpenAI's API to rate the reasonableness of AI responses (0-1 scale)
-based on how well they match the user's prompt and context.
+Uses Google's Gemini API with search grounding to rate the reasonableness 
+of AI responses (0-1 scale) based on how well they match the user's prompt and context.
 """
 
 import os
@@ -33,11 +33,21 @@ except Exception as e:
 
 
 class ReasonablenessService:
-    """Service for rating the reasonableness of AI responses."""
+    """Service for rating the reasonableness of AI responses using Gemini with search grounding."""
     
     def __init__(self):
-        self.base_url = config.RATING_INFERENCE_URL
-        self.api_key = config.RATING_INFERENCE_KEY
+        # Always use Gemini API with grounding
+        self.gemini_api_key = config.RATING_INFERENCE_KEY
+        self.gemini_base_url = config.RATING_INFERENCE_URL
+        self.gemini_model = config.RATING_INFERENCE_MODEL
+        self.use_gemini = True
+        self.use_grounding = True  # Always enable Google Search grounding
+        
+        if not self.gemini_api_key:
+            print("❌ No Gemini API key found!")
+        else:
+            print(f"✅ Using Gemini API ({self.gemini_model}) with Google Search grounding enabled")
+            print(f"🔑 API Key: {self.gemini_api_key[:10]}..." if len(self.gemini_api_key) > 10 else "🔑 API Key set")
         
     async def rate_response(
         self, 
@@ -46,7 +56,7 @@ class ReasonablenessService:
         context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Rate the reasonableness of an AI response on a 0-1 scale.
+        Rate the reasonableness of an AI response on a 0-1 scale using Gemini with Google Search grounding.
         
         Args:
             user_prompt: The original user prompt/question
@@ -60,104 +70,189 @@ class ReasonablenessService:
             - confidence: float (0-1, how confident the rating is)
             - issues: list of specific issues found
         """
-        # Construct the evaluation context
+        # Always use Gemini with grounding
+        return await self._rate_with_gemini(user_prompt, ai_response, context)
+    
+    async def _rate_with_gemini(
+        self,
+        user_prompt: str,
+        ai_response: str,
+        context: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Rate using Gemini API with search grounding."""
         evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
-          
+        
         try:
+            # Build Gemini API request with API key as URL parameter (more reliable than header)
+            api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
+            
+            # Construct request body with grounding (no function calling, as they're mutually exclusive)
+            request_body = {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "text": f"""You are an expert evaluator of AI responses. Rate responses on reasonableness, not factual accuracy.
+
+{evaluation_context}
+
+You must respond with ONLY a valid JSON object in this exact format (no markdown, no code blocks, just the raw JSON):
+{{
+  "rating": <number between 0.0 and 1.0>,
+  "reasoning": "<brief explanation>",
+  "confidence": <number between 0.0 and 1.0>,
+  "issues": ["<issue1>", "<issue2>", ...]
+}}
+
+Use Google Search grounding to verify facts if needed. Be thorough and accurate."""
+                            }
+                        ]
+                    }
+                ],
+                "tools": [
+                    {
+                        "google_search": {}
+                    }
+                ]
+            }
+            
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/chat/completions",
+                    api_url,
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
                         "Content-Type": "application/json"
                     },
-                    json={
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are an expert evaluator of AI responses. You must use the provided tool to return your rating as structured JSON. Rate responses on reasonableness, not factual accuracy."
-                            },
-                            {
-                                "role": "user",
-                                "content": evaluation_context
-                            }
-                        ],
-                        "model": "gpt-4o-mini",
-                        "tools": [self._get_rating_tool_definition()],
-                        "tool_choice": "auto",
-                    }
-                    ,
-                    timeout=300.0
+                    json=request_body,
+                    timeout=60.0
                 )
-                if response.status_code != 200:
-                    print(f"Rating API error: {response.status_code} {response.text}")
-                    return {
                 
+                if response.status_code != 200:
+                    print(f"Gemini API error: {response.status_code} {response.text}")
+                    return {
                         "rating": 0.5,
-                        "reasoning": f"Rating API error: {response.status_code}",
+                        "reasoning": f"Gemini API error: {response.status_code}",
                         "confidence": 0.0,
-                        "issues": [f"API request failed: {response.status_code} {response.text}"]
+                        "issues": [f"API request failed: {response.status_code}"]
                     }
                 
                 result = response.json()
-                # Extract the tool call response
-                tool_calls = result["choices"][0]["message"].get("tool_calls", [])
-                if not tool_calls:
+                
+                # Extract text response from Gemini
+                if "candidates" not in result or not result["candidates"]:
                     return {
                         "rating": 0.5,
-                        "reasoning": "No tool call found in response",
+                        "reasoning": "No response from Gemini",
                         "confidence": 0.0,
-                        "issues": ["Missing tool call"]
+                        "issues": ["Empty response"]
                     }
                 
-                # Parse the structured response from the tool call
-                tool_call = tool_calls[0]
-                arguments = json.loads(tool_call["function"]["arguments"])
+                candidate = result["candidates"][0]
+                content = candidate.get("content", {})
+                parts = content.get("parts", [])
                 
-                # Validate and normalize the response
+                # Extract text from parts
+                response_text = ""
+                for part in parts:
+                    if "text" in part:
+                        response_text += part["text"]
+                
+                if not response_text:
+                    return {
+                        "rating": 0.5,
+                        "reasoning": "No text found in Gemini response",
+                        "confidence": 0.0,
+                        "issues": ["Missing text"]
+                    }
+                
+                # Parse JSON from response text
+                # Remove markdown code blocks if present
+                response_text = response_text.strip()
+                if response_text.startswith("```"):
+                    # Extract JSON from code block
+                    lines = response_text.split("\n")
+                    response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+                
+                # Find JSON object in text
+                try:
+                    # Try to find JSON object
+                    start_idx = response_text.find("{")
+                    end_idx = response_text.rfind("}") + 1
+                    if start_idx != -1 and end_idx > start_idx:
+                        json_text = response_text[start_idx:end_idx]
+                        arguments = json.loads(json_text)
+                    else:
+                        raise ValueError("No JSON object found in response")
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Failed to parse Gemini response as JSON: {e}")
+                    print(f"Response text: {response_text[:500]}")
+                    return {
+                        "rating": 0.5,
+                        "reasoning": f"Failed to parse response: {str(e)}",
+                        "confidence": 0.0,
+                        "issues": ["JSON parsing failed"]
+                    }
+                
+                # Validate and return
                 return self._validate_rating_response(arguments)
-
+        
         except httpx.TimeoutException as e:
-            print(f"Rating service timeout: {str(e)}")
+            print(f"Gemini timeout: {str(e)}")
             return {
                 "rating": 0.5,
-                "reasoning": f"Rating service timeout: {str(e)}",
+                "reasoning": f"Gemini timeout: {str(e)}",
                 "confidence": 0.0,
                 "issues": ["Service timeout"]
             }
-        except httpx.HTTPStatusError as e:
-            print(f"Rating service HTTP status error: {str(e)}")
-            return {
-                "rating": 0.5,
-                "reasoning": f"Rating service HTTP status error: {str(e)}",
-                "confidence": 0.0,
-                "issues": ["Service HTTP status error"]
-            }
-        except httpx.RequestError as e:
-            print(f"Rating service request error: {str(e)}")
-            return {
-                "rating": 0.5,
-                "reasoning": f"Rating service request error: {str(e)}",
-                "confidence": 0.0,
-                "issues": [f"Rating service request error: {str(e)}"]
-            }
         except Exception as e:
-            print(f"Rating service error: {str(e)}")
+            print(f"Gemini error: {str(e)}")
             return {
                 "rating": 0.5,
-                "reasoning": f"Rating service error: {str(e)}",
+                "reasoning": f"Gemini error: {str(e)}",
                 "confidence": 0.0,
-                "issues": ["Service unavailable"]
+                "issues": ["Service error"]
             }
+    
+
     
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
         """Build the evaluation context for the rating tool call."""
         
-        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt()
+        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt(user_prompt=user_prompt, ai_response=ai_response, context=context)
 
         return RUBRIC_SYSTEM_PROMPT
+    def _get_gemini_rating_function(self) -> Dict[str, Any]:
+        """Get the Gemini function declaration for rating responses."""
+        return {
+            "name": "rate_response_reasonableness",
+            "description": "Rate the reasonableness of an AI response on a 0-1 scale.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "rating": {
+                        "type": "number",
+                        "description": "Reasonableness rating from 0.0 to 1.0 (one decimal)."
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Brief explanation of the rating."
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence in this rating from 0.0 to 1.0."
+                    },
+                    "issues": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific reasonableness issues found."
+                    }
+                },
+                "required": ["rating", "reasoning", "confidence", "issues"]
+            }
+        }
+    
     def _get_rating_tool_definition(self) -> Dict[str, Any]:
-        """Get the tool definition for rating responses."""
+        """Get the OpenAI-compatible tool definition for rating responses (Perplexity fallback)."""
         return {
     "type": "function",
     "function": {
@@ -181,7 +276,7 @@ class ReasonablenessService:
                 "issues": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Specific issues found (e.g., 'major: link-dump')."
+                    "description": "Specific reasonableness issues found."
                 }
             },
             "required": ["rating", "reasoning", "confidence", "issues"]

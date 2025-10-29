@@ -56,7 +56,7 @@ long_conversations = [
     # Conversation 8: Roleplay -> Continuation
     [
         "Let's roleplay. You are a skeptical starship captain and I am a scientist trying to convince you to investigate a strange anomaly. I'll start: 'Captain, you have to see these energy readings.'",
-        "Captain's Log, Stardate 5027.4. The science officer is insisting we divert course to investigate some trivial energy signature. I've told her the needs of the Federation outweigh the needs of her pet project. 'What is it this time, Ensign?'",
+        "Ensign's Log, Stardate 5027.4. The science officer is insisting we divert course to investigate some trivial energy signature. I've told her the needs of the Federation outweigh the needs of her pet project. 'What is it this time, Captain?'",
         "'But Captain, the anomaly is emitting a repeating pattern. It looks like a prime number sequence. It's not a natural phenomenon.'"
     ],
     # Conversation 9: Itinerary Planning -> Detail Request -> Alternative Options
@@ -308,4 +308,11 @@ long_conversations = [
         "Based on that itinerary, what kind of clothing and gear would you recommend I pack?"
     ]
 ]
-long_conversations = long_conversations
+chicago_conversations = [
+    [
+        "What’s happening in Chicago right now?",
+        "Are the mayor and governor taking any aggressive actions to address the current issues?"
+    ]
+]
+
+long_conversations = chicago_conversations * 10
