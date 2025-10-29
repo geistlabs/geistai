@@ -24,16 +24,17 @@ export function useAppInitialization() {
   } = useQuery({
     queryKey: ['app', 'revenuecat', 'init'],
     queryFn: initializeRevenueCat,
-    retry: 1,
-    retryDelay: 2000,
+    retry: 3, // Retry 3 times like database
+    retryDelay: 1000, // Same as database
     staleTime: Infinity,
     gcTime: Infinity,
-    throwOnError: false,
+    // RevenueCat is critical for paywall functionality
+    throwOnError: true,
   });
 
-  const isAppReady = !isDbLoading && !dbError;
-  const hasCriticalError = !!dbError;
-  const hasNonCriticalError = !!revenueCatError;
+  const isAppReady =
+    !isDbLoading && !isRevenueCatLoading && !dbError && !revenueCatError;
+  const hasCriticalError = !!dbError || !!revenueCatError;
 
   return {
     isAppReady,
@@ -42,7 +43,6 @@ export function useAppInitialization() {
     dbError,
     revenueCatError,
     hasCriticalError,
-    hasNonCriticalError,
     retryDb,
     retryRevenueCat,
   };
