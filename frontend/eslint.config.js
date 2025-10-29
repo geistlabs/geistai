@@ -41,7 +41,7 @@ module.exports = defineConfig([
       'react-native/no-raw-text': 'off',
 
       // General JavaScript/TypeScript rules
-      'no-console': 'warn',
+      'no-console': 'off',
       'no-debugger': 'error',
       'no-var': 'error',
       'prefer-const': 'error',
@@ -73,26 +73,6 @@ module.exports = defineConfig([
           },
         },
       ],
-    },
-  },
-  // Allow console statements in service files, storage files, and debug files
-  {
-    files: [
-      '**/lib/**Service.ts',
-      '**/lib/**Storage.ts',
-      '**/lib/memoryService.ts',
-      '**/lib/memoryStorage.ts',
-      '**/lib/vectorStorage.ts',
-      '**/lib/chatStorage.ts',
-      '**/hooks/useMemoryManager.ts',
-      '**/components/MemoryDebugger.tsx',
-      '**/app/memory-debug.tsx',
-      '**/app/storage.tsx',
-      '**/tests/**/*.ts',
-      '**/tests/**/*.js',
-    ],
-    rules: {
-      'no-console': 'off', // Allow console statements in service and debug files
     },
   },
 ]);
