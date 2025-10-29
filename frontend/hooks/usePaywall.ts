@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useRevenueCat } from './useRevenueCat';
 
@@ -30,28 +30,15 @@ export function usePaywall({
   userId,
 }: UsePaywallOptions = {}): UsePaywallReturn {
   const [isPaywallVisible, setIsPaywallVisible] = useState(false);
-  const [hasShownStartupPaywall, setHasShownStartupPaywall] = useState(false);
 
   const { isSubscribed, isLoading, error, purchase, restore } = useRevenueCat(
     entitlementIdentifier,
     userId,
   );
 
-  // Show paywall on startup if user is not premium
-  useEffect(() => {
-    if (showOnStartup && !isLoading && !hasShownStartupPaywall) {
-      if (isSubscribed === false) {
-        console.log(
-          '🚪 [Paywall] Showing startup paywall - user is not premium',
-        );
-        setIsPaywallVisible(true);
-        setHasShownStartupPaywall(true);
-      } else if (isSubscribed === true) {
-        console.log('✅ [Paywall] User is premium - skipping startup paywall');
-        setHasShownStartupPaywall(true);
-      }
-    }
-  }, [isSubscribed, isLoading, showOnStartup, hasShownStartupPaywall]);
+  // Determine if paywall should be visible
+  const shouldShowPaywall =
+    showOnStartup && !isLoading && isSubscribed === false;
 
   const showPaywall = useCallback(() => {
     console.log('🚪 [Paywall] Manually showing paywall');
@@ -74,7 +61,7 @@ export function usePaywall({
   }, []);
 
   return {
-    isPaywallVisible,
+    isPaywallVisible: isPaywallVisible || shouldShowPaywall,
     showPaywall,
     hidePaywall,
     isPremium: isSubscribed === true,
