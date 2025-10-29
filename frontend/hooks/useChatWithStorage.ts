@@ -11,7 +11,7 @@ import { ApiClient, ApiConfig } from '../lib/api/client';
 import { ENV } from '../lib/config/environment';
 import { memoryService, Memory } from '../lib/memoryService';
 
-import { LegacyMessage, useChatStorage } from './useChatStorage';
+import { useChatStorage } from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
 
 // Enhanced message interface matching backend webapp structure
@@ -236,23 +236,7 @@ export function useChatWithStorage(
       !storage.error &&
       !isStreaming
     ) {
-      const enhancedMsgs = storage.messages
-        .filter(
-          (msg: LegacyMessage) =>
-            msg && typeof msg === 'object' && msg.role && msg.text,
-        )
-        .map((msg: LegacyMessage) => {
-          return {
-            id: msg.id || Date.now().toString(),
-            role: msg.role,
-            content: msg.text,
-            timestamp: new Date(msg.timestamp || Date.now()),
-            isStreaming: false,
-            agentConversations: [],
-            toolCallEvents: [],
-            collectedLinks: [],
-          } as EnhancedMessage;
-        });
+      const enhancedMsgs = storage.messages;
       console.log('enhancedMessages', enhancedMsgs);
       setEnhancedMessages(enhancedMsgs);
     }
@@ -273,12 +257,6 @@ export function useChatWithStorage(
     };
   }, []);
 
-  const convertToLegacyMessage = (message: ChatMessage): LegacyMessage => ({
-    id: message.id || Date.now().toString(),
-    text: message.content || '',
-    role: message.role === 'system' ? 'assistant' : message.role,
-    timestamp: message.timestamp || Date.now(),
-  });
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -293,11 +271,16 @@ export function useChatWithStorage(
       setAgentEvents([]);
       setOrchestratorStatus({ isActive: false });
 
-      const userMessage: ChatMessage = {
+      const userMessage: EnhancedMessage = {
         id: Date.now().toString(),
         role: 'user',
         content,
-        timestamp: Date.now(),
+        timestamp: new Date(),
+        isStreaming: false,
+        agentConversations: [],
+        toolCallEvents: [],
+        collectedLinks: [],
+
       };
 
       // Log input
@@ -329,9 +312,7 @@ export function useChatWithStorage(
       );
       if (currentChatId && storage.addMessage) {
         console.log('saving user message to storage', userMessage);
-        const legacyMessage = convertToLegacyMessage(userMessage);
-        console.log('saving user message to storage', legacyMessage);
-        storage.addMessage(legacyMessage, currentChatId).catch(err => {
+        storage.addMessage(userMessage, currentChatId).catch(err => {
           console.error(
             `[ChatWithStorage] ❌ Failed to save user message:`,
             err,
@@ -346,15 +327,12 @@ export function useChatWithStorage(
         memoryService.extractMemoriesFromQuestion(content);
       // Store assistant message saving function for later sequential execution
       const saveAssistantMessageAsync = async (
-        assistantMessage: ChatMessage,
+        assistantMessage: EnhancedMessage,
       ) => {
         try {
           console.log('saving assistant message to storage', assistantMessage);
           if (currentChatId && storage.addMessage) {
-            await storage.addMessage(
-              convertToLegacyMessage(assistantMessage),
-              currentChatId,
-            );
+            await storage.addMessage(assistantMessage, currentChatId);
           }
         } catch (err) {
           // Failed to save assistant message
@@ -759,15 +737,19 @@ export function useChatWithStorage(
             options.onStreamEnd?.();
 
             // Save final assistant message to storage asynchronously (don't block completion)
-            if (currentChatId && storage.addMessage && accumulatedContent) {
-              const finalAssistantMessage: ChatMessage = {
+            if (currentChatId  && accumulatedContent) {
+              const finalAssistantEnhancedMessage: EnhancedMessage = {
                 id: enhancedAssistantMessageId,
-                role: 'assistant',
                 content: accumulatedContent,
-                timestamp: Date.now(),
+                reasoningContent: accumulatedReasoningContent,
+                agentConversations: [],
+                toolCallEvents: [],
+                collectedLinks: [],
+                role: 'assistant',
+                timestamp: new Date(),
               };
               // Save assistant message sequentially to avoid transaction conflicts
-              saveAssistantMessageAsync(finalAssistantMessage);
+              saveAssistantMessageAsync(finalAssistantEnhancedMessage);
 
               // Memory extraction is now handled in real-time during user input
               // No need for post-conversation extraction since we extract from each question immediately

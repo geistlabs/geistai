@@ -19,6 +19,10 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   created_at: number;
+  reasoning_content: string;
+  agent_conversations: string;
+  tool_call_events: string;
+  collected_links: string;
 }
 
 export interface ChatWithMessages extends Chat {
@@ -34,7 +38,7 @@ let closing: Promise<void> | null = null;
  */
 export const initializeDatabase = async (): Promise<void> => {
   if (db) return;
-  if (opening) return opening; // another open 
+  if (opening) return opening; // another open
   if (closing) await closing; // wait for close to finish
 
   // Open database
@@ -98,6 +102,10 @@ const runMigrations = async (): Promise<void> => {
         role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL,
+        reasoning_content TEXT,
+        agent_conversations TEXT,
+        tool_call_events TEXT,
+        collected_links TEXT,
         FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
       );
     `);
@@ -268,6 +276,10 @@ export const addMessage = async (
   chatId: number,
   role: 'user' | 'assistant',
   content: string,
+  reasoningContent: string,
+  agentConversations: string,
+  toolCallEvents: string,
+  collectedLinks: string,
 ): Promise<number> => {
   const database = getDatabase();
   const now = Date.now();
@@ -275,8 +287,17 @@ export const addMessage = async (
   try {
     // Insert message
     const messageResult = await database.runAsync(
-      'INSERT INTO messages (chat_id, role, content, created_at) VALUES (?, ?, ?, ?)',
-      [chatId, role, content.trim(), now],
+      'INSERT INTO messages (chat_id, role, content, created_at, reasoning_content, agent_conversations, tool_call_events, collected_links) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        chatId,
+        role,
+        content.trim(),
+        now,
+        reasoningContent.trim(),
+        agentConversations.toString(),
+        toolCallEvents.toString(),
+        collectedLinks.toString(),
+      ],
     );
 
     // Update chat's updated_at timestamp
