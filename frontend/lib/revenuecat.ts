@@ -1,6 +1,6 @@
 /**
  * RevenueCat integration for GeistAI
- * Real RevenueCat SDK implementation
+ * Real RevenueCat SDK implementation with mock fallback
  */
 
 import type {
@@ -13,53 +13,183 @@ import type {
 let Purchases: any = null;
 let LOG_LEVEL_CONSTANTS: any = null;
 
+// Mock data for development/testing
+const createMockCustomerInfo = (isPremium = false) => ({
+  originalAppUserId: 'anonymous',
+  entitlements: {
+    active: isPremium
+      ? {
+          premium: {
+            isActive: true,
+            willRenew: true,
+            periodType: 'NORMAL',
+            latestPurchaseDate: new Date().toISOString(),
+            originalPurchaseDate: new Date().toISOString(),
+            expirationDate: new Date(
+              Date.now() + 30 * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+            store: 'APP_STORE',
+            productIdentifier: 'premium_monthly_40',
+            isSandbox: true,
+          },
+        }
+      : {},
+    all: {},
+  },
+  activeSubscriptions: isPremium ? ['premium_monthly_40'] : [],
+  allPurchaseDates: isPremium
+    ? { premium_monthly_40: new Date().toISOString() }
+    : {},
+  firstSeen: new Date().toISOString(),
+  originalApplicationVersion: '1.0.0',
+  requestDate: new Date().toISOString(),
+});
+
+const createMockOfferings = () => ({
+  current: {
+    identifier: 'default',
+    availablePackages: [
+      {
+        identifier: 'premium_monthly_20',
+        packageType: 'MONTHLY',
+        product: {
+          identifier: 'premium_monthly_20',
+          description: 'Premium Monthly - $19.99',
+          title: 'Premium Monthly',
+          price: 19.99,
+          priceString: '$19.99',
+          currencyCode: 'USD',
+        },
+      },
+      {
+        identifier: 'premium_monthly_30',
+        packageType: 'MONTHLY',
+        product: {
+          identifier: 'premium_monthly_30',
+          description: 'Premium Monthly - $29.99',
+          title: 'Premium Monthly',
+          price: 29.99,
+          priceString: '$29.99',
+          currencyCode: 'USD',
+        },
+      },
+      {
+        identifier: 'premium_monthly_40',
+        packageType: 'MONTHLY',
+        product: {
+          identifier: 'premium_monthly_40',
+          description: 'Premium Monthly - $39.99',
+          title: 'Premium Monthly',
+          price: 39.99,
+          priceString: '$39.99',
+          currencyCode: 'USD',
+        },
+      },
+    ],
+  },
+  all: {
+    default: {
+      identifier: 'default',
+      availablePackages: [
+        {
+          identifier: 'premium_monthly_20',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_20',
+            description: 'Premium Monthly - $19.99',
+            title: 'Premium Monthly',
+            price: 19.99,
+            priceString: '$19.99',
+            currencyCode: 'USD',
+          },
+        },
+        {
+          identifier: 'premium_monthly_30',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_30',
+            description: 'Premium Monthly - $29.99',
+            title: 'Premium Monthly',
+            price: 29.99,
+            priceString: '$29.99',
+            currencyCode: 'USD',
+          },
+        },
+        {
+          identifier: 'premium_monthly_40',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_40',
+            description: 'Premium Monthly - $39.99',
+            title: 'Premium Monthly',
+            price: 39.99,
+            priceString: '$39.99',
+            currencyCode: 'USD',
+          },
+        },
+      ],
+    },
+    premium_monthly_20: {
+      identifier: 'premium_monthly_20',
+      availablePackages: [
+        {
+          identifier: 'premium_monthly_20',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_20',
+            description: 'Premium Monthly - $19.99',
+            title: 'Premium Monthly',
+            price: 19.99,
+            priceString: '$19.99',
+            currencyCode: 'USD',
+          },
+        },
+      ],
+    },
+    premium_monthly_30: {
+      identifier: 'premium_monthly_30',
+      availablePackages: [
+        {
+          identifier: 'premium_monthly_30',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_30',
+            description: 'Premium Monthly - $29.99',
+            title: 'Premium Monthly',
+            price: 29.99,
+            priceString: '$29.99',
+            currencyCode: 'USD',
+          },
+        },
+      ],
+    },
+    premium_monthly_40: {
+      identifier: 'premium_monthly_40',
+      availablePackages: [
+        {
+          identifier: 'premium_monthly_40',
+          packageType: 'MONTHLY',
+          product: {
+            identifier: 'premium_monthly_40',
+            description: 'Premium Monthly - $39.99',
+            title: 'Premium Monthly',
+            price: 39.99,
+            priceString: '$39.99',
+            currencyCode: 'USD',
+          },
+        },
+      ],
+    },
+  },
+});
+
 const getPurchases = () => {
   if (!Purchases) {
-    try {
-      // Suppress the NativeEventEmitter error that occurs during require
-      // This is expected when running in Expo Development Client
-      const originalWarn = console.warn;
-      const originalError = console.error;
-      let suppressedError = false;
-
-      console.warn = (...args: any[]) => {
-        if (args[0]?.includes?.('NativeEventEmitter')) {
-          suppressedError = true;
-          return;
-        }
-        originalWarn(...args);
-      };
-
-      console.error = (...args: any[]) => {
-        if (
-          args[0]?.includes?.('NativeEventEmitter') ||
-          args[0]?.includes?.('Invariant Violation')
-        ) {
-          suppressedError = true;
-          return;
-        }
-        originalError(...args);
-      };
-
-      try {
-        const rcModule = require('react-native-purchases');
-        Purchases = rcModule.default || rcModule;
-        LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
-        console.log('✅ RevenueCat native module loaded successfully');
-      } finally {
-        console.warn = originalWarn;
-        console.error = originalError;
-      }
-    } catch (error) {
-      console.warn(
-        '⚠️ RevenueCat native module not available, using mock implementation',
+    // Check if we're in a web environment or Expo Go where native modules don't work
+    if (typeof window !== 'undefined' || __DEV__) {
+      console.log(
+        '🔍 [RevenueCat] Running in development/web environment, using mock implementation',
       );
-      // Return a mock object to prevent crashes
-      const mockEntitlements = { active: {} };
-      const mockCustomerInfo = {
-        originalAppUserId: 'anonymous',
-        entitlements: mockEntitlements,
-      };
 
       Purchases = {
         setLogLevel: () => {},
@@ -69,22 +199,25 @@ const getPurchases = () => {
         },
         getCustomerInfo: () => {
           console.log('📝 [Mock] RevenueCat getCustomerInfo called');
-          return Promise.resolve(mockCustomerInfo);
+          return Promise.resolve(createMockCustomerInfo(false));
         },
         getOfferings: () => {
           console.log('📝 [Mock] RevenueCat getOfferings called');
-          return Promise.resolve({ current: null, all: {} });
+          return Promise.resolve(createMockOfferings());
         },
-        purchasePackage: () => {
-          console.log('📝 [Mock] RevenueCat purchasePackage called');
+        purchasePackage: (packageToPurchase: any) => {
+          console.log(
+            '📝 [Mock] RevenueCat purchasePackage called with:',
+            packageToPurchase?.identifier,
+          );
           return Promise.resolve({
-            customerInfo: mockCustomerInfo,
+            customerInfo: createMockCustomerInfo(true),
             userCancelled: false,
           });
         },
         restorePurchases: () => {
           console.log('📝 [Mock] RevenueCat restorePurchases called');
-          return Promise.resolve(mockCustomerInfo);
+          return Promise.resolve(createMockCustomerInfo(false));
         },
         logIn: () => {
           console.log('📝 [Mock] RevenueCat logIn called');
@@ -96,6 +229,51 @@ const getPurchases = () => {
         },
       };
       LOG_LEVEL_CONSTANTS = { INFO: 'INFO' };
+      return Purchases;
+    }
+
+    try {
+      // Suppress the NativeEventEmitter error that occurs during require
+      const originalWarn = console.warn;
+      const originalError = console.error;
+
+      console.warn = (...args: any[]) => {
+        if (args[0]?.includes?.('NativeEventEmitter')) {
+          return;
+        }
+        originalWarn(...args);
+      };
+
+      console.error = (...args: any[]) => {
+        if (
+          args[0]?.includes?.('NativeEventEmitter') ||
+          args[0]?.includes?.('Invariant Violation')
+        ) {
+          return;
+        }
+        originalError(...args);
+      };
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const rcModule = require('react-native-purchases');
+        if (!rcModule) {
+          throw new Error('RevenueCat module is undefined');
+        }
+        Purchases = rcModule.default || rcModule;
+        LOG_LEVEL_CONSTANTS = rcModule.LOG_LEVEL || rcModule.default?.LOG_LEVEL;
+        console.log('✅ RevenueCat native module loaded successfully');
+      } finally {
+        console.warn = originalWarn;
+        console.error = originalError;
+      }
+    } catch (error) {
+      console.warn(
+        '⚠️ RevenueCat native module not available, using mock implementation',
+        error,
+      );
+      // Fallback to mock
+      return getPurchases();
     }
   }
   return Purchases;
@@ -124,7 +302,6 @@ class RevenueCatService {
       Purchases.setLogLevel(LOG_LEVEL.INFO);
 
       // Initialize with your RevenueCat API keys
-      // Replace these with your actual API keys from RevenueCat dashboard
       const apiKey = __DEV__
         ? 'test_KWoKSNKRwCVgtwxTRwDXTOFVNLb' // Sandbox key for development
         : 'appl_your_production_api_key_here'; // Production key for release
@@ -162,7 +339,14 @@ class RevenueCatService {
     try {
       const Purchases = getPurchases();
       const customerInfo = await Purchases.getCustomerInfo();
-      return customerInfo.entitlements.active['premium'] !== undefined;
+      const isPremium =
+        customerInfo.entitlements.active['premium'] !== undefined;
+      console.log('🔍 [RevenueCat] Premium check:', {
+        isPremium,
+        entitlements: customerInfo.entitlements.active,
+        activeSubscriptions: customerInfo.activeSubscriptions,
+      });
+      return isPremium;
     } catch (error) {
       console.error('❌ [RevenueCat] Failed to check premium status:', error);
       return false;
@@ -185,36 +369,22 @@ class RevenueCatService {
     userCancelled: boolean;
   }> {
     try {
-      console.log(
-        '🛒 [RevenueCat] Starting purchase:',
-        packageToPurchase.identifier,
-      );
-
       const Purchases = getPurchases();
       const result = await Purchases.purchasePackage(packageToPurchase);
-
-      if (!result.userCancelled) {
-        console.log('✅ [RevenueCat] Purchase successful');
-      } else {
-        console.log('⚠️ [RevenueCat] Purchase cancelled by user');
-      }
-
       return result;
     } catch (error) {
-      console.error('❌ [RevenueCat] Purchase failed:', error);
+      console.error('❌ [RevenueCat] Failed to purchase package:', error);
       throw error;
     }
   }
 
   async restorePurchases(): Promise<CustomerInfo> {
     try {
-      console.log('🔄 [RevenueCat] Restoring purchases');
       const Purchases = getPurchases();
       const customerInfo = await Purchases.restorePurchases();
-      console.log('✅ [RevenueCat] Purchases restored');
       return customerInfo;
     } catch (error) {
-      console.error('❌ [RevenueCat] Restore failed:', error);
+      console.error('❌ [RevenueCat] Failed to restore purchases:', error);
       throw error;
     }
   }
@@ -222,21 +392,21 @@ class RevenueCatService {
   async getCustomerInfo(): Promise<CustomerInfo> {
     try {
       const Purchases = getPurchases();
-      return await Purchases.getCustomerInfo();
+      const customerInfo = await Purchases.getCustomerInfo();
+      return customerInfo;
     } catch (error) {
       console.error('❌ [RevenueCat] Failed to get customer info:', error);
       throw error;
     }
   }
 
-  // Development helpers (keep for testing)
-  async setDebugUserId(userId: string): Promise<void> {
+  async logIn(userId: string): Promise<void> {
     try {
       const Purchases = getPurchases();
       await Purchases.logIn(userId);
-      console.log(`🔧 [RevenueCat] Debug user ID set to: ${userId}`);
     } catch (error) {
-      console.error('❌ [RevenueCat] Failed to set debug user ID:', error);
+      console.error('❌ [RevenueCat] Failed to log in:', error);
+      throw error;
     }
   }
 
@@ -244,105 +414,37 @@ class RevenueCatService {
     try {
       const Purchases = getPurchases();
       await Purchases.logOut();
-      console.log('🔄 [RevenueCat] User logged out');
     } catch (error) {
-      console.error('❌ [RevenueCat] Logout failed:', error);
+      console.error('❌ [RevenueCat] Failed to log out:', error);
+      throw error;
     }
   }
 
-  // Development methods for testing
+  // Development helpers for testing
+  setDevelopmentOverride(isPremium: boolean | null): void {
+    this.developmentOverride = isPremium;
+    console.log(`🔧 [RevenueCat] Development override set to: ${isPremium}`);
+  }
+
+  reset(): void {
+    this.developmentOverride = null;
+    console.log('🔧 [RevenueCat] Development override reset');
+  }
+
   async cancelSubscription(): Promise<boolean> {
-    if (!__DEV__) {
-      console.warn(
-        '🔧 [RevenueCat] Subscription cancellation only available in development',
-      );
-      return false;
-    }
-
     try {
-      const Purchases = getPurchases();
-      const userId = await this.getAppUserId();
-      console.log(
-        `🔄 [RevenueCat] Attempting to cancel subscription for user: ${userId}`,
-      );
-
-      // First, get customer info to find active subscriptions
-      const customerInfo = await this.getCustomerInfo();
-      const activeEntitlements = Object.keys(customerInfo.entitlements.active);
-
-      if (activeEntitlements.length === 0) {
-        console.log('ℹ️ [RevenueCat] No active subscriptions found to cancel');
-        return true; // Consider this a success since goal is achieved
-      }
-
-      console.log('📋 [RevenueCat] Active entitlements:', activeEntitlements);
-
-      // For now, we'll use the SDK's restore method to refresh state
-      // and then use development override as the primary method
-      console.log(
-        '🔄 [RevenueCat] Using development override for reliable testing',
-      );
-      this.setDevelopmentOverride(false);
-
-      // Also try to restore purchases to sync with server
-      try {
-        await Purchases.restorePurchases();
-        console.log('✅ [RevenueCat] Purchases restored (may help sync state)');
-      } catch (restoreError) {
-        console.log('⚠️ [RevenueCat] Restore failed, continuing with override');
-      }
-
+      console.log('📝 [RevenueCat] Cancel subscription called');
+      // In mock mode, just return true to simulate successful cancellation
       return true;
     } catch (error) {
-      console.error('❌ [RevenueCat] Error in cancel subscription:', error);
-      // Fallback to development override
-      this.setDevelopmentOverride(false);
-      return true; // Return true since we achieved the goal via override
-    }
-  }
-
-  setDevelopmentOverride(isPremium: boolean | null): void {
-    if (__DEV__) {
-      this.developmentOverride = isPremium;
-      console.log(`🔧 [RevenueCat] Development override set to: ${isPremium}`);
-    } else {
-      console.warn(
-        '🔧 [RevenueCat] Development override only available in development',
-      );
+      console.error('❌ [RevenueCat] Failed to cancel subscription:', error);
+      return false;
     }
   }
 
   clearDevelopmentOverride(): void {
-    if (__DEV__) {
-      this.developmentOverride = null;
-      console.log(
-        '🔧 [RevenueCat] Development override cleared - using real data',
-      );
-    }
-  }
-
-  // Legacy methods for backward compatibility during transition
-  setPremiumStatus(isPremium: boolean): void {
-    console.warn(
-      '🔧 [RevenueCat] setPremiumStatus is deprecated - use setDevelopmentOverride() instead',
-    );
-    this.setDevelopmentOverride(isPremium);
-  }
-
-  togglePremiumStatus(): boolean {
-    console.warn(
-      '🔧 [RevenueCat] togglePremiumStatus is deprecated - use setDevelopmentOverride() instead',
-    );
-    const newStatus = !(this.developmentOverride ?? false);
-    this.setDevelopmentOverride(newStatus);
-    return newStatus;
-  }
-
-  reset(): void {
-    console.warn(
-      '🔧 [RevenueCat] reset is deprecated - use setDevelopmentOverride(false) instead',
-    );
-    this.setDevelopmentOverride(false);
+    this.developmentOverride = null;
+    console.log('🔧 [RevenueCat] Development override cleared');
   }
 }
 
@@ -350,8 +452,4 @@ class RevenueCatService {
 export const revenuecat = new RevenueCatService();
 
 // Re-export types for convenience
-export type {
-  CustomerInfo,
-  PurchasesOfferings,
-  PurchasesPackage,
-} from 'react-native-purchases';
+export type { CustomerInfo, PurchasesOfferings, PurchasesPackage };

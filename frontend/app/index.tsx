@@ -21,6 +21,7 @@ import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
 import '../global.css';
+import type { NegotiationResult } from '../hooks/chat/types/ChatTypes';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -34,7 +35,16 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 const INITIAL_PRICE = {
   price: 39.99,
   package_id: 'premium_monthly_40',
-};
+} as const;
+
+// Type for price information (either from negotiation or initial)
+type PriceInfo = NegotiationResult | typeof INITIAL_PRICE;
+
+// Animation and timing constants
+const ANIMATION_DELAYS = {
+  SCROLL_TO_END: 100,
+  STATE_UPDATE: 0,
+} as const;
 
 const styles = StyleSheet.create({
   container: {
@@ -295,7 +305,7 @@ export default function ChatScreen() {
     if (enhancedMessages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, ANIMATION_DELAYS.SCROLL_TO_END);
     }
   }, [enhancedMessages.length]);
 
@@ -323,7 +333,9 @@ export default function ChatScreen() {
         setCurrentChatId(chatId);
 
         // Wait a frame for React to update the hook
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve =>
+          setTimeout(resolve, ANIMATION_DELAYS.STATE_UPDATE),
+        );
       } catch (error) {
         console.error('Failed to create new chat:', error);
         Alert.alert('Error', 'Failed to create new chat');
@@ -400,8 +412,8 @@ export default function ChatScreen() {
       try {
         await revenuecat.logOut();
         console.log('✅ [Reset] Logged out successfully');
-      } catch {
-        console.log('ℹ️ [Reset] Already anonymous user, continuing...');
+      } catch (error) {
+        console.log('ℹ️ [Reset] Already anonymous user, continuing...', error);
       }
 
       // Try to cancel subscription via RevenueCat API
@@ -443,6 +455,54 @@ export default function ChatScreen() {
     }
   };
 
+  // Helper function to get the target package from offerings
+  const getTargetPackage = (offerings: any, priceInfo: PriceInfo) => {
+    const packageId = priceInfo.package_id;
+    const offeringKey = packageId; // e.g., "premium_monthly_40"
+    const targetOffering = offerings.all[offeringKey];
+
+    if (!targetOffering) {
+      throw new Error(
+        `Offering ${offeringKey} not found. Available: ${Object.keys(offerings.all).join(', ')}`,
+      );
+    }
+
+    const package_ = targetOffering.availablePackages[0];
+    if (!package_) {
+      throw new Error(`No packages found in offering ${offeringKey}`);
+    }
+
+    return package_;
+  };
+
+  // Helper function to handle successful purchase
+  const handlePurchaseSuccess = async (priceInfo: PriceInfo) => {
+    console.log('✅ [Upgrade] Purchase successful! Updating premium status...');
+
+    // Clear any development override since we have a real purchase
+    revenuecat.clearDevelopmentOverride();
+
+    // Force refresh premium status to update UI immediately
+    await checkPremiumStatus();
+
+    const displayPrice =
+      'final_price' in priceInfo
+        ? priceInfo.final_price.toFixed(2)
+        : priceInfo.price.toFixed(2);
+    Alert.alert(
+      'Success!',
+      `Welcome to GeistAI Premium at $${displayPrice}/month!`,
+      [
+        {
+          text: 'Continue',
+          onPress: () => {
+            console.log('🔄 [Upgrade] Premium status should now be updated');
+          },
+        },
+      ],
+    );
+  };
+
   const handleUpgradeNow = async () => {
     // Use either negotiation result or initial price
     const priceInfo = negotiationResult || INITIAL_PRICE;
@@ -462,7 +522,7 @@ export default function ChatScreen() {
       );
       console.log(
         '🔍 [Debug] Package identifiers:',
-        offerings.current?.availablePackages?.map((p: any) => p.identifier),
+        offerings.current?.availablePackages?.map(p => p.identifier),
       );
 
       if (!offerings.current) {
@@ -470,24 +530,8 @@ export default function ChatScreen() {
         return;
       }
 
-      // Find the offering that matches the negotiated price
-      const packageId = priceInfo.package_id;
-      const offeringKey = packageId; // e.g., "premium_monthly_40"
-      const targetOffering = offerings.all[offeringKey];
-
-      if (!targetOffering) {
-        Alert.alert('Error', `Offering ${offeringKey} not found`);
-        console.error('Available offerings:', Object.keys(offerings.all));
-        return;
-      }
-
-      // Get the package from the target offering (should be the first/only one)
-      const package_ = targetOffering.availablePackages[0];
-
-      if (!package_) {
-        Alert.alert('Error', `No packages found in offering ${offeringKey}`);
-        return;
-      }
+      // Get the target package
+      const package_ = getTargetPackage(offerings, priceInfo);
 
       console.log(
         '💰 [Upgrade] Found package:',
@@ -507,30 +551,7 @@ export default function ChatScreen() {
 
       // Check if purchase was successful
       if (customerInfo.entitlements.active['premium']) {
-        console.log(
-          '✅ [Upgrade] Purchase successful! Updating premium status...',
-        );
-
-        // Clear any development override since we have a real purchase
-        revenuecat.clearDevelopmentOverride();
-
-        // Force refresh premium status to update UI immediately
-        await checkPremiumStatus();
-
-        Alert.alert(
-          'Success!',
-          `Welcome to GeistAI Premium at $${(priceInfo as any).final_price ? (priceInfo as any).final_price.toFixed(2) : (priceInfo as any).price.toFixed(2)}/month!`,
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                console.log(
-                  '🔄 [Upgrade] Premium status should now be updated',
-                );
-              },
-            },
-          ],
-        );
+        await handlePurchaseSuccess(priceInfo);
       } else {
         Alert.alert('Purchase Failed', 'Please try again');
       }
@@ -538,7 +559,9 @@ export default function ChatScreen() {
       console.error('❌ [Upgrade] Purchase error:', err);
       Alert.alert(
         'Purchase Error',
-        'Failed to complete purchase. Please try again.',
+        err instanceof Error
+          ? err.message
+          : 'Failed to complete purchase. Please try again.',
       );
     }
   };
@@ -609,7 +632,9 @@ export default function ChatScreen() {
       try {
         chatId = await createNewChat();
         setCurrentChatId(chatId);
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise(resolve =>
+          setTimeout(resolve, ANIMATION_DELAYS.STATE_UPDATE),
+        );
       } catch (err) {
         console.error('Failed to create new chat:', err);
         Alert.alert('Error', 'Failed to create new chat');
