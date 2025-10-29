@@ -743,7 +743,7 @@ export function useChatWithStorage(
                 content: accumulatedContent,
                 reasoningContent: accumulatedReasoningContent,
                 agentConversations: [],
-                toolCallEvents: [],
+                toolCallEvents: toolCallEvents,
                 collectedLinks: [],
                 role: 'assistant',
                 timestamp: new Date(),

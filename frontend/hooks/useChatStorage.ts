@@ -51,13 +51,21 @@ export const useChatStorage = (chatId?: number) => {
 
         setCurrentChat(chatWithComputedTitle);
         // Convert SQLite messages to legacy format for compatibility
-        const enhancedMessages: EnhancedMessage[] = chat.messages.map(msg => ({
-          id: msg.id.toString(),
-          content: msg.content,
-          reasoningContent: msg.reasoning_content,
-          role: msg.role,
-          timestamp: new Date(msg.created_at),
-        }));
+        const enhancedMessages: EnhancedMessage[] = chat.messages.map(
+          msg =>
+            ({
+              id: msg.id.toString(),
+              content: msg.content,
+              reasoningContent: msg.reasoning_content,
+              role: msg.role,
+              timestamp: new Date(msg.created_at),
+              toolCallEvents: JSON.parse(msg.tool_call_events),
+              agentConversations: JSON.parse(msg.agent_conversations),
+              collectedLinks: JSON.parse(msg.collected_links),
+              isStreaming: false,
+              citations: [],
+            }) as EnhancedMessage,
+        );
         setMessages(enhancedMessages);
       } else {
         setError('Chat not found');
