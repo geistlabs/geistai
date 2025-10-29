@@ -19,7 +19,6 @@ function AppContent() {
 
   // Initialize app services using TanStack Query
   const {
-    isAnyLoading,
     isDbLoading,
     isRevenueCatLoading,
     dbError,
@@ -30,20 +29,8 @@ function AppContent() {
   } = useAppInitialization();
 
   // Show loading screen while services initialize
-  if (isAnyLoading) {
-    return (
-      <View className='flex-1 items-center justify-center bg-white p-4'>
-        <Text className='text-lg text-gray-600 mb-2'>Initializing...</Text>
-        {isDbLoading && (
-          <Text className='text-sm text-gray-500'>Setting up database...</Text>
-        )}
-        {isRevenueCatLoading && (
-          <Text className='text-sm text-gray-500'>
-            Configuring subscriptions...
-          </Text>
-        )}
-      </View>
-    );
+  if (isDbLoading || isRevenueCatLoading) {
+    return null;
   }
 
   // Show error screen if critical services failed

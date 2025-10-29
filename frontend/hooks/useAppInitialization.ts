@@ -32,13 +32,11 @@ export function useAppInitialization() {
   });
 
   const isAppReady = !isDbLoading && !dbError;
-  const isAnyLoading = isDbLoading || isRevenueCatLoading;
   const hasCriticalError = !!dbError;
   const hasNonCriticalError = !!revenueCatError;
 
   return {
     isAppReady,
-    isAnyLoading,
     isDbLoading,
     isRevenueCatLoading,
     dbError,
