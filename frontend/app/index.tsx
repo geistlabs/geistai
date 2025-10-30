@@ -18,8 +18,9 @@ import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble'
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import HamburgerIcon from '../components/HamburgerIcon';
-import { NegotiationResultCard } from '../components/NegotiationResultCard';
 import { NetworkStatus } from '../components/NetworkStatus';
+import { PaywallModal } from '../components/paywall/PaywallModal';
+import { PricingCard } from '../components/PricingCard';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
@@ -45,6 +46,7 @@ export default function ChatScreen() {
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Audio recording hook
   const recording = useAudioRecording();
@@ -73,25 +75,6 @@ export default function ChatScreen() {
     chatId: currentChatId,
     chatMode: activeChatMode,
   });
-
-  // Debug: Log chat mode changes
-  useEffect(() => {
-    console.log('🎯 [App] Chat mode updated:', {
-      isPremium,
-      activeChatMode,
-      mode:
-        activeChatMode === 'streaming'
-          ? 'Full Chat (Orchestrator)'
-          : 'Pricing Negotiation Only',
-    });
-  }, [isPremium, activeChatMode]);
-
-  // Debug: Log negotiation results
-  useEffect(() => {
-    if (negotiationResult) {
-      console.log('💰 [App] Negotiation result received:', negotiationResult);
-    }
-  }, [negotiationResult]);
 
   useEffect(() => {
     if (enhancedMessages.length > 0) {
@@ -333,18 +316,11 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
-              {/* Negotiation Result Card */}
-              {negotiationResult && (
-                <NegotiationResultCard
+              {/* Pricing Card - only show for non-premium users */}
+              {negotiationResult && isPremium !== true && (
+                <PricingCard
                   result={negotiationResult}
-                  onUpgradeMonthly={() => {
-                    // TODO: Implement RevenueCat monthly upgrade
-                    console.log('Upgrade monthly clicked');
-                  }}
-                  onUpgradeAnnual={() => {
-                    // TODO: Implement RevenueCat annual upgrade
-                    console.log('Upgrade annual clicked');
-                  }}
+                  onUpgrade={() => setShowPaywall(true)}
                   isLoading={false}
                 />
               )}
@@ -458,6 +434,16 @@ export default function ChatScreen() {
         onChatSelect={handleChatSelect}
         activeChatId={currentChatId}
         onNewChat={handleNewChat}
+      />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onPurchaseSuccess={() => {
+          setShowPaywall(false);
+          console.log('✅ Purchase successful');
+        }}
+        highlightedPackageId={negotiationResult?.package_id}
+        negotiationSummary={negotiationResult?.negotiation_summary}
       />
     </>
   );

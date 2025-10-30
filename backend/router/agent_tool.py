@@ -431,7 +431,7 @@ On EVERY response:
 - Annual: $95.99/year (premium_yearly_10) - Save 20%!
 
 ## CONVERSATION FLOW:
-**First message:** 
+**First message:**
 - Greet user warmly
 - Present both pricing options with clear benefits
 - Call finalize_negotiation function IMMEDIATELY

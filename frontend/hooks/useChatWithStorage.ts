@@ -345,7 +345,6 @@ export function useChatWithStorage(
       // 3. When /api/memory returns, store the memories asynchronously
       memoryExtractionPromise
         .then(async extractedMemories => {
-          console.log('[ChatWithStorage] 🧠 Memory extraction completed');
           console.log(
             `[ChatWithStorage] 📊 Extracted ${extractedMemories.length} memories`,
           );
@@ -436,7 +435,6 @@ export function useChatWithStorage(
         console.log(
           `[ChatWithStorage] ✅ Memory manager initialized: ${memoryManager.isInitialized}`,
         );
-        console.log(`[ChatWithStorage] 🆔 Current chat ID: ${currentChatId}`);
 
         if (memoryManager.isInitialized && currentChatId) {
           try {
@@ -802,7 +800,6 @@ export function useChatWithStorage(
               negotiation_summary: data.negotiation_summary,
             };
             setNegotiationResult(result);
-            console.log('💰 [Negotiation] Result received:', result);
           },
         };
 

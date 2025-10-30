@@ -305,7 +305,6 @@ class NegotiationEventProcessor {
 
   private handleAgentStart(data: any): void {
     // Agent started processing - signal to handlers
-    console.log('[NegotiationProcessor] 🤖 Agent started');
   }
 
   private handleAgentToken(data: any): void {
@@ -318,6 +317,26 @@ class NegotiationEventProcessor {
       const token = data.data.content.data;
       // Route token to handler - the hook will accumulate via batching
       this.handlers.onToken(token);
+    } else if (
+      data.data?.content?.channel === 'negotiation' &&
+      typeof data.data.content.data === 'object'
+    ) {
+      // Handle negotiation data from agent_token event
+      this.handleNegotiationData(data.data.content.data);
+    }
+  }
+
+  private handleNegotiationData(negotiationData: any): void {
+    // Process negotiation data and route to handler
+    if (this.handlers.onNegotiationChannel) {
+      const mappedData = {
+        final_price: negotiationData.monthly_price, // Map monthly_price to final_price
+        package_id: negotiationData.monthly_package_id, // Map monthly_package_id to package_id
+        negotiation_summary: negotiationData.negotiation_summary,
+        stage: negotiationData.stage,
+        confidence: negotiationData.confidence,
+      };
+      this.handlers.onNegotiationChannel(mappedData);
     }
   }
 
@@ -325,11 +344,6 @@ class NegotiationEventProcessor {
     // Agent completed - route completion signal to handler
     // The hook manages the final message state
     const agentData = data.data;
-    console.log('[NegotiationProcessor] ✅ Agent completed:', {
-      agent: agentData.agent,
-      textLength: agentData.text?.length,
-      status: agentData.status,
-    });
 
     // Signal completion - hook will finalize message state
     if (this.handlers.onComplete) {
@@ -338,29 +352,18 @@ class NegotiationEventProcessor {
   }
 
   private handleNegotiationFinalized(data: any): void {
-    // Pricing negotiation finalized - route pricing data to handler
-    console.log('[NegotiationProcessor] 💰 Negotiation finalized:', data.data);
-
-    if (this.handlers.onNegotiationChannel) {
-      this.handlers.onNegotiationChannel({
-        final_price: data.data.final_price,
-        package_id: data.data.package_id,
-        negotiation_summary: data.data.negotiation_summary,
-        stage: data.data.stage,
-        confidence: data.data.confidence,
-      });
-    }
+    // Legacy handler - negotiation data now comes through agent_token events
+    // This method is kept for backward compatibility but negotiation data
+    // is now handled through handleAgentToken -> handleNegotiationData
   }
 
   private handleFinalResponse(data: any): void {
     // Final response from agent
-    console.log('[NegotiationProcessor] 📄 Final response received');
   }
 
   private handleError(data: any): void {
     // Error occurred during negotiation
     const errorMessage = data.data?.message || 'Unknown negotiation error';
-    console.error('[NegotiationProcessor] ❌ Error:', errorMessage);
     this.handlers.onError(errorMessage);
   }
 }
@@ -375,22 +378,6 @@ export async function sendStreamingMessage(
     message,
     messages: conversationHistory,
   };
-
-  console.log('[StreamingAPI] 🚀 Sending streaming message to /api/stream');
-  console.log(
-    `[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`,
-  );
-  console.log(
-    `[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`,
-  );
-  console.log('[StreamingAPI] 📋 Full request body:');
-  console.log(`[StreamingAPI] Message: "${requestBody.message}"`);
-  console.log('[StreamingAPI] Messages array:');
-  requestBody.messages?.forEach((msg, index) => {
-    console.log(
-      `[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`,
-    );
-  });
 
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
@@ -583,10 +570,6 @@ export async function sendNegotiationMessage(
     message,
     messages: conversationHistory,
   };
-
-  console.log(
-    '[NegotiationAPI] 🚀 Sending negotiation message to /api/negotiate',
-  );
 
   // Create event processor
   const eventProcessor = new NegotiationEventProcessor(handlers);
