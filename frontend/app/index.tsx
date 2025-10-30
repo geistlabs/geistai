@@ -17,6 +17,7 @@ import ChatDrawer from '../components/chat/ChatDrawer';
 import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble';
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
+import { DevResetButton } from '../components/DevResetButton';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
 import { PaywallModal } from '../components/paywall/PaywallModal';
@@ -68,9 +69,9 @@ export default function ChatScreen() {
     storageError,
     chatApi,
     // Rich event data (legacy - kept for backward compatibility)
-    toolCallEvents,
-    agentEvents,
-    orchestratorStatus,
+    // toolCallEvents,
+    // agentEvents,
+    // orchestratorStatus,
   } = useChatWithStorage({
     chatId: currentChatId,
     chatMode: activeChatMode,
@@ -257,6 +258,8 @@ export default function ChatScreen() {
         }}
       >
         <SafeAreaView className='flex-1 bg-white'>
+          {/* Dev Reset Button - Only visible in development */}
+          <DevResetButton />
           <KeyboardAvoidingView
             className='flex-1'
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

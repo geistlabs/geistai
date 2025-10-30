@@ -22,6 +22,11 @@ expo-env.d.ts
 ios/Pods/
 ios/build/
 
+# StoreKit Test Certificates (config is committed)
+*.cer
+**/StoreKitTestCertificate.cer
+*.p8
+
 # Metro
 .metro-health-check*
 

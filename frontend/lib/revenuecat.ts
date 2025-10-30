@@ -39,6 +39,9 @@ const getRevenueCatKeys = () => {
 
   if (useTestEnvironment) {
     // Use test/sandbox keys for development and testing
+    // IMPORTANT: Use regular TEST/SANDBOX API key, NOT "Test Store" API key
+    // "Test Store" API key forces web billing and doesn't use StoreKit
+    // Regular test key can use StoreKit when properly configured
     return {
       apple: process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY || '',
       google: process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY || '',
@@ -77,12 +80,6 @@ export async function initializeRevenueCat(): Promise<boolean> {
         return false;
       }
       Purchases.configure({ apiKey: revenueCatKeys.apple });
-
-      if (__DEV__) {
-        console.log(
-          `RevenueCat initialized with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} Apple API key`,
-        );
-      }
     } else if (Platform.OS === 'android') {
       if (!revenueCatKeys.google) {
         const envVarName = revenueCatKeys.isTest
@@ -128,11 +125,37 @@ export async function identifyUser(userId: string): Promise<void> {
  */
 export async function resetUser(): Promise<void> {
   try {
+    // If current user is anonymous, logOut will throw.
+    // In dev, create a fresh random test user instead to simulate "new anonymous".
+    const currentInfo = await Purchases.getCustomerInfo();
+    const currentId = currentInfo.originalAppUserId || '';
+    const isAnonymous = currentId.startsWith('$RCAnonymousID:');
+
+    if (isAnonymous) {
+      if (__DEV__) {
+        const newId = `dev-${generateRandomId()}`;
+        await Purchases.logIn(newId);
+        return;
+      }
+      // In production, there's no supported way to rotate anonymous ID programmatically.
+      // Fall through to attempt logOut (will error) so caller can handle.
+    }
+
     await Purchases.logOut();
   } catch (error) {
     console.error('Error resetting user:', error);
     throw error;
   }
+}
+
+function generateRandomId(): string {
+  // Simple RFC4122-ish v4 generator sufficient for test IDs
+  // Avoid external deps for a dev utility
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 /**
@@ -174,6 +197,11 @@ export async function hasActiveEntitlement(
 export async function getOfferings(): Promise<PurchasesOffering | null> {
   try {
     const offerings = await Purchases.getOfferings();
+    if (__DEV__ && offerings.current) {
+      console.log(
+        '[RevenueCat] Offerings fetched - check console for "GetWebBillingProductsOperation" to see if web billing is active',
+      );
+    }
     return offerings.current;
   } catch (error) {
     console.error('Error fetching offerings:', error);
