@@ -18,6 +18,7 @@ import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble'
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
 import HamburgerIcon from '../components/HamburgerIcon';
+import { NegotiationResultCard } from '../components/NegotiationResultCard';
 import { NetworkStatus } from '../components/NetworkStatus';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
@@ -32,6 +33,11 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
   const { isSubscribed: isPremium } = useRevenueCat('premium');
+
+  // Simple chat mode determination - handles undefined/loading state
+  const activeChatMode: 'streaming' | 'negotiation' =
+    isPremium === true ? 'streaming' : 'negotiation';
+
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(
     undefined,
@@ -51,6 +57,7 @@ export default function ChatScreen() {
     isLoading,
     isStreaming,
     error,
+    negotiationResult,
     sendMessage,
     stopStreaming,
     clearMessages,
@@ -62,7 +69,29 @@ export default function ChatScreen() {
     toolCallEvents,
     agentEvents,
     orchestratorStatus,
-  } = useChatWithStorage({ chatId: currentChatId });
+  } = useChatWithStorage({
+    chatId: currentChatId,
+    chatMode: activeChatMode,
+  });
+
+  // Debug: Log chat mode changes
+  useEffect(() => {
+    console.log('🎯 [App] Chat mode updated:', {
+      isPremium,
+      activeChatMode,
+      mode:
+        activeChatMode === 'streaming'
+          ? 'Full Chat (Orchestrator)'
+          : 'Pricing Negotiation Only',
+    });
+  }, [isPremium, activeChatMode]);
+
+  // Debug: Log negotiation results
+  useEffect(() => {
+    if (negotiationResult) {
+      console.log('💰 [App] Negotiation result received:', negotiationResult);
+    }
+  }, [negotiationResult]);
 
   useEffect(() => {
     if (enhancedMessages.length > 0) {
@@ -268,13 +297,14 @@ export default function ChatScreen() {
                 {/* Center - Title */}
                 <View className='flex-row items-center'>
                   <Text className='text-lg font-medium text-black'>Geist</Text>
-                  {isPremium && (
+                  {/* PAYWALL COMMENTED OUT FOR TESTING */}
+                  {/* {isPremium && (
                     <View className='ml-2 bg-yellow-400 px-2 py-1 rounded'>
                       <Text className='text-black text-xs font-bold'>
                         PREMIUM
                       </Text>
                     </View>
-                  )}
+                  )} */}
                 </View>
 
                 {/* Right side - Buttons */}
@@ -303,6 +333,22 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
+              {/* Negotiation Result Card */}
+              {negotiationResult && (
+                <NegotiationResultCard
+                  result={negotiationResult}
+                  onUpgradeMonthly={() => {
+                    // TODO: Implement RevenueCat monthly upgrade
+                    console.log('Upgrade monthly clicked');
+                  }}
+                  onUpgradeAnnual={() => {
+                    // TODO: Implement RevenueCat annual upgrade
+                    console.log('Upgrade annual clicked');
+                  }}
+                  isLoading={false}
+                />
+              )}
+
               {isLoading && enhancedMessages.length === 0 ? (
                 <View className='flex-1 items-center justify-center p-8'>
                   <LoadingIndicator size='medium' />

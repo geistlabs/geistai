@@ -33,6 +33,12 @@ export interface ChatError {
   error: string;
 }
 
+export interface NegotiationResult {
+  final_price: number;
+  package_id: string;
+  negotiation_summary: string;
+}
+
 // Send a message to the chat API (non-streaming)
 export async function sendMessage(
   message: string,
@@ -98,11 +104,18 @@ export interface StreamEventHandlers {
     result?: any;
     error?: string;
   }) => void;
+  onNegotiationChannel: (data: {
+    final_price: number;
+    package_id: string;
+    negotiation_summary: string;
+    stage: string;
+    confidence: number;
+  }) => void;
   onComplete: () => void;
   onError: (error: string) => void;
 }
 
-// Event processor class for handling different event types
+// Event processor class for handling orchestrator events
 class StreamEventProcessor {
   private handlers: StreamEventHandlers;
 
@@ -243,6 +256,112 @@ class StreamEventProcessor {
 
   private handleError(data: any): void {
     this.handlers.onError(data.message || 'Unknown error');
+  }
+}
+
+// Negotiation event processor for handling agent-specific events
+class NegotiationEventProcessor {
+  private handlers: StreamEventHandlers;
+
+  constructor(handlers: StreamEventHandlers) {
+    this.handlers = handlers;
+  }
+
+  /**
+   * Process negotiation events from the pricing agent
+   * Handles: agent_start, agent_token, agent_complete, negotiation_finalized, error
+   *
+   * NOTE: This processor ROUTES events to handlers.
+   * The useChatWithStorage hook handles token ACCUMULATION via its existing batching mechanism.
+   */
+  processEvent(data: any): void {
+    try {
+      switch (data.type) {
+        case 'agent_start':
+          this.handleAgentStart(data);
+          break;
+        case 'agent_token':
+          this.handleAgentToken(data);
+          break;
+        case 'agent_complete':
+          this.handleAgentComplete(data);
+          break;
+        case 'negotiation_finalized':
+          this.handleNegotiationFinalized(data);
+          break;
+        case 'final_response':
+          this.handleFinalResponse(data);
+          break;
+        case 'error':
+          this.handleError(data);
+          break;
+        default:
+        // Unknown event type
+      }
+    } catch (error) {
+      // Error processing negotiation event
+    }
+  }
+
+  private handleAgentStart(data: any): void {
+    // Agent started processing - signal to handlers
+    console.log('[NegotiationProcessor] 🤖 Agent started');
+  }
+
+  private handleAgentToken(data: any): void {
+    // Extract token from agent_token event and route to handler
+    // data.data.content has structure: { channel: 'content' | 'reasoning', data: string }
+    if (
+      data.data?.content?.channel === 'content' &&
+      typeof data.data.content.data === 'string'
+    ) {
+      const token = data.data.content.data;
+      // Route token to handler - the hook will accumulate via batching
+      this.handlers.onToken(token);
+    }
+  }
+
+  private handleAgentComplete(data: any): void {
+    // Agent completed - route completion signal to handler
+    // The hook manages the final message state
+    const agentData = data.data;
+    console.log('[NegotiationProcessor] ✅ Agent completed:', {
+      agent: agentData.agent,
+      textLength: agentData.text?.length,
+      status: agentData.status,
+    });
+
+    // Signal completion - hook will finalize message state
+    if (this.handlers.onComplete) {
+      this.handlers.onComplete();
+    }
+  }
+
+  private handleNegotiationFinalized(data: any): void {
+    // Pricing negotiation finalized - route pricing data to handler
+    console.log('[NegotiationProcessor] 💰 Negotiation finalized:', data.data);
+
+    if (this.handlers.onNegotiationChannel) {
+      this.handlers.onNegotiationChannel({
+        final_price: data.data.final_price,
+        package_id: data.data.package_id,
+        negotiation_summary: data.data.negotiation_summary,
+        stage: data.data.stage,
+        confidence: data.data.confidence,
+      });
+    }
+  }
+
+  private handleFinalResponse(data: any): void {
+    // Final response from agent
+    console.log('[NegotiationProcessor] 📄 Final response received');
+  }
+
+  private handleError(data: any): void {
+    // Error occurred during negotiation
+    const errorMessage = data.data?.message || 'Unknown negotiation error';
+    console.error('[NegotiationProcessor] ❌ Error:', errorMessage);
+    this.handlers.onError(errorMessage);
   }
 }
 
@@ -470,7 +589,7 @@ export async function sendNegotiationMessage(
   );
 
   // Create event processor
-  const eventProcessor = new StreamEventProcessor(handlers);
+  const eventProcessor = new NegotiationEventProcessor(handlers);
 
   return new Promise<void>((resolve, reject) => {
     // Create EventSource with POST data
