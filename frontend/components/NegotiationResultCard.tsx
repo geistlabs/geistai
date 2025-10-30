@@ -3,24 +3,62 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { NegotiationResult } from '../lib/api/chat';
 
-interface NegotiationResultCardProps {
+interface PricingCardProps {
   result: NegotiationResult;
+  mode: 'detailed' | 'compact';
   onUpgradeMonthly: () => void;
   onUpgradeAnnual: () => void;
+  onToggleMode: () => void;
   isLoading?: boolean;
 }
 
-export const NegotiationResultCard: React.FC<NegotiationResultCardProps> = ({
+export const PricingCard: React.FC<PricingCardProps> = ({
   result,
+  mode,
   onUpgradeMonthly,
   onUpgradeAnnual,
+  onToggleMode,
   isLoading = false,
 }) => {
+  // Calculate annual savings
+  const monthlyPrice = result.final_price;
+  const annualPrice = 95.99;
+  const annualSavings = (monthlyPrice * 12 - annualPrice).toFixed(2);
+
+  if (mode === 'compact') {
+    return (
+      <View style={styles.compactContainer}>
+        <View style={styles.compactContent}>
+          <Text style={styles.compactText}>
+            Monthly ${monthlyPrice} | Annual ${annualPrice} (20% off)
+          </Text>
+          <TouchableOpacity
+            style={styles.compactUpgradeButton}
+            onPress={onUpgradeMonthly}
+            disabled={isLoading}
+          >
+            <Text style={styles.compactButtonText}>
+              {isLoading ? 'Processing...' : 'Upgrade'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={styles.toggleButton} onPress={onToggleMode}>
+          <Text style={styles.toggleButtonText}>▼</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>💎 Choose Your Plan</Text>
-        <Text style={styles.subtitle}>Select the pricing option that works best for you</Text>
+        <Text style={styles.subtitle}>
+          Select the pricing option that works best for you
+        </Text>
+        <TouchableOpacity style={styles.minimizeButton} onPress={onToggleMode}>
+          <Text style={styles.minimizeButtonText}>−</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.pricingContainer}>
@@ -50,7 +88,7 @@ export const NegotiationResultCard: React.FC<NegotiationResultCardProps> = ({
           <Text style={styles.planTitle}>Annual Plan</Text>
           <Text style={styles.planPrice}>$95.99/year</Text>
           <Text style={styles.planDescription}>
-            Save 20% • ${result.final_price * 12 - 95.99} savings
+            Save 20% • ${annualSavings} savings
           </Text>
           <TouchableOpacity
             style={[styles.upgradeButton, styles.annualButton]}
@@ -155,5 +193,61 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Compact mode styles
+  compactContainer: {
+    backgroundColor: '#f8f9fa',
+    margin: 16,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compactContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compactText: {
+    fontSize: 14,
+    color: '#212529',
+    fontWeight: '500',
+  },
+  compactUpgradeButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginLeft: 12,
+  },
+  compactButtonText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  toggleButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  toggleButtonText: {
+    fontSize: 16,
+    color: '#6c757d',
+    fontWeight: 'bold',
+  },
+  // Toggle buttons for detailed mode
+  minimizeButton: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    padding: 8,
+  },
+  minimizeButtonText: {
+    fontSize: 20,
+    color: '#6c757d',
+    fontWeight: 'bold',
   },
 });

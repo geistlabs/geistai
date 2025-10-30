@@ -16,12 +16,16 @@ interface PaywallModalProps {
   visible: boolean;
   onClose: () => void;
   onPurchaseSuccess?: () => void;
+  highlightedPackageId?: string;
+  negotiationSummary?: string;
 }
 
 export function PaywallModal({
   visible,
   onClose,
   onPurchaseSuccess,
+  highlightedPackageId,
+  negotiationSummary,
 }: PaywallModalProps) {
   const [selectedPackage, setSelectedPackage] =
     useState<PurchasesPackage | null>(null);
@@ -109,6 +113,15 @@ export function PaywallModal({
             </Text>
           </View>
 
+          {/* Negotiation Summary */}
+          {negotiationSummary && (
+            <View className='mx-6 mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded'>
+              <Text className='text-blue-900 font-medium'>
+                {negotiationSummary}
+              </Text>
+            </View>
+          )}
+
           {/* Features List */}
           <View className='px-6 mb-6'>
             <Text className='text-lg font-semibold text-gray-900 mb-4'>
@@ -159,6 +172,9 @@ export function PaywallModal({
                 {offerings.availablePackages.map(pkg => {
                   const isSelected =
                     selectedPackage?.identifier === pkg.identifier;
+                  const isRecommended =
+                    highlightedPackageId &&
+                    pkg.identifier === highlightedPackageId;
                   const savings = getSavingsText(pkg.packageType);
 
                   return (
@@ -169,7 +185,9 @@ export function PaywallModal({
                       className={`p-4 rounded-xl border-2 ${
                         isSelected
                           ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 bg-white'
+                          : isRecommended
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 bg-white'
                       }`}
                     >
                       <View className='flex-row items-center justify-between'>
@@ -178,6 +196,13 @@ export function PaywallModal({
                             <Text className='text-lg font-semibold text-gray-900'>
                               {pkg.product.title}
                             </Text>
+                            {isRecommended && (
+                              <View className='ml-2 bg-green-500 px-2 py-1 rounded'>
+                                <Text className='text-white text-xs font-bold'>
+                                  Recommended
+                                </Text>
+                              </View>
+                            )}
                             {savings && (
                               <View className='ml-2 bg-green-500 px-2 py-1 rounded'>
                                 <Text className='text-white text-xs font-bold'>
