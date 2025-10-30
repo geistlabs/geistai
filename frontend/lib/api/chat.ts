@@ -1,6 +1,7 @@
 import EventSource from 'react-native-sse';
 
 import { ENV } from '../config/environment';
+
 import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
@@ -256,14 +257,20 @@ export async function sendStreamingMessage(
     messages: conversationHistory,
   };
 
-  console.log(`[StreamingAPI] 🚀 Sending streaming message to /api/stream`);
-  console.log(`[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
-  console.log(`[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`);
-  console.log(`[StreamingAPI] 📋 Full request body:`);
+  console.log('[StreamingAPI] 🚀 Sending streaming message to /api/stream');
+  console.log(
+    `[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`,
+  );
+  console.log(
+    `[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`,
+  );
+  console.log('[StreamingAPI] 📋 Full request body:');
   console.log(`[StreamingAPI] Message: "${requestBody.message}"`);
-  console.log(`[StreamingAPI] Messages array:`);
+  console.log('[StreamingAPI] Messages array:');
   requestBody.messages?.forEach((msg, index) => {
-    console.log(`[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`);
+    console.log(
+      `[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`,
+    );
   });
 
   // Create event processor
@@ -447,6 +454,138 @@ export function getAgentDisplayName(agentName: string): string {
   );
 }
 
+// Send a negotiation message to the pricing agent
+export async function sendNegotiationMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  console.log(
+    '[NegotiationAPI] 🚀 Sending negotiation message to /api/negotiate',
+  );
+
+  // Create event processor
+  const eventProcessor = new StreamEventProcessor(handlers);
+
+  return new Promise<void>((resolve, reject) => {
+    // Create EventSource with POST data
+    const es = new EventSource(`${ENV.API_URL}/api/negotiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestBody),
+      withCredentials: false,
+    });
+
+    // Handle different event types
+    es.addEventListener('agent_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_start
+      }
+    });
+
+    es.addEventListener('agent_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_token
+      }
+    });
+
+    es.addEventListener('agent_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_complete
+      }
+    });
+
+    es.addEventListener('negotiation_finalized', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse negotiation_finalized
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse final_response
+      }
+    });
+
+    es.addEventListener('error', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        } else {
+          handlers.onError('Negotiation stream error occurred');
+        }
+      } catch (parseError) {
+        // Failed to parse error event
+      }
+    });
+
+    es.addEventListener('end', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse end event data
+      }
+
+      handlers.onComplete();
+      es.close();
+      resolve();
+    });
+
+    es.addEventListener('open', (event: any) => {
+      // SSE connection established
+    });
+
+    // Handle connection errors
+    es.onerror = error => {
+      handlers.onError('Negotiation connection failed');
+      es.close();
+      reject(new Error('Negotiation connection failed'));
+    };
+
+    // Handle general errors
+    es.onopen = () => {
+      // EventSource opened
+    };
+  });
+}
+
 // Health check function
 export async function checkHealth(): Promise<{
   status: string;
@@ -622,5 +761,13 @@ export class ChatAPI {
         error: error instanceof Error ? error.message : 'Transcription failed',
       };
     }
+  }
+
+  async sendNegotiationMessage(
+    message: string,
+    conversationHistory: ChatMessage[],
+    handlers: StreamEventHandlers,
+  ): Promise<void> {
+    return sendNegotiationMessage(message, conversationHistory, handlers);
   }
 }
