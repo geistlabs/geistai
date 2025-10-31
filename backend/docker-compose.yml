@@ -13,16 +13,16 @@ services:
       - INFERENCE_URL=http://inference:8080
       - EMBEDDINGS_URL=http://embeddings:8001
       - MEMORY_EXTRACTION_URL=https://memory.geist.im
+      
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-      - REMOTE_INFERENCE_URL=https://api.studio.nebius.com
-      - RATING_INFERENCE_URL=https://aiplatform.googleapis.com/v1/publishers/google
+      - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
+      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
+      - RATING_INFERENCE_MODEL=${RATING_INFERENCE_MODEL}
       - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
       - OPENAI_KEY=${OPENAI_KEY}
-      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
-      - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
       - USE_REMOTE_INFERENCE=true
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_BRAVE_URL=http://mcp-brave:8080
@@ -71,6 +71,9 @@ services:
       - INFERENCE_URL=http://inference-gpu:8080
       - EMBEDDINGS_URL=http://embeddings:8001
       - MEMORY_EXTRACTION_URL=https://memory.geist.im
+      - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
+      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
+      - RATING_INFERENCE_MODEL=${RATING_INFERENCE_MODEL}
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1

@@ -104,7 +104,8 @@ You must respond with ONLY a valid JSON object in this exact format (no markdown
   "confidence": <number between 0.0 and 1.0>,
   "issues": ["<issue1>", "<issue2>", ...]
 }}
-
+Make sure that oss isn't missing current info 
+Have to different answers for rating, one is critical errors and one is not correct answers.
 Use Google Search grounding to verify facts if needed. Be thorough and accurate."""
                             }
                         ]
