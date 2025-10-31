@@ -54,10 +54,11 @@ jobs:
         INFERENCE_URL: https://inference.geist.im
         EMBEDDINGS_URL: https://embeddings.geist.im
         LOG_LEVEL: INFO
-
+    - name: Debug router log
+      run: cat backend/router/router.log || true
     - name: Wait for router to be ready
       run: |
-        timeout 240 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
     - name: Run streaming tests
       working-directory: ./backend/router
       run: |
