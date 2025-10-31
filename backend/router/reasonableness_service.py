@@ -1,8 +1,8 @@
 """
 Reasonableness Rating Service
 
-Uses Google's Gemini API with search grounding to rate the reasonableness 
-of AI responses (0-1 scale) based on how well they match the user's prompt and context.
+Uses Google's Gemini API to rate the reasonableness of AI responses (0-1 scale)
+based on how well they match the user's prompt and context.
 """
 
 import os
@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional
 import config
 from pathlib import Path
 from prompts import get_rubrics_prompt
+
 # Load .env file from parent directory when running locally
 try:
     from dotenv import load_dotenv
@@ -31,22 +32,18 @@ except ImportError:
 except Exception as e:
     print(f"Error loading .env file: {e}")
 
-
 class ReasonablenessService:
-    """Service for rating the reasonableness of AI responses using Gemini with search grounding."""
+    """Service for rating the reasonableness of AI responses using Gemini API."""
     
     def __init__(self):
-        # Always use Gemini API with grounding
-        self.gemini_api_key = config.RATING_INFERENCE_KEY
         self.gemini_base_url = config.RATING_INFERENCE_URL
+        self.gemini_api_key = config.RATING_INFERENCE_KEY
         self.gemini_model = config.RATING_INFERENCE_MODEL
-        self.use_gemini = True
-        self.use_grounding = True  # Always enable Google Search grounding
         
         if not self.gemini_api_key:
             print("❌ No Gemini API key found!")
         else:
-            print(f"✅ Using Gemini API ({self.gemini_model}) with Google Search grounding enabled")
+            print(f"✅ Using Gemini API ({self.gemini_model}) with function calling")
             print(f"🔑 API Key: {self.gemini_api_key[:10]}..." if len(self.gemini_api_key) > 10 else "🔑 API Key set")
         
     async def rate_response(
@@ -56,7 +53,7 @@ class ReasonablenessService:
         context: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Rate the reasonableness of an AI response on a 0-1 scale using Gemini with Google Search grounding.
+        Rate the reasonableness of an AI response on a 0-1 scale using Gemini.
         
         Args:
             user_prompt: The original user prompt/question
@@ -70,7 +67,6 @@ class ReasonablenessService:
             - confidence: float (0-1, how confident the rating is)
             - issues: list of specific issues found
         """
-        # Always use Gemini with grounding
         return await self._rate_with_gemini(user_prompt, ai_response, context)
     
     async def _rate_with_gemini(
@@ -79,39 +75,39 @@ class ReasonablenessService:
         ai_response: str,
         context: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Rate using Gemini API with search grounding."""
+        """Rate using Gemini API with function calling."""
         evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
         
         try:
-            # Build Gemini API request with API key as URL parameter (more reliable than header)
+            # Build Gemini API request with API key as URL parameter
             api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
-            print(f"API URL: {api_url[:-6]}...")
             
-            # Construct request body with grounding (no function calling, as they're mutually exclusive)
+            # Construct request body with function declaration (Gemini format)
             request_body = {
                 "contents": [
                     {
                         "role": "user",
                         "parts": [
                             {
-                                "text": f"""You are an expert evaluator of AI responses. {evaluation_context}"""
+                                "text": evaluation_context
                             }
                         ]
                     }
                 ],
                 "tools": [
                     {
-                        "google_search": {}
+                        "function_declarations": [
+                            self._get_gemini_function_declaration()
+                        ]
                     }
                 ]
             }
-            print(f"Request body: {request_body}")
             
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     api_url,
                     headers={
-                        "Content-Type": "application/json",
+                        "Content-Type": "application/json"
                     },
                     json=request_body,
                     timeout=60.0
@@ -127,8 +123,8 @@ class ReasonablenessService:
                     }
                 
                 result = response.json()
-                print(f"Result: {result}")
-                # Extract text response from Gemini
+                
+                # Extract function call from Gemini response
                 if "candidates" not in result or not result["candidates"]:
                     return {
                         "rating": 0.5,
@@ -141,77 +137,80 @@ class ReasonablenessService:
                 content = candidate.get("content", {})
                 parts = content.get("parts", [])
                 
-                # Extract text from parts
-                response_text = ""
+                # Look for function call in parts
+                function_call = None
                 for part in parts:
-                    if "text" in part:
-                        response_text += part["text"]
+                    if "functionCall" in part:
+                        function_call = part["functionCall"]
+                        break
                 
-                if not response_text:
+                if not function_call:
+                    # If no function call, try to extract text response
+                    response_text = ""
+                    for part in parts:
+                        if "text" in part:
+                            response_text += part["text"]
+                    
                     return {
                         "rating": 0.5,
-                        "reasoning": "No text found in Gemini response",
+                        "reasoning": f"No function call in response. Text: {response_text[:100]}",
                         "confidence": 0.0,
-                        "issues": ["Missing text"]
+                        "issues": ["Missing function call"]
                     }
                 
-                # Parse JSON from response text
-                # Remove markdown code blocks if present
-                response_text = response_text.strip()
-                if response_text.startswith("```"):
-                    # Extract JSON from code block
-                    lines = response_text.split("\n")
-                    response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+                # Extract arguments from function call
+                arguments = function_call.get("args", {})
                 
-                # Find JSON object in text
-                try:
-                    # Try to find JSON object
-                    start_idx = response_text.find("{")
-                    end_idx = response_text.rfind("}") + 1
-                    if start_idx != -1 and end_idx > start_idx:
-                        json_text = response_text[start_idx:end_idx]
-                        arguments = json.loads(json_text)
-                    else:
-                        raise ValueError("No JSON object found in response")
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Failed to parse Gemini response as JSON: {e}")
-                    print(f"Response text: {response_text[:500]}")
-                    return {
-                        "rating": 0.5,
-                        "reasoning": f"Failed to parse response: {str(e)}",
-                        "confidence": 0.0,
-                        "issues": ["JSON parsing failed"]
-                    }
-                
-                # Validate and return
+                # Validate and normalize the response
                 return self._validate_rating_response(arguments)
-        
+                
         except httpx.TimeoutException as e:
-            print(f"Gemini timeout: {str(e)}")
+            print(f"Rating service timeout: {str(e)}")
             return {
                 "rating": 0.5,
-                "reasoning": f"Gemini timeout: {str(e)}",
+                "reasoning": f"Rating service timeout: {str(e)}",
                 "confidence": 0.0,
                 "issues": ["Service timeout"]
             }
-        except Exception as e:
-            print(f"Gemini error: {str(e)}")
+        except httpx.HTTPStatusError as e:
+            print(f"Rating service HTTP status error: {str(e)}")
             return {
                 "rating": 0.5,
-                "reasoning": f"Gemini error: {str(e)}",
+                "reasoning": f"Rating service HTTP status error: {str(e)}",
                 "confidence": 0.0,
-                "issues": ["Service error"]
+                "issues": ["Service HTTP status error"]
+            }
+        except httpx.RequestError as e:
+            print(f"Rating service request error: {str(e)}")
+            return {
+                "rating": 0.5,
+                "reasoning": f"Rating service request error: {str(e)}",
+                "confidence": 0.0,
+                "issues": [f"Rating service request error: {str(e)}"]
+            }
+        except Exception as e:
+            print(f"Rating service error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "rating": 0.5,
+                "reasoning": f"Rating service error: {str(e)}",
+                "confidence": 0.0,
+                "issues": ["Service unavailable"]
             }
     
-
-    
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
-        """Build the evaluation context for the rating tool call."""
+        """Build the evaluation context for the rating."""
+        # Get the rubric prompt with the user prompt, AI response, and context
+        evaluation_text = get_rubrics_prompt(
+            user_prompt=user_prompt,
+            ai_response=ai_response,
+            context=context if context else "No additional context"
+        )
         
-        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt(user_prompt=user_prompt, ai_response=ai_response, context=str(context))
-
-        return RUBRIC_SYSTEM_PROMPT
-    def _get_gemini_rating_function(self) -> Dict[str, Any]:
+        return evaluation_text
+    
+    def _get_gemini_function_declaration(self) -> Dict[str, Any]:
         """Get the Gemini function declaration for rating responses."""
         return {
             "name": "rate_response_reasonableness",
@@ -229,53 +228,22 @@ class ReasonablenessService:
                     },
                     "confidence": {
                         "type": "number",
-                        "description": "Confidence in this rating from 0.0 to 1.0."
+                        "description": "Confidence in this rating (0.0 to 1.0)."
                     },
                     "issues": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Specific reasonableness issues found."
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Specific issues found (e.g., 'major: link-dump')."
                     }
                 },
                 "required": ["rating", "reasoning", "confidence", "issues"]
             }
         }
     
-    def _get_rating_tool_definition(self) -> Dict[str, Any]:
-        """Get the OpenAI-compatible tool definition for rating responses (Perplexity fallback)."""
-        return {
-    "type": "function",
-    "function": {
-        "name": "rate_response_reasonableness",
-        "description": "Rate the reasonableness of an AI response on a 0-1 scale.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "rating": {
-                    "type": "number", "minimum": 0.0, "maximum": 1.0,
-                    "description": "Reasonableness rating from 0.0 to 1.0 (one decimal)."
-                },
-                "reasoning": {
-                    "type": "string",
-                    "description": "Brief explanation of the rating."
-                },
-                "confidence": {
-                    "type": "number", "minimum": 0.0, "maximum": 1.0,
-                    "description": "Confidence in this rating."
-                },
-                "issues": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Specific reasonableness issues found."
-                }
-            },
-            "required": ["rating", "reasoning", "confidence", "issues"]
-        }
-    }
-}
-    
     def _validate_rating_response(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate and normalize the rating response from the tool call."""
+        """Validate and normalize the rating response from the function call."""
         try:
             # Extract and validate rating
             rating = float(arguments.get("rating", 0.5))
@@ -308,7 +276,6 @@ class ReasonablenessService:
                 "issues": ["Response validation failed"]
             }
     
-    
     async def batch_rate_responses(
         self, 
         conversations: list[Dict[str, str]]
@@ -322,7 +289,6 @@ class ReasonablenessService:
         Returns:
             List of rating results
         """
-        
         results = []
         
         for conv in conversations:
@@ -334,7 +300,6 @@ class ReasonablenessService:
             results.append(rating)
         
         return results
-
 
 # Global instance
 reasonableness_service = ReasonablenessService()

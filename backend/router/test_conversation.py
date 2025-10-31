@@ -378,8 +378,8 @@ async def main():
                         all_issues.extend(eval_result.get('issues', []))
                     else:
                         all_issues.extend(eval_result)
-        if all_issues or results:
-            await get_improvement_advice(all_issues, results)
+   #    if all_issues or results:
+   #        await get_improvement_advice(all_issues, results)
     except Exception as e:
         print(f"❌ Error running tests: {e}")
         import traceback

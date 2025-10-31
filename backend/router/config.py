@@ -48,7 +48,7 @@ USE_REMOTE_INFERENCE = os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "tr
 # Gemini API configuration for reasonableness service (always enabled with grounding)
 RATING_INFERENCE_URL = os.getenv("RATING_INFERENCE_URL", "https://aiplatform.googleapis.com/v1/publishers/google")
 RATING_INFERENCE_KEY = os.getenv("RATING_INFERENCE_KEY", "")
-RATING_INFERENCE_MODEL = os.getenv("RATING_INFERENCE_MODEL", "gemini-2.0-flash-exp")
+RATING_INFERENCE_MODEL ="gemini-2.5-flash" # os.getenv("RATING_INFERENCE_MODEL", "gemini-2.5-flash")# os.getenv("RATING_INFERENCE_MODEL", "gemini-2.5-flash")
 
 if USE_REMOTE_INFERENCE:
     print("Using remote inference")
