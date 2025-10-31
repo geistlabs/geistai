@@ -85,6 +85,7 @@ class ReasonablenessService:
         try:
             # Build Gemini API request with API key as URL parameter (more reliable than header)
             api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
+            print(f"API URL: {api_url}")
             
             # Construct request body with grounding (no function calling, as they're mutually exclusive)
             request_body = {
@@ -219,7 +220,7 @@ Use Google Search grounding to verify facts if needed. Be thorough and accurate.
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
         """Build the evaluation context for the rating tool call."""
         
-        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt(user_prompt=user_prompt, ai_response=ai_response, context=context)
+        RUBRIC_SYSTEM_PROMPT = get_rubrics_prompt(user_prompt=user_prompt, ai_response=ai_response, context=str(context))
 
         return RUBRIC_SYSTEM_PROMPT
     def _get_gemini_rating_function(self) -> Dict[str, Any]:

@@ -71,7 +71,7 @@ async def test_parallel_conversation(long_conversations):
     tasks = [asyncio.create_task(run_with_limit(i, conv)) for i, conv in enumerate(long_conversations)]
     try:
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        successful = sum(1 for r in results if not isinstance(r, Exception) and not r.get('error'))
+        successful = sum(1 for r in results if not isinstance(r, Exception) )
         failed = len(results) - successful
         print(f"\n📊 Results: {successful} successful, {failed} failed")
         return results
@@ -319,6 +319,8 @@ Keep your advice concise and practical."""
             }
             # Model is in the endpoint URL for Gemini
         }
+        print(f"Payload: {payload}")
+        print(f"API URL: {api_url}")
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 api_url,
@@ -372,7 +374,10 @@ async def main():
         for result in results:
             if isinstance(result, dict) and 'evaluation_results' in result:
                 for eval_result in result['evaluation_results']:
-                    all_issues.extend(eval_result.get('issues', []))
+                    if isinstance(eval_result, dict):
+                        all_issues.extend(eval_result.get('issues', []))
+                    else:
+                        all_issues.extend(eval_result)
         if all_issues or results:
             await get_improvement_advice(all_issues, results)
     except Exception as e:

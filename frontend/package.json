@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start:go:android": "expo start --go --android --clear",
+    "start:go:android": "expo start --go",
     "start": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo start --clear ",
     "startgo": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo start --go --clear",
 
