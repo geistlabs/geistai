@@ -127,7 +127,7 @@ class ReasonablenessService:
                     }
                 
                 result = response.json()
-                
+                print(f"Result: {result}")
                 # Extract text response from Gemini
                 if "candidates" not in result or not result["candidates"]:
                     return {
