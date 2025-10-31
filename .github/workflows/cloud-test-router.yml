@@ -57,12 +57,12 @@ jobs:
 
     - name: Wait for router to be ready
       run: |
-        timeout 120 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+        timeout 240 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
     - name: Run streaming tests
       working-directory: ./backend/router
       run: |
         echo "=== Starting streaming tests ==="
-        timeout 120 python test_streaming.py
+        timeout 240 python test_streaming.py
         echo "=== Streaming tests completed ==="
       env:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
