@@ -37,7 +37,7 @@ jobs:
       working-directory: ./backend
       run: |
         cat > .env << EOF
-        OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+        RATING_INFERENCE_KEY=${{ secrets.RATING_INFERENCE_KEY }}
         INFERENCE_URL=https://inference.geist.im
         EMBEDDINGS_URL=https://embeddings.geist.im
         HARMONY_ENABLED=false
@@ -50,7 +50,8 @@ jobs:
         echo $! > router.pid
         sleep 10
       env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        RATING_INFERENCE_KEY: ${{ secrets.RATING_INFERENCE_KEY }}
+        USE_REMOTE_INFERENCE: false
         INFERENCE_URL: https://inference.geist.im
         EMBEDDINGS_URL: https://embeddings.geist.im
         LOG_LEVEL: INFO
@@ -63,10 +64,10 @@ jobs:
       working-directory: ./backend/router
       run: |
         echo "=== Starting streaming tests ==="
-        timeout 240 python test_streaming.py
+        timeout 240 python test_conversation.py
         echo "=== Streaming tests completed ==="
       env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        RATING_INFERENCE_KEY: ${{ secrets.RATING_INFERENCE_KEY }}
         INFERENCE_URL: https://inference.geist.im
         EMBEDDINGS_URL: https://embeddings.geist.im
 
@@ -75,7 +76,7 @@ jobs:
       run: |
         python test_health_endpoint.py
       env:
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        RATING_INFERENCE_KEY: ${{ secrets.RATING_INFERENCE_KEY }}
         INFERENCE_URL: https://inference.geist.im
         EMBEDDINGS_URL: https://embeddings.geist.im
 
