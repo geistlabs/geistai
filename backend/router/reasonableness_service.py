@@ -111,7 +111,7 @@ class ReasonablenessService:
                 response = await client.post(
                     api_url,
                     headers={
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
                     },
                     json=request_body,
                     timeout=60.0

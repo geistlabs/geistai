@@ -3,6 +3,31 @@
 import os
 from pathlib import Path
 
+"""Configuration settings for the router service."""
+
+import os
+from pathlib import Path
+
+# Load .env file from parent directory when running locally
+try:
+    from dotenv import load_dotenv
+    # Get the directory where this config.py file is located
+    current_dir = Path(__file__).parent
+    # Go up one directory to find the .env file
+    parent_dir = current_dir.parent
+    env_file = parent_dir / ".env"
+    
+    if env_file.exists():
+        load_dotenv(env_file)
+        print(f"Loaded environment variables from: {env_file}")
+    else:
+        print(f"No .env file found at: {env_file}")
+except ImportError:
+    print("python-dotenv not installed, skipping .env file loading")
+
+# Gpt configuration
+
+
 
 
 # Gpt configuration
