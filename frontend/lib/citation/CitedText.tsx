@@ -14,6 +14,7 @@ import {
 // import { renderMarkdown } from '../utils/markdownRenderer';
 
 import { Citation } from './citationParser';
+import { renderMarkdown } from '../utils/markdownRenderer';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const DRAWER_HEIGHT = SCREEN_HEIGHT * 0.45;
@@ -197,14 +198,12 @@ export const CitedText: React.FC<CitedTextProps> = ({
               return null;
             }
 
-            // Temporarily use plain text instead of markdown for debugging
+            // Render using markdown for rich formatting
             return (
               <View key={index}>
-                <Text
-                  style={{ color: '#111827', fontSize: 15, lineHeight: 22 }}
-                >
-                  {(part.content ?? '').replace(/(\r\n|\n|\r)/g, '')}
-                </Text>
+                {renderMarkdown(
+                  (part.content ?? '').replace(/(\r\n|\n|\r)/g, ''),
+                )}
               </View>
             );
           }
