@@ -521,7 +521,7 @@ class GptService:
 
         if self.config.USE_REMOTE_INFERENCE:
             url = self.config.REMOTE_INFERENCE_URL
-            model = self.config.OPENAI_MODEL
+            model = self.config.REMOTE_INFERENCE_MODEL
         else:
             url = self.config.INFERENCE_URL
             model = "gpt-3.5-turbo"

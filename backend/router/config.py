@@ -4,29 +4,6 @@ import os
 from pathlib import Path
 
 
-# Load .env file from parent directory only for OpenAI key when running locally
-def _load_openai_key_from_env():
-    """Load OpenAI API key from .env file in parent directory if not already set."""
-    if os.getenv("OPENAI_API_KEY"):
-        return  # Already set, don't override
-
-    try:
-        from dotenv import load_dotenv
-
-        # Get the directory where this config.py file is located
-        current_dir = Path(__file__).parent
-        # Go up one directory to find the .env file
-        parent_dir = current_dir.parent
-        env_file = parent_dir / ".env"
-
-        if env_file.exists():
-            load_dotenv(env_file)
-    except ImportError:
-        pass  # python-dotenv not installed, silently continue
-
-
-# Load OpenAI key from .env if needed
-_load_openai_key_from_env()
 
 # Gpt configuration
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # "low", "medium", "high"
@@ -38,9 +15,10 @@ REASONING_EFFORT = os.getenv("REASONING_EFFORT", "low")  # "low", "medium", "hig
 INFERENCE_URL = os.getenv("INFERENCE_URL", "http://localhost:8080")
 
 INFERENCE_TIMEOUT = int(os.getenv("INFERENCE_TIMEOUT", "300"))
-REMOTE_INFERENCE_URL="https://api.studio.nebius.com"
-REMOTE_INFERENCE_KEY=os.getenv("REMOTE_INFERENCE_KEY", "")
-USE_REMOTE_INFERENCE = True #os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
+REMOTE_INFERENCE_URL=os.getenv("REMOTE_INFERENCE_URL", "https://api.studio.nebius.com")
+REMOTE_INFERENCE_KEY=os.getenv("REMOTE_INFERENC_KEY", "")
+REMOTE_INFERENCE_MODEL=os.getenv("REMOTE_INFERENCE_MODEL", "gpt-oss-20b")
+USE_REMOTE_INFERENCE = os.getenv("USE_REMOTE_INFERENCE", "false").lower() == "true"
 
 # Gemini API configuration for reasonableness service (always enabled with grounding)
 RATING_INFERENCE_URL = os.getenv("RATING_INFERENCE_URL", "https://aiplatform.googleapis.com/v1/publishers/google")
@@ -53,7 +31,6 @@ else:
     print("Using local inference")
 
 # Main inference model configuration
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-oss-20b")
 INFERENCE_URL = "https://inference.geist.im"
 
 # MCP service configuration
