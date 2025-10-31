@@ -111,6 +111,8 @@ def get_rubrics_prompt(user_prompt: str, ai_response: str, context: str) -> str:
         "Call grading tool once, no prose.\n"
         f"User prompt:\n{user_prompt}\nAI response:\n{ai_response}\nContext:\n{context}"
         "Only set issues and grade below 8 if the responses are bad enough to warrant human review."
+        "If the response looks like an error on the face give it a rating of .3 or less."
+        "Use Google Search grounding to verify facts if needed. Be thorough and accurate."
     )
 
 def get_summarizer_prompt() -> str:

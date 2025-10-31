@@ -94,20 +94,7 @@ class ReasonablenessService:
                         "role": "user",
                         "parts": [
                             {
-                                "text": f"""You are an expert evaluator of AI responses. Rate responses on reasonableness, not factual accuracy.
-
-{evaluation_context}
-
-You must respond with ONLY a valid JSON object in this exact format (no markdown, no code blocks, just the raw JSON):
-{{
-  "rating": <number between 0.0 and 1.0>,
-  "reasoning": "<brief explanation>",
-  "confidence": <number between 0.0 and 1.0>,
-  "issues": ["<issue1>", "<issue2>", ...]
-}}
-Make sure that oss isn't missing current info 
-Have to different answers for rating, one is critical errors and one is not correct answers.
-Use Google Search grounding to verify facts if needed. Be thorough and accurate."""
+                                "text": f"""You are an expert evaluator of AI responses. {evaluation_context}"""
                             }
                         ]
                     }
@@ -118,6 +105,7 @@ Use Google Search grounding to verify facts if needed. Be thorough and accurate.
                     }
                 ]
             }
+            print(f"Request body: {request_body}")
             
             async with httpx.AsyncClient() as client:
                 response = await client.post(
