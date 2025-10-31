@@ -320,7 +320,7 @@ Keep your advice concise and practical."""
             # Model is in the endpoint URL for Gemini
         }
         print(f"Payload: {payload}")
-        print(f"API URL: {api_url}")
+        print(f"API URL: {api_url[:-6]}...")
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 api_url,

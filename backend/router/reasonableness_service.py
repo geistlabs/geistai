@@ -85,7 +85,7 @@ class ReasonablenessService:
         try:
             # Build Gemini API request with API key as URL parameter (more reliable than header)
             api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
-            print(f"API URL: {api_url}")
+            print(f"API URL: {api_url[:-6]}...")
             
             # Construct request body with grounding (no function calling, as they're mutually exclusive)
             request_body = {
