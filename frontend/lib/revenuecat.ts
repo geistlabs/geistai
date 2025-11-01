@@ -65,8 +65,13 @@ const revenueCatKeys = getRevenueCatKeys();
  */
 export async function initializeRevenueCat(): Promise<boolean> {
   try {
-    // Set log level for debugging (use LOG_LEVEL.ERROR in production)
-    Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.VERBOSE : LOG_LEVEL.ERROR);
+    // Enable verbose logging for debugging - can be controlled via env var
+    // Set EXPO_PUBLIC_REVENUECAT_ENABLE_DEBUG=true to enable verbose logs in production
+    const enableDebugLogs =
+      __DEV__ || process.env.EXPO_PUBLIC_REVENUECAT_ENABLE_DEBUG === 'true';
+    Purchases.setLogLevel(
+      enableDebugLogs ? LOG_LEVEL.VERBOSE : LOG_LEVEL.ERROR,
+    );
 
     // Configure RevenueCat based on platform
     if (Platform.OS === 'ios') {
@@ -74,33 +79,51 @@ export async function initializeRevenueCat(): Promise<boolean> {
         const envVarName = revenueCatKeys.isTest
           ? 'EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY'
           : 'EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY';
-        console.warn(
-          `RevenueCat Apple API key not found. Set ${envVarName} (using ${revenueCatKeys.isTest ? 'test' : 'production'} environment)`,
+        const errorMsg = `RevenueCat Apple API key not found. Set ${envVarName} (using ${revenueCatKeys.isTest ? 'test' : 'production'} environment)`;
+        console.error(`❌ [RevenueCat] ${errorMsg}`);
+        console.error(
+          `❌ [RevenueCat] Environment: ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'}`,
         );
         return false;
       }
+
+      // Log API key info for debugging (masked)
+      const maskedKey = revenueCatKeys.apple
+        ? `${revenueCatKeys.apple.substring(0, 8)}...${revenueCatKeys.apple.substring(revenueCatKeys.apple.length - 4)}`
+        : 'NOT SET';
+      console.log(
+        `🔑 [RevenueCat] Initializing iOS with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${maskedKey}`,
+      );
+
       Purchases.configure({ apiKey: revenueCatKeys.apple });
+      console.log('✅ [RevenueCat] iOS SDK configured successfully');
     } else if (Platform.OS === 'android') {
       if (!revenueCatKeys.google) {
         const envVarName = revenueCatKeys.isTest
           ? 'EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY'
           : 'EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY';
-        console.warn(
-          `RevenueCat Google API key not found. Set ${envVarName} (using ${revenueCatKeys.isTest ? 'test' : 'production'} environment)`,
+        const errorMsg = `RevenueCat Google API key not found. Set ${envVarName} (using ${revenueCatKeys.isTest ? 'test' : 'production'} environment)`;
+        console.error(`❌ [RevenueCat] ${errorMsg}`);
+        console.error(
+          `❌ [RevenueCat] Environment: ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'}`,
         );
         return false;
       }
-      Purchases.configure({ apiKey: revenueCatKeys.google });
 
-      if (__DEV__) {
-        console.log(
-          `RevenueCat initialized with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} Google API key`,
-        );
-      }
+      // Log API key info for debugging (masked)
+      const maskedKey = revenueCatKeys.google
+        ? `${revenueCatKeys.google.substring(0, 8)}...${revenueCatKeys.google.substring(revenueCatKeys.google.length - 4)}`
+        : 'NOT SET';
+      console.log(
+        `🔑 [RevenueCat] Initializing Android with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${maskedKey}`,
+      );
+
+      Purchases.configure({ apiKey: revenueCatKeys.google });
+      console.log('✅ [RevenueCat] Android SDK configured successfully');
     }
     return true;
   } catch (error) {
-    console.error('Error initializing RevenueCat:', error);
+    console.error('❌ [RevenueCat] Error initializing RevenueCat:', error);
     throw error;
   }
 }
@@ -196,15 +219,54 @@ export async function hasActiveEntitlement(
  */
 export async function getOfferings(): Promise<PurchasesOffering | null> {
   try {
+    console.log('🔍 [RevenueCat] Fetching offerings...');
     const offerings = await Purchases.getOfferings();
-    if (__DEV__ && offerings.current) {
+
+    if (offerings.current) {
+      console.log('✅ [RevenueCat] Offerings fetched successfully');
       console.log(
-        '[RevenueCat] Offerings fetched - check console for "GetWebBillingProductsOperation" to see if web billing is active',
+        `📦 [RevenueCat] Current offering: ${offerings.current.identifier}`,
       );
+      console.log(
+        `📦 [RevenueCat] Available packages: ${offerings.current.availablePackages.length}`,
+      );
+      if (offerings.current.availablePackages.length === 0) {
+        console.warn(
+          '⚠️ [RevenueCat] WARNING: Current offering has no available packages!',
+        );
+        console.warn(
+          '⚠️ [RevenueCat] Check RevenueCat dashboard - offerings may not be configured or products may not be attached',
+        );
+      }
+      // Log all available offerings for debugging
+      if (Object.keys(offerings.all).length > 0) {
+        console.log(
+          `📋 [RevenueCat] All offerings: ${Object.keys(offerings.all).join(', ')}`,
+        );
+      }
+    } else {
+      console.error('❌ [RevenueCat] No current offering found!');
+      console.error('❌ [RevenueCat] Possible causes:');
+      console.error(
+        '   1. No offering is set as "current" in RevenueCat dashboard',
+      );
+      console.error('   2. No products are attached to the offering');
+      console.error('   3. Products are not approved in App Store Connect');
+      console.error('   4. Wrong API key is being used');
+      if (Object.keys(offerings.all).length > 0) {
+        console.error(
+          `   Available offerings (not set as current): ${Object.keys(offerings.all).join(', ')}`,
+        );
+      }
     }
+
     return offerings.current;
   } catch (error) {
-    console.error('Error fetching offerings:', error);
+    console.error('❌ [RevenueCat] Error fetching offerings:', error);
+    if (error instanceof Error) {
+      console.error(`❌ [RevenueCat] Error message: ${error.message}`);
+      console.error(`❌ [RevenueCat] Error stack: ${error.stack}`);
+    }
     return null;
   }
 }

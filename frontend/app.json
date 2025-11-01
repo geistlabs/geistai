@@ -11,7 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "im.geist.ios",
-      "buildNumber": "5",
+      "buildNumber": "7",
       "simulator": {
         "deviceId": "0198E212-CDFE-4C69-9832-4625D9296986"
       },

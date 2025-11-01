@@ -30,8 +30,15 @@ export function PaywallModal({
   const [selectedPackage, setSelectedPackage] =
     useState<PurchasesPackage | null>(null);
 
-  const { offerings, isLoading, isPurchasing, error, purchase, restore } =
-    useRevenueCat('premium');
+  const {
+    offerings,
+    isLoading,
+    isPurchasing,
+    error,
+    purchase,
+    restore,
+    refresh,
+  } = useRevenueCat('premium');
 
   const handlePurchase = async (packageToPurchase: PurchasesPackage) => {
     try {
@@ -156,16 +163,22 @@ export function PaywallModal({
                 <Text className='text-gray-600 mt-2'>Loading plans...</Text>
               </View>
             ) : error ? (
-              <View className='items-center py-8'>
-                <Text className='text-red-600 text-center mb-4'>
+              <View className='items-center py-8 px-4'>
+                <Text className='text-red-600 text-center mb-2 font-semibold'>
                   Failed to load subscription plans
                 </Text>
+                <Text className='text-red-500 text-center text-sm mb-4'>
+                  {typeof error === 'string' ? error : 'Unknown error occurred'}
+                </Text>
                 <TouchableOpacity
-                  onPress={() => window.location.reload()}
-                  className='bg-blue-500 px-4 py-2 rounded'
+                  onPress={() => refresh()}
+                  className='bg-blue-500 px-4 py-2 rounded mb-2'
                 >
-                  <Text className='text-white'>Retry</Text>
+                  <Text className='text-white font-medium'>Retry</Text>
                 </TouchableOpacity>
+                <Text className='text-gray-500 text-xs text-center mt-4'>
+                  Check console logs for detailed error information
+                </Text>
               </View>
             ) : offerings?.availablePackages ? (
               <View className='space-y-3'>
@@ -241,10 +254,22 @@ export function PaywallModal({
                 })}
               </View>
             ) : (
-              <View className='items-center py-8'>
-                <Text className='text-gray-600 text-center'>
+              <View className='items-center py-8 px-4'>
+                <Text className='text-red-600 text-center font-semibold mb-2'>
                   No subscription plans available
                 </Text>
+                <Text className='text-gray-600 text-center text-sm mb-4'>
+                  This could mean:{'\n'}• Products are not configured in
+                  RevenueCat{'\n'}• No offering is set as &quot;current&quot; in
+                  dashboard{'\n'}
+                  {'\n'}• Products are not approved in App Store Connect
+                </Text>
+                <TouchableOpacity
+                  onPress={() => refresh()}
+                  className='bg-blue-500 px-4 py-2 rounded'
+                >
+                  <Text className='text-white font-medium'>Refresh Plans</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
