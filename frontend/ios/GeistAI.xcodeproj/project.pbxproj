@@ -14,7 +14,6 @@
 		AF939E4D463892183FA04530 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A169B7D787437E201D2678 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		D3AF591E2EB3E85800A0C9B3 /* configurationTest.storekit in Resources */ = {isa = PBXBuildFile; fileRef = D3AF591D2EB3E85800A0C9B3 /* configurationTest.storekit */; };
-		D3AF59242EB42B2A00A0C9B3 /* StoreKitTestCertificate.cer in Resources */ = {isa = PBXBuildFile; fileRef = D3AF59232EB42B2A00A0C9B3 /* StoreKitTestCertificate.cer */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
@@ -29,7 +28,6 @@
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		C7FFE0F1CC5EBC67BB6EC2F6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = GeistAI/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D3AF591D2EB3E85800A0C9B3 /* configurationTest.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = configurationTest.storekit; sourceTree = "<group>"; };
-		D3AF59232EB42B2A00A0C9B3 /* StoreKitTestCertificate.cer */ = {isa = PBXFileReference; lastKnownFileType = file; path = StoreKitTestCertificate.cer; sourceTree = "<group>"; };
 		E1607F8B226C9FD143D54483 /* libPods-GeistAI.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-GeistAI.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = GeistAI/AppDelegate.swift; sourceTree = "<group>"; };
@@ -59,7 +57,6 @@
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				C7FFE0F1CC5EBC67BB6EC2F6 /* PrivacyInfo.xcprivacy */,
 				D3AF591D2EB3E85800A0C9B3 /* configurationTest.storekit */,
-				D3AF59232EB42B2A00A0C9B3 /* StoreKitTestCertificate.cer */,
 			);
 			name = GeistAI;
 			sourceTree = "<group>";
@@ -203,7 +200,6 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				72275C77023E52A1CA6ECB7E /* PrivacyInfo.xcprivacy in Resources */,
-				D3AF59242EB42B2A00A0C9B3 /* StoreKitTestCertificate.cer in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
