@@ -32,7 +32,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install fastapi httpx uvicorn sse-starlette python-multipart python-dotenv
-        pip install pytest pytest-asyncio sentence_transformers
+        pip install pytest pytest-asyncio sentence_transformers sqlalchemy psycopg2-binary alembic python-dateutil
     - name: Create test environment file
       working-directory: ./backend
       run: |
