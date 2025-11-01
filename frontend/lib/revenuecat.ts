@@ -87,12 +87,10 @@ export async function initializeRevenueCat(): Promise<boolean> {
         return false;
       }
 
-      // Log API key info for debugging (masked)
-      const maskedKey = revenueCatKeys.apple
-        ? `${revenueCatKeys.apple.substring(0, 8)}...${revenueCatKeys.apple.substring(revenueCatKeys.apple.length - 4)}`
-        : 'NOT SET';
+      // Log API key info for debugging (full key shown for verification)
+      // ⚠️ REMOVE THIS AFTER DEBUGGING - Do not commit full keys to logs in production
       console.log(
-        `🔑 [RevenueCat] Initializing iOS with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${maskedKey}`,
+        `🔑 [RevenueCat] Initializing iOS with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${revenueCatKeys.apple || 'NOT SET'}`,
       );
 
       Purchases.configure({ apiKey: revenueCatKeys.apple });
@@ -110,12 +108,10 @@ export async function initializeRevenueCat(): Promise<boolean> {
         return false;
       }
 
-      // Log API key info for debugging (masked)
-      const maskedKey = revenueCatKeys.google
-        ? `${revenueCatKeys.google.substring(0, 8)}...${revenueCatKeys.google.substring(revenueCatKeys.google.length - 4)}`
-        : 'NOT SET';
+      // Log API key info for debugging (full key shown for verification)
+      // ⚠️ REMOVE THIS AFTER DEBUGGING - Do not commit full keys to logs in production
       console.log(
-        `🔑 [RevenueCat] Initializing Android with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${maskedKey}`,
+        `🔑 [RevenueCat] Initializing Android with ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} key: ${revenueCatKeys.google || 'NOT SET'}`,
       );
 
       Purchases.configure({ apiKey: revenueCatKeys.google });
