@@ -65,6 +65,7 @@ class ToolCallResponse(TypedDict):
     success: bool
     new_conversation_entries: List[Any]
     tool_call_result: Dict[str, Any] | None
+    negotiation_data: Dict[str, Any] | None  # For finalize_negotiation tool
 
 
 
@@ -92,7 +93,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=[],
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
     try:
@@ -129,10 +131,18 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
 
         print(f"   ✅ Tool call succeeded: {tool_name}")
 
+        # Store negotiation data if this is a finalize_negotiation tool
+        # This will be picked up later to emit a negotiation channel event
+        negotiation_data_to_emit = None
+        if tool_name == "finalize_negotiation" and isinstance(result, dict) and "negotiation_data" in result:
+            negotiation_data_to_emit = result["negotiation_data"]
+            print(f"   💰 [Negotiation] Tool returned negotiation data: {negotiation_data_to_emit}")
+
         return ToolCallResponse(
             success=True,
             new_conversation_entries=local_conversation,
-            tool_call_result=tool_call_result
+            tool_call_result=tool_call_result,
+            negotiation_data=negotiation_data_to_emit
         )
 
     except json.JSONDecodeError as e:
@@ -147,7 +157,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
     except Exception as e:
@@ -164,7 +175,8 @@ async def execute_single_tool_call(tool_call: dict, execute_tool: Callable) -> T
         return ToolCallResponse(
             success=False,
             new_conversation_entries=local_conversation,
-            tool_call_result=None
+            tool_call_result=None,
+            negotiation_data=None
         )
 
 
@@ -240,7 +252,7 @@ async def process_llm_response_with_tools(
     """
     current_tool_calls = []
     saw_tool_call = False
-    
+
     # Accumulate content for logging
     accumulated_content = ""
     accumulated_reasoning = ""
@@ -289,7 +301,7 @@ async def process_llm_response_with_tools(
                         current_tool_calls[tc_index]["function"]["name"] += func["name"]
                     if "arguments" in func:
                         current_tool_calls[tc_index]["function"]["arguments"] += func["arguments"]
-                
+
                 # Log tool call accumulation
 
 
@@ -307,7 +319,7 @@ async def process_llm_response_with_tools(
         elif "reasoning_content" in delta_obj and delta_obj["reasoning_content"]:
             reasoning_deltas_count += 1
             accumulated_reasoning += delta_obj["reasoning_content"]
-        
+
             # Yield with explicit channel identification for frontend as a tuple
             yield ({
                 "channel": "reasoning",
@@ -328,18 +340,18 @@ async def process_llm_response_with_tools(
 
             if finish_reason == "tool_calls" and current_tool_calls:
                 print(f"🔍 [agent: {agent_name}] ✅ EXECUTING {len(current_tool_calls)} TOOL(S)")
-               
+
                 # Lo    g accumulated content and reasoning before tool execution
                 if accumulated_content:
                     print(f"🔍 [agent: {agent_name}] 📄 ACCUMULATED CONTENT: '{accumulated_content}'")
                 if accumulated_reasoning:
                     print(f"🔍 [agent: {agent_name}] 🧠 ACCUMULATED REASONING: '{accumulated_reasoning}'")
-                
+
                 # Log all tool calls being executed
                 for i, tool_call in enumerate(current_tool_calls):
                     print(f"🔍 [agent: {agent_name}] 🛠️  TOOL CALL {i+1}: {tool_call}")
                     accumulated_tool_calls.append(tool_call)
-                
+
                 # Execute tool calls concurrently
 
                 # Create tasks for concurrent execution
@@ -364,6 +376,7 @@ async def process_llm_response_with_tools(
 
                 # Process all results
                 has_error = False
+                negotiation_data_from_tools = None
                 # handle tool call result and then continue
                 for i, result in enumerate(results):
                     if isinstance(result, BaseException):
@@ -372,21 +385,32 @@ async def process_llm_response_with_tools(
                         break
                     elif isinstance(result, dict) and "success" in result:
                         conversation.extend(result["new_conversation_entries"])
+                        # Check if this tool returned negotiation data
+                        if result.get("negotiation_data"):
+                            negotiation_data_from_tools = result["negotiation_data"]
 
                 if has_error:
                     yield (None, "stop")
                     print("Returning at tool call error")
 
-                print(f"🔍 [agent: {agent_name}] 🔄 Returning 'continue' status to continue")               
-                yield (None, "continue") 
+                # Emit negotiation channel event if we have negotiation data
+                if negotiation_data_from_tools:
+                    print(f"🔥 [Negotiation] Emitting negotiation channel from streaming loop: {negotiation_data_from_tools}")
+                    yield ({
+                        "channel": "negotiation",
+                        "data": negotiation_data_from_tools
+                    }, None)
+
+                print(f"🔍 [agent: {agent_name}] 🔄 Returning 'continue' status to continue")
+                yield (None, "continue")
 
             elif finish_reason == "stop":
-                
+
                 # Normal completion, we're done
                 print(f"Just finished, based on {choice} {delta}")
 
                 print(f"🔍 [agent: {agent_name}] ✅ NORMAL COMPLETION - finish_reason='stop'")
-                
+
                 # Log final accumulated content and reasoning
                 if not accumulated_content and not accumulated_tool_calls:
                     if failed_tool_calls >= MAX_FAILED_COMPLETIONS or "_final" in agent_name:
@@ -407,11 +431,11 @@ async def process_llm_response_with_tools(
                         yield (None, "empty")
                 # Only log the first 10 characters (as per instruction "cars")
                 print(f"🔍 [agent: {agent_name}] 📄 FINAL CONTENT: '{accumulated_content[:10]}'")
-   
+
                 print(f"🔍 [agent: {agent_name}] 🧠 FINAL REASONING: '{accumulated_reasoning}'")
 
                 print(f"🔍 [agent: {agent_name}] 🛠️  TOTAL TOOL CALLS: {len(accumulated_tool_calls)}")
-                
+
                 print(f"🔍 [agent: {agent_name}] 🛑 RETURNING 'stop' status to exit")
                 yield (None, "stop")
 
@@ -424,11 +448,11 @@ async def process_llm_response_with_tools(
 
     # This shouldn't happen, but just in case
     print(f"🔍 [agent: {agent_name}] ⚠️  Stream ended without finish_reason (no tool calls were made)")
-    
+
     # Log any accumulated content even if stream ended unexpectedly
     if accumulated_content:
         print(f"🔍 [agent: {agent_name}] 📄 UNEXPECTED END - CONTENT: '{accumulated_content}'")
     if accumulated_reasoning:
         print(f"🔍 [agent: {agent_name}] 🧠 UNEXPECTED END - REASONING: '{accumulated_reasoning}'")
-    
+
     yield (None, "stop")

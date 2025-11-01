@@ -46,7 +46,7 @@ class GptService:
 
         # MCP client (if MCP is enabled)
         self._mcp_client: Optional[SimpleMCPClient] = None
-        
+
         # Tool call tracking
         self._tool_call_count = 0
         self._tool_call_history: List[dict] = []
@@ -55,20 +55,20 @@ class GptService:
     # ------------------------------------------------------------------------
     # Tool Call Tracking
     # ------------------------------------------------------------------------
-    
+
     def get_tool_call_count(self) -> int:
         """Get the total number of tool calls made in this session"""
         return self._tool_call_count
-    
+
     def get_tool_call_history(self) -> List[dict]:
         """Get the history of all tool calls made in this session"""
         return self._tool_call_history.copy()
-    
+
     def reset_tool_call_tracking(self):
         """Reset tool call tracking counters"""
         self._tool_call_count = 0
         self._tool_call_history.clear()
-    
+
     def _track_tool_call(self, tool_name: str, arguments: dict, result: dict, execution_time: float = 0.0):
         """Track a tool call for monitoring and debugging"""
         self._tool_call_count += 1
@@ -81,10 +81,10 @@ class GptService:
             "timestamp": datetime.now().isoformat()
         }
         self._tool_call_history.append(tool_call_record)
-        
+
         if self.can_log:
             print(f"🔧 Tool call #{self._tool_call_count}: {tool_name} (took {execution_time:.2f}s)")
-    
+
     def get_tool_call_statistics(self) -> dict:
         """Get statistics about tool calls made in this session"""
         if not self._tool_call_history:
@@ -94,25 +94,25 @@ class GptService:
                 "tool_usage": {},
                 "success_rate": 0.0
             }
-        
+
         total_calls = len(self._tool_call_history)
         total_execution_time = sum(call["execution_time"] for call in self._tool_call_history)
         average_execution_time = total_execution_time / total_calls
-        
+
         # Count tool usage
         tool_usage = {}
         successful_calls = 0
-        
+
         for call in self._tool_call_history:
             tool_name = call["tool_name"]
             tool_usage[tool_name] = tool_usage.get(tool_name, 0) + 1
-            
+
             # Check if call was successful (no error in result)
             if "error" not in call["result"]:
                 successful_calls += 1
-        
+
         success_rate = (successful_calls / total_calls) * 100 if total_calls > 0 else 0
-        
+
         return {
             "total_calls": total_calls,
             "average_execution_time": average_execution_time,
@@ -186,14 +186,14 @@ class GptService:
 
                 # Use the first available fetch tool
                 fetch_tool_name = fetch_tools[0]
-             
+
                 # Prepare arguments for the MCP fetch tool
                 fetch_args = {"url": url}
 
                 # Try to add recursive flag if the tool supports it
                 fetch_args["max_length"] = 10000
                 fetch_args["html"] = True,
-                
+
                 fetch_args["include_links"] = True
                 fetch_args["include_tables"] = True
                 fetch_args["include_code"] = True
@@ -207,13 +207,16 @@ class GptService:
                 # Use tiktoken if available for accurate token counting, else fallback to word count
                 content = result.get("content", str(result))
                 try:
-                    import tiktoken
+                    import tiktoken  # type: ignore
                     enc = tiktoken.get_encoding("cl100k_base")
                     token_count = len(enc.encode(content))
-                except Exception:
+                except ImportError:
                     # If tiktoken is not installed, do a rough word-based fallback
                     token_count = len(content.split())
-             
+                except Exception:
+                    # If tiktoken fails for other reasons, do a rough word-based fallback
+                    token_count = len(content.split())
+
                 # Count URLs processed (simple heuristic)
                 url_count = content.count("http://") + content.count("https://")
                 if url_count == 0:
@@ -223,11 +226,11 @@ class GptService:
                     query = "What is the main content of the page?"
                 relevant_text = content
                 if token_count > 2000:
-                    try: 
+                    try:
                         relevant_text = extract_relevant_text(content, query,max_chars=1000, max_blocks=1000)
                     except Exception as e:
                         relevant_text = "Failed to extract relevant text"
-                
+
 
 
                 return {
@@ -291,6 +294,104 @@ class GptService:
         #     available_tools=[],  # Could add calculator tool here
         #     reasoning_effort="high"
         # )
+
+        # Register finalize_negotiation tool for pricing agent
+        async def finalize_negotiation_tool(args: dict) -> Dict:
+            """
+            Tool for pricing agent to finalize pricing with monthly and annual options.
+            This tool emits both a negotiation channel event and a legacy event.
+
+            Args:
+                final_price: The monthly price (9.99)
+                package_id: The monthly package identifier (premium_monthly_10)
+                annual_price: The annual price (95.99)
+                annual_package_id: The annual package identifier (premium_yearly_10)
+                negotiation_summary: Brief explanation of the pricing decision
+            """
+            final_price = args.get("final_price")
+            package_id = args.get("package_id")
+            annual_price = args.get("annual_price")
+            annual_package_id = args.get("annual_package_id")
+            negotiation_summary = args.get("negotiation_summary", "")
+
+            # Validate inputs
+            valid_monthly_prices = [9.99]
+            valid_monthly_packages = ["premium_monthly_10"]
+            valid_annual_prices = [95.99]
+            valid_annual_packages = ["premium_yearly_10"]
+
+            if final_price not in valid_monthly_prices:
+                return {"error": f"Invalid final_price. Must be one of: {valid_monthly_prices}"}
+
+            if package_id not in valid_monthly_packages:
+                return {"error": f"Invalid package_id. Must be one of: {valid_monthly_packages}"}
+
+            if annual_price and annual_price not in valid_annual_prices:
+                return {"error": f"Invalid annual_price. Must be one of: {valid_annual_prices}"}
+
+            if annual_package_id and annual_package_id not in valid_annual_packages:
+                return {"error": f"Invalid annual_package_id. Must be one of: {valid_annual_packages}"}
+
+            # Create negotiation data with both monthly and annual options
+            negotiation_data = {
+                "monthly_price": final_price,
+                "monthly_package_id": package_id,
+                "annual_price": annual_price,
+                "annual_package_id": annual_package_id,
+                "negotiation_summary": negotiation_summary,
+                "stage": "finalized",
+                "confidence": 1.0,
+                "discount_percentage": 20 if annual_price else 0
+            }
+
+            # Emit negotiation_finalized event through event emitter (legacy)
+            if hasattr(self, 'event_emitter'):
+                self.event_emitter.emit("negotiation_finalized", negotiation_data)
+
+            print(f"💰 [Negotiation] Finalized: Monthly ${final_price} ({package_id}), Annual ${annual_price} ({annual_package_id}) - {negotiation_summary}")
+
+            return {
+                "success": True,
+                "message": f"Pricing finalized: Monthly ${final_price}, Annual ${annual_price} (20% off)",
+                "negotiation_data": negotiation_data  # Include data in tool result
+            }
+
+        self._register_tool(
+            name="finalize_negotiation",
+            description="Finalize the pricing with monthly and annual options. Call this when the user shows interest in subscribing.",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "final_price": {
+                        "type": "number",
+                        "description": "The monthly price. Must be 9.99",
+                        "enum": [9.99]
+                    },
+                    "package_id": {
+                        "type": "string",
+                        "description": "The monthly package identifier",
+                        "enum": ["premium_monthly_10"]
+                    },
+                    "annual_price": {
+                        "type": "number",
+                        "description": "The annual price with 20% discount. Must be 95.99",
+                        "enum": [95.99]
+                    },
+                    "annual_package_id": {
+                        "type": "string",
+                        "description": "The annual package identifier",
+                        "enum": ["premium_yearly_10"]
+                    },
+                    "negotiation_summary": {
+                        "type": "string",
+                        "description": "A brief, friendly explanation of the pricing options (1-2 sentences)"
+                    }
+                },
+                "required": ["final_price", "package_id", "annual_price", "annual_package_id", "negotiation_summary"]
+            },
+            executor=finalize_negotiation_tool,
+            tool_type="custom"
+        )
 
         pass  # Add your custom tools above this line
 
@@ -407,9 +508,9 @@ class GptService:
             print("🚫 Tool calls disabled via ENABLE_TOOL_CALLS environment variable")
             return
 
-        
 
-    
+
+
         await self._register_mcp_tools()
         # then register custom tools (they might depend on the mcp_tools)
         await self._register_custom_tools()
@@ -674,7 +775,7 @@ class GptService:
                     print(f"⚡ Using increased max_tokens: {max_tokens_to_use} (multi-tool scenario detected)")
 
             request_data = {
-                "messages": msgs, 
+                "messages": msgs,
                 "max_tokens": 32767,
                 "max_output_tokens": 32767,
                 "stream": True,
@@ -682,7 +783,7 @@ class GptService:
                 "reasoning_effort": "low",
                 "temperature": .9,
             }
-       
+
 
             # Add tools if available
             print(f"tools_for_llm: {tools_for_llm}")
@@ -694,8 +795,8 @@ class GptService:
                     print(f"🛠️  Tools: {', '.join(tool_names)}")
 
 
-            
-            
+
+
             if self.can_log:
                 print(f"📤 Sending request with {len(msgs)} messages")
 
@@ -722,7 +823,7 @@ class GptService:
                                 print(f"Error text: {error_text}")
                                 error_msg = error_json.get("message", error_text)
                                 if "context" in error_msg.lower():
-                                    print(f"⚠️  Context limit exceeded - {len(msgs)} messages may be too many")                                
+                                    print(f"⚠️  Context limit exceeded - {len(msgs)} messages may be too many")
                             except json.JSONDecodeError:
                                 pass
 
@@ -741,7 +842,7 @@ class GptService:
                                 break
 
                             try:
-                                payload = json.loads(line[6:]) 
+                                payload = json.loads(line[6:])
 
                                 yield payload
                             except json.JSONDecodeError:
@@ -759,14 +860,14 @@ class GptService:
         # Main tool calling loop
         tool_call_count = 0
         print(f"🚀 Starting chat request with MAX_TOOL_CALLS={MAX_TOOL_CALLS}")
-        
+
         # Reset tool call tracking for this conversation
         self.reset_tool_call_tracking()
 
         exited_via_stop = False
 
         while tool_call_count < MAX_TOOL_CALLS:
-           
+
 
             # Process one LLM response and handle tool calls
             async for content_chunk, status in process_llm_response_with_tools(
@@ -827,11 +928,11 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 "max_output_tokens": 32767,
                 "top_p": 1.0,
                 "temperature": .9,
-                "reasoning_effort": "medium",                
+                "reasoning_effort": "medium",
                 "stream": True,
                 "model": model,
                 "tool_choice": "none",
-            }  
+            }
                 if self.can_log:
                     print(f"📤 Final synthesis request")
 
@@ -842,7 +943,7 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                             f"{url}/v1/chat/completions",
                             headers=headers,
                             json=request_data,
-                            
+
                             timeout=self.config.INFERENCE_TIMEOUT
                         ) as resp:
                             if resp.status_code != 200:
@@ -876,7 +977,7 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 if retry_count > max_retries:
                     print(f"⚠️  Max retries ({max_retries}) exceeded, stopping")
                     return
-                
+
                 async for content_chunk, status in process_llm_response_with_tools(
                     self._execute_tool,
                     llm_stream_final,
@@ -898,8 +999,8 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 if content_chunk:
                     final_synthesis_content.append(content_chunk)
                     yield content_chunk
-                
-                
+
+
                 if status == "stop":
                     # Print tool call statistics at the end
                     if self.can_log:

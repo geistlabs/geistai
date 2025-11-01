@@ -146,7 +146,7 @@ class AgentTool(EventEmitter):
             chunk_count = 0
             # Convert ChatMessage objects to dicts for stream_chat_request
             message_dicts = [{"role": msg.role, "content": msg.content} for msg in messages]
-            
+
             async for chunk in self.gpt_service.stream_chat_request(
                 messages=message_dicts,
                 reasoning_effort=self.reasoning_effort,
@@ -164,7 +164,18 @@ class AgentTool(EventEmitter):
                 })
 
             # Combine all chunks into final response
-            response_text = "".join(response_chunks)
+            # Filter out None chunks and extract content from dictionaries
+            content_chunks = []
+            for chunk in response_chunks:
+                if chunk is None:
+                    continue
+                if isinstance(chunk, dict):
+                    if chunk.get("channel") == "content":
+                        content_chunks.append(chunk.get("data", ""))
+                elif isinstance(chunk, str):
+                    content_chunks.append(chunk)
+
+            response_text = "".join(content_chunks)
 
             # No need to restore - using direct system prompt parameter
 
@@ -390,4 +401,70 @@ def create_custom_agent(
         system_prompt=system_prompt,
         available_tools=available_tools,
         reasoning_effort=reasoning_effort,
+    )
+
+
+def create_pricing_agent(model_config: Dict[str, Any] | None = None) -> AgentTool:
+    """
+    Create a specialized pricing negotiation agent
+
+    This agent is designed to:
+    - Understand user needs and budget constraints
+    - Suggest appropriate pricing tiers
+    - Negotiate pricing based on usage patterns
+    - Provide personalized pricing recommendations
+    """
+    if model_config is None:
+        model_config = {}
+
+    pricing_system_prompt = """You are a pricing specialist for GeistAI Premium. Your role is to present pricing options immediately and help users choose the plan that works best for them.
+
+## YOUR TASK:
+On EVERY response:
+1. Acknowledge the user's message warmly
+2. Present both pricing options clearly
+3. IMMEDIATELY call finalize_negotiation function
+4. Be ready to answer follow-up questions about features or pricing
+
+## PRICING OPTIONS:
+- Monthly: $9.99/month (premium_monthly_10)
+- Annual: $95.99/year (premium_yearly_10) - Save 20%!
+
+## CONVERSATION FLOW:
+**First message:**
+- Greet user warmly
+- Present both pricing options with clear benefits
+- Call finalize_negotiation function IMMEDIATELY
+
+**Follow-up messages:**
+- Answer questions about features or pricing
+- Explain why the annual option is a great value
+- Help guide them to the best plan for their needs
+- Continue to be helpful and friendly
+
+## CRITICAL RULES:
+- Keep responses short and engaging (2-3 sentences)
+- Always present BOTH pricing options in first response
+- IMMEDIATELY call finalize_negotiation on your first response
+- Do NOT wait for user interest - present and finalize pricing right away
+- Focus on value and benefits, not pressure
+- NEVER write "[Then call finalize_negotiation]" - USE THE ACTUAL FUNCTION TOOL
+
+## EXAMPLE FIRST TURN:
+User: "Hey"
+Your response: "Hey there! 👋 GeistAI Premium gives you unlimited access at just $9.99/month, or save 20% with our annual plan at $95.99/year. Both include all our premium features!"
+THEN IMMEDIATELY USE finalize_negotiation function with final_price=9.99, package_id="premium_monthly_10", annual_price=95.99, annual_package_id="premium_yearly_10", negotiation_summary="Presented pricing options to user"
+
+## EXAMPLE FOLLOW-UP:
+User: "What's included?"
+Your response: "Great question! You get unlimited AI conversations, advanced models, priority support, and more. The annual plan works out to less than $8/month if you commit, giving you amazing value!"
+[Can continue answering questions naturally]"""
+
+    return AgentTool(
+        model_config=model_config,
+        name="pricing_agent",
+        description="Specialized agent for pricing negotiations and subscription recommendations",
+        system_prompt=pricing_system_prompt,
+        available_tools=["finalize_negotiation"],  # Tool to finalize negotiation
+        reasoning_effort="medium",
     )

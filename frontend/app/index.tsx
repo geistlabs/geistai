@@ -17,12 +17,16 @@ import ChatDrawer from '../components/chat/ChatDrawer';
 import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble';
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
+import { DevResetButton } from '../components/DevResetButton';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
+import { PaywallModal } from '../components/paywall/PaywallModal';
+import { PricingCard } from '../components/PricingCard';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useRevenueCat } from '../hooks/useRevenueCat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
@@ -30,6 +34,12 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
+  const { isSubscribed: isPremium } = useRevenueCat('premium');
+
+  // Simple chat mode determination - handles undefined/loading state
+  const activeChatMode: 'streaming' | 'negotiation' =
+    isPremium === true ? 'streaming' : 'negotiation';
+
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(
     undefined,
@@ -37,6 +47,7 @@ export default function ChatScreen() {
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Audio recording hook
   const recording = useAudioRecording();
@@ -49,6 +60,7 @@ export default function ChatScreen() {
     isLoading,
     isStreaming,
     error,
+    negotiationResult,
     sendMessage,
     stopStreaming,
     clearMessages,
@@ -57,10 +69,13 @@ export default function ChatScreen() {
     storageError,
     chatApi,
     // Rich event data (legacy - kept for backward compatibility)
-    toolCallEvents,
-    agentEvents,
-    orchestratorStatus,
-  } = useChatWithStorage({ chatId: currentChatId });
+    // toolCallEvents,
+    // agentEvents,
+    // orchestratorStatus,
+  } = useChatWithStorage({
+    chatId: currentChatId,
+    chatMode: activeChatMode,
+  });
 
   useEffect(() => {
     if (enhancedMessages.length > 0) {
@@ -243,6 +258,8 @@ export default function ChatScreen() {
         }}
       >
         <SafeAreaView className='flex-1 bg-white'>
+          {/* Dev Reset Button - Only visible in development */}
+          <DevResetButton />
           <KeyboardAvoidingView
             className='flex-1'
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -266,6 +283,14 @@ export default function ChatScreen() {
                 {/* Center - Title */}
                 <View className='flex-row items-center'>
                   <Text className='text-lg font-medium text-black'>Geist</Text>
+                  {/* PAYWALL COMMENTED OUT FOR TESTING */}
+                  {/* {isPremium && (
+                    <View className='ml-2 bg-yellow-400 px-2 py-1 rounded'>
+                      <Text className='text-black text-xs font-bold'>
+                        PREMIUM
+                      </Text>
+                    </View>
+                  )} */}
                 </View>
 
                 {/* Right side - Buttons */}
@@ -294,6 +319,15 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
+              {/* Pricing Card - only show for non-premium users */}
+              {negotiationResult && isPremium !== true && (
+                <PricingCard
+                  result={negotiationResult}
+                  onUpgrade={() => setShowPaywall(true)}
+                  isLoading={false}
+                />
+              )}
+
               {isLoading && enhancedMessages.length === 0 ? (
                 <View className='flex-1 items-center justify-center p-8'>
                   <LoadingIndicator size='medium' />
@@ -403,6 +437,16 @@ export default function ChatScreen() {
         onChatSelect={handleChatSelect}
         activeChatId={currentChatId}
         onNewChat={handleNewChat}
+      />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onPurchaseSuccess={() => {
+          setShowPaywall(false);
+          console.log('✅ Purchase successful');
+        }}
+        highlightedPackageId={negotiationResult?.package_id}
+        negotiationSummary={negotiationResult?.negotiation_summary}
       />
     </>
   );
