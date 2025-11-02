@@ -201,6 +201,19 @@ async def test_conversation(conversation_turns, test_start_time_all):
         print(f"   - Conversation flow: {'✅ Natural' if response_count == len(conversation_turns) else '❌ Interrupted'}")
     print("\n✨ Multi-turn conversation test completed!")
     # INSERT_YOUR_CODE
+
+    if os.getenv("SKIP_TEST_SAVING", "false").lower() == "true":
+        print("Skipping saving test results to database as per configuration.")
+        return {
+            'conversation_history': conversation_history,
+            'evaluation_results': evaluation_results,
+            'summary': {
+                'total_turns': len(conversation_turns),
+                'successful_responses': response_count,
+                'average_rating': total_rating/response_count if response_count > 0 else 0,
+                'average_reasonableness': avg_reasonableness if evaluation_results else 0
+            }
+        }
     # Save the conversation and evaluation results to the database using SQLAlchemy models
     import sys
     import os

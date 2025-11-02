@@ -93,6 +93,7 @@ jobs:
         echo $! > router.pid
         sleep 10
       env:
+        SKIP_TEST_SAVING: true
         RATING_INFERENCE_KEY: ${{ secrets.RATING_INFERENCE_KEY }}
         USE_REMOTE_INFERENCE: false
         INFERENCE_URL: https://inference.geist.im
