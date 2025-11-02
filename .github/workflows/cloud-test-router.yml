@@ -26,7 +26,7 @@ jobs:
       INSTANCE_CONNECTION_NAME: ${{ secrets.INSTANCE_CONNECTION_NAME }}
       
       # Construct the DATABASE_URL for IAM Auth: user is the SA email, password is empty, host is 127.0.0.1 (proxy)
-      DATABASE_URL: postgresql+psycopg2://${{ env.SERVICE_ACCOUNT_EMAIL }}:@127.0.0.1:5432/${{ secrets.DB_NAME }}
+      DATABASE_URL: postgresql+psycopg2://${{ secrets.GCP_SERVICE_ACCOUNT }}:@127.0.0.1:5432/${{ secrets.DB_NAME }}
       
     steps:
     - name: Checkout code
