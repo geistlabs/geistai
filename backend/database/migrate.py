@@ -9,6 +9,7 @@ import sys
 import subprocess
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Add the backend directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,12 +26,26 @@ logger = logging.getLogger(__name__)
 def run_alembic_command(command: str, *args):
     """Run an alembic command with proper environment setup"""
     try:
+        # Get the directory where this config.py file is located
+        env_file = Path(__file__).parent
+        # Go up one directory to find the .env file
+        env_file = env_file.parent / ".env"
+        print(f"Loading .env file from: {env_file}")
+        if env_file.exists():
+            load_dotenv(env_file)
+            print(f"Loaded environment variables from: {env_file}")
+        else:
+            print(f"No .env file found at: {env_file}")
+    except ImportError:
+        print("python-dotenv not installed, skipping .env file loading")
+    try:
         # Set environment variables
         env = os.environ.copy()
         env['DATABASE_URL'] = os.getenv(
             'DATABASE_URL', 
             'postgresql://postgres:password@localhost:5433/test-storage'
         )
+        print(f"Using DATABASE_URL: {env['DATABASE_URL']}")
         # Change to the database directory
         db_dir = Path(__file__).parent
         os.chdir(db_dir)
