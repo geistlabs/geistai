@@ -53,9 +53,6 @@ jobs:
         pip install fastapi httpx uvicorn sse-starlette python-multipart python-dotenv
         pip install pytest pytest-asyncio sentence_transformers sqlalchemy alembic python-dateutil
         
-        # Install local packages as editable
-        pip install -e ./router
-        pip install -e ./embeddings
 
     # 5. AUTHENTICATE TO GOOGLE CLOUD VIA WIF
     - name: 'Authenticate to Google Cloud'
