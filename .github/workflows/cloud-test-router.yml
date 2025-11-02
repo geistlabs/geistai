@@ -84,7 +84,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install fastapi httpx uvicorn sse-starlette python-multipart python-dotenv
-        pip install pytest pytest-asyncio sentence_transformers sqlalchemy alembic python-dateutil
+        pip install pytest pytest-asyncio sentence_transformers sqlalchemy alembic python-dateutil psycopg2
 
     - name: Start router service
       working-directory: ./backend/router
