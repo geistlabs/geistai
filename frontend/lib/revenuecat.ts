@@ -38,10 +38,10 @@ const getRevenueCatKeys = () => {
   }
 
   if (useTestEnvironment) {
-    // Use test/sandbox keys for development and testing
-    // IMPORTANT: Use regular TEST/SANDBOX API key, NOT "Test Store" API key
-    // "Test Store" API key forces web billing and doesn't use StoreKit
-    // Regular test key can use StoreKit when properly configured
+    // Use test keys for development and testing
+    // Note: Test Store API key (test_...) uses web billing and doesn't use StoreKit
+    // Regular test key (appl_...) can use StoreKit when properly configured
+    // Both are valid for development - Test Store is simpler, regular key enables StoreKit testing
     return {
       apple: process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY || '',
       google: process.env.EXPO_PUBLIC_REVENUECAT_TEST_STORE_API_KEY || '',
@@ -216,6 +216,9 @@ export async function hasActiveEntitlement(
 export async function getOfferings(): Promise<PurchasesOffering | null> {
   try {
     console.log('🔍 [RevenueCat] Fetching offerings...');
+    console.log(
+      '📡 [RevenueCat] Source: RevenueCat API (offerings) + StoreKit/App Store (products)',
+    );
     const offerings = await Purchases.getOfferings();
 
     if (offerings.current) {

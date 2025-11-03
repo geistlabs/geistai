@@ -177,11 +177,19 @@ export function useChatWithStorage(
 ): UseChatWithStorageReturn {
   const { chatMode = 'streaming' } = options;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Set welcome message based on chat mode
+  const getWelcomeMessage = () => {
+    if (chatMode === 'negotiation') {
+      return "Hi! I'm here to help you learn about GeistAI. Ask me anything about the app, features, or how Premium works. What would you like to know?";
+    }
+    return "Hello! Welcome to Geist AI Premium. I'm your AI assistant ready to help with any task. I can use advanced tools, search your memories, and provide detailed responses with citations. How can I assist you today?";
+  };
+
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
       id: '1',
-      content:
-        'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
+      content: getWelcomeMessage(),
       role: 'assistant',
       timestamp: new Date(),
       isStreaming: false,

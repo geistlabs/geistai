@@ -319,10 +319,16 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
-              {/* Pricing Card - only show for non-premium users */}
-              {negotiationResult && isPremium !== true && (
+              {/* Pricing Card - show immediately for non-premium users */}
+              {!isPremium && (
                 <PricingCard
-                  result={negotiationResult}
+                  result={
+                    negotiationResult || {
+                      final_price: 9.99,
+                      package_id: 'premium_monthly_10',
+                      negotiation_summary: 'Default pricing',
+                    }
+                  }
                   onUpgrade={() => setShowPaywall(true)}
                   isLoading={false}
                 />

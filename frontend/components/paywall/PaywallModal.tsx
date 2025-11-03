@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -40,6 +40,14 @@ export function PaywallModal({
     refresh,
   } = useRevenueCat('premium');
 
+  // No pre-selection - let user choose directly
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (visible) {
+      setSelectedPackage(null);
+    }
+  }, [visible]);
+
   const handlePurchase = async (packageToPurchase: PurchasesPackage) => {
     try {
       setSelectedPackage(packageToPurchase);
@@ -49,7 +57,6 @@ export function PaywallModal({
       ]);
     } catch (err) {
       Alert.alert('Purchase Failed', `Error: ${err}`);
-    } finally {
       setSelectedPackage(null);
     }
   };
@@ -78,13 +85,6 @@ export function PaywallModal({
     }
   };
 
-  const getSavingsText = (packageType: string) => {
-    if (packageType === 'ANNUAL') {
-      return 'Save 50%';
-    }
-    return null;
-  };
-
   if (!visible) return null;
 
   return (
@@ -109,54 +109,15 @@ export function PaywallModal({
         </View>
 
         <ScrollView className='flex-1' showsVerticalScrollIndicator={false}>
-          {/* Hero Section */}
-          <View className='p-6 items-center'>
-            <Text className='text-3xl font-bold text-gray-900 mb-2'>
-              Unlock Premium Features
-            </Text>
-            <Text className='text-gray-600 text-center text-base leading-6'>
-              Get unlimited access to all features and enhance your AI
-              experience
+          {/* Hero Section - Simplified */}
+          <View className='px-6 pt-6 pb-4'>
+            <Text className='text-gray-600 text-center text-sm'>
+              Choose your plan
             </Text>
           </View>
 
-          {/* Negotiation Summary */}
-          {negotiationSummary && (
-            <View className='mx-6 mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded'>
-              <Text className='text-blue-900 font-medium'>
-                {negotiationSummary}
-              </Text>
-            </View>
-          )}
-
-          {/* Features List */}
+          {/* Pricing Cards - Direct Purchase */}
           <View className='px-6 mb-6'>
-            <Text className='text-lg font-semibold text-gray-900 mb-4'>
-              Premium Features
-            </Text>
-            {[
-              'Unlimited messages per day',
-              'Advanced memory search',
-              'Unlimited storage',
-              'Priority support',
-              'Export conversations',
-              'Voice features',
-            ].map((feature, index) => (
-              <View key={index} className='flex-row items-center mb-3'>
-                <View className='w-5 h-5 bg-green-500 rounded-full items-center justify-center mr-3'>
-                  <Text className='text-white text-xs font-bold'>✓</Text>
-                </View>
-                <Text className='text-gray-700 flex-1'>{feature}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Pricing Cards */}
-          <View className='px-6 mb-6'>
-            <Text className='text-lg font-semibold text-gray-900 mb-4'>
-              Choose Your Plan
-            </Text>
-
             {isLoading ? (
               <View className='items-center py-8'>
                 <ActivityIndicator size='large' color='#3B82F6' />
@@ -183,73 +144,80 @@ export function PaywallModal({
             ) : offerings?.availablePackages ? (
               <View className='space-y-3'>
                 {offerings.availablePackages.map(pkg => {
-                  const isSelected =
+                  const isPurchasingThis =
+                    isPurchasing &&
                     selectedPackage?.identifier === pkg.identifier;
-                  const isRecommended =
-                    highlightedPackageId &&
-                    pkg.identifier === highlightedPackageId;
-                  const savings = getSavingsText(pkg.packageType);
+                  const isAnnual = pkg.packageType === 'ANNUAL';
+                  const monthlyEquivalent = isAnnual
+                    ? (95.99 / 12).toFixed(2)
+                    : null;
 
                   return (
-                    <TouchableOpacity
+                    <View
                       key={pkg.identifier}
-                      onPress={() => handlePurchase(pkg)}
-                      disabled={isPurchasing}
-                      className={`p-4 rounded-xl border-2 ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50'
-                          : isRecommended
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200 bg-white'
+                      className={`mb-3 rounded-2xl border-2 overflow-hidden ${
+                        isAnnual
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-gray-300 bg-white'
                       }`}
                     >
-                      <View className='flex-row items-center justify-between'>
-                        <View className='flex-1'>
-                          <View className='flex-row items-center mb-1'>
-                            <Text className='text-lg font-semibold text-gray-900'>
-                              {pkg.product.title}
+                      {/* Annual Badge */}
+                      {isAnnual && (
+                        <View className='bg-green-500 px-3 py-1'>
+                          <Text className='text-white text-xs font-bold text-center'>
+                            BEST VALUE
+                          </Text>
+                        </View>
+                      )}
+
+                      <View className='p-5'>
+                        <View className='flex-row items-center justify-between mb-4'>
+                          <View className='flex-1'>
+                            <Text className='text-lg font-bold text-gray-900 mb-0.5'>
+                              {getPackageTypeDisplay(pkg.packageType)}
                             </Text>
-                            {isRecommended && (
-                              <View className='ml-2 bg-green-500 px-2 py-1 rounded'>
-                                <Text className='text-white text-xs font-bold'>
-                                  Recommended
-                                </Text>
-                              </View>
-                            )}
-                            {savings && (
-                              <View className='ml-2 bg-green-500 px-2 py-1 rounded'>
-                                <Text className='text-white text-xs font-bold'>
-                                  {savings}
-                                </Text>
-                              </View>
+                            {isAnnual && monthlyEquivalent && (
+                              <Text className='text-gray-600 text-sm'>
+                                ${monthlyEquivalent}/month
+                              </Text>
                             )}
                           </View>
-                          <Text className='text-gray-600 text-sm'>
-                            {getPackageTypeDisplay(pkg.packageType)}
-                          </Text>
-                        </View>
-                        <View className='items-end'>
-                          <Text className='text-xl font-bold text-gray-900'>
-                            {pkg.product.priceString}
-                          </Text>
-                          {pkg.product.introPrice && (
-                            <Text className='text-sm text-gray-500 line-through'>
-                              {pkg.product.introPrice.priceString}
+                          <View className='items-end'>
+                            <Text className='text-2xl font-bold text-gray-900'>
+                              {pkg.product.priceString}
                             </Text>
-                          )}
+                            {isAnnual && (
+                              <Text className='text-green-600 text-xs font-semibold mt-0.5'>
+                                20% savings
+                              </Text>
+                            )}
+                          </View>
                         </View>
-                      </View>
 
-                      {isPurchasing &&
-                        selectedPackage?.identifier === pkg.identifier && (
-                          <View className='mt-3 items-center'>
+                        {/* Purchase Button */}
+                        {isPurchasingThis ? (
+                          <View className='bg-gray-100 py-3 rounded-xl items-center'>
                             <ActivityIndicator size='small' color='#3B82F6' />
-                            <Text className='text-blue-600 text-sm mt-1'>
+                            <Text className='text-gray-600 text-sm mt-1'>
                               Processing...
                             </Text>
                           </View>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => handlePurchase(pkg)}
+                            disabled={isPurchasing}
+                            className={`py-3 rounded-xl ${
+                              isAnnual ? 'bg-green-500' : 'bg-blue-500'
+                            }`}
+                            activeOpacity={0.8}
+                          >
+                            <Text className='text-white text-center font-bold text-base'>
+                              Subscribe
+                            </Text>
+                          </TouchableOpacity>
                         )}
-                    </TouchableOpacity>
+                      </View>
+                    </View>
                   );
                 })}
               </View>
@@ -274,14 +242,22 @@ export function PaywallModal({
             )}
           </View>
 
-          {/* Restore Purchases */}
+          {/* Features - Simplified */}
           <View className='px-6 mb-6'>
+            <Text className='text-sm text-gray-600 text-center mb-3'>
+              Includes: Unlimited messages • Advanced memory • Priority support
+              • Voice features
+            </Text>
+          </View>
+
+          {/* Restore Purchases */}
+          <View className='px-6 mb-4'>
             <TouchableOpacity
               onPress={handleRestore}
               disabled={isPurchasing}
-              className='items-center py-3'
+              className='items-center py-2'
             >
-              <Text className='text-blue-600 font-medium'>
+              <Text className='text-blue-600 text-sm font-medium'>
                 Restore Purchases
               </Text>
             </TouchableOpacity>
@@ -290,8 +266,8 @@ export function PaywallModal({
           {/* Terms */}
           <View className='px-6 pb-8'>
             <Text className='text-xs text-gray-500 text-center leading-4'>
-              By subscribing, you agree to our Terms of Service and Privacy
-              Policy. Subscriptions auto-renew unless cancelled.
+              Subscriptions auto-renew unless cancelled. By subscribing, you
+              agree to our Terms and Privacy Policy.
             </Text>
           </View>
         </ScrollView>
