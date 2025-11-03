@@ -179,12 +179,12 @@ export function useChatWithStorage(
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   // Set welcome message based on chat mode
-  const getWelcomeMessage = () => {
+  const getWelcomeMessage = useCallback(() => {
     if (chatMode === 'negotiation') {
       return "Hi! I'm here to help you learn about GeistAI. Ask me anything about the app, features, or how Premium works. What would you like to know?";
     }
     return "Hello! Welcome to Geist AI Premium. I'm your AI assistant ready to help with any task. I can use advanced tools, search your memories, and provide detailed responses with citations. How can I assist you today?";
-  };
+  }, [chatMode]);
 
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
@@ -936,10 +936,51 @@ export function useChatWithStorage(
     }
   }, [options]);
 
+  // Update welcome message when chatMode changes
+  useEffect(() => {
+    const expectedWelcomeMessage = getWelcomeMessage();
+    // Only update if we have no messages or only the welcome message with wrong content
+    const firstMessage = enhancedMessages[0];
+    const shouldUpdate =
+      enhancedMessages.length === 0 ||
+      (enhancedMessages.length === 1 &&
+        firstMessage?.role === 'assistant' &&
+        firstMessage?.id === '1' &&
+        firstMessage?.content !== expectedWelcomeMessage);
+
+    if (shouldUpdate) {
+      setEnhancedMessages([
+        {
+          id: '1',
+          content: expectedWelcomeMessage,
+          role: 'assistant',
+          timestamp: new Date(),
+          isStreaming: false,
+          agentConversations: [],
+          toolCallEvents: [],
+          collectedLinks: [],
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMode, getWelcomeMessage]);
+
   const clearMessages = useCallback(() => {
     stopStreaming();
     setMessages([]);
-    setEnhancedMessages([]);
+    // Reset to welcome message based on current chatMode
+    setEnhancedMessages([
+      {
+        id: '1',
+        content: getWelcomeMessage(),
+        role: 'assistant',
+        timestamp: new Date(),
+        isStreaming: false,
+        agentConversations: [],
+        toolCallEvents: [],
+        collectedLinks: [],
+      },
+    ]);
     setError(null);
     lastUserMessageRef.current = null;
     tokenCountRef.current = 0;
@@ -950,7 +991,7 @@ export function useChatWithStorage(
     setOrchestratorStatus({ isActive: false });
 
     // Note: We don't clear storage here - that would be deleteChat
-  }, [stopStreaming]);
+  }, [stopStreaming, getWelcomeMessage]);
 
   const retryLastMessage = useCallback(async () => {
     if (lastUserMessageRef.current && !isLoading && !isStreaming) {
