@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PurchasesPackage } from 'react-native-purchases';
 
 import { NegotiationResult } from '../lib/api/chat';
 
@@ -7,15 +8,22 @@ interface PricingCardProps {
   result: NegotiationResult;
   onUpgrade: () => void;
   isLoading?: boolean;
+  monthlyPackage?: PurchasesPackage;
+  annualPackage?: PurchasesPackage;
 }
 
 export const PricingCard: React.FC<PricingCardProps> = ({
   result,
   onUpgrade,
   isLoading = false,
+  monthlyPackage,
+  annualPackage,
 }) => {
-  const monthlyPrice = result.final_price;
-  const annualPrice = 95.99;
+  // Get pricing from RevenueCat packages (source of truth) or fallback to negotiation result
+  const monthlyPrice = monthlyPackage
+    ? monthlyPackage.product.price
+    : result.final_price;
+  const annualPrice = annualPackage ? annualPackage.product.price : 95.99; // Fallback to hardcoded value if no package available
   const monthlyEquivalent = (annualPrice / 12).toFixed(2);
 
   return (
@@ -32,12 +40,16 @@ export const PricingCard: React.FC<PricingCardProps> = ({
         {/* Pricing - Horizontal Layout */}
         <View style={styles.pricingRow}>
           <View style={styles.priceItem}>
-            <Text style={styles.priceValue}>${monthlyPrice}</Text>
+            <Text style={styles.priceValue}>
+              {monthlyPackage?.product.priceString || `$${monthlyPrice}`}
+            </Text>
             <Text style={styles.pricePeriod}>/month</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.priceItem}>
-            <Text style={styles.priceValue}>${annualPrice}</Text>
+            <Text style={styles.priceValue}>
+              {annualPackage?.product.priceString || `$${annualPrice}`}
+            </Text>
             <Text style={styles.pricePeriod}>${monthlyEquivalent}/mo</Text>
           </View>
         </View>

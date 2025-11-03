@@ -38,6 +38,7 @@ export function PaywallModal({
     purchase,
     restore,
     refresh,
+    checkPremium,
   } = useRevenueCat('premium');
 
   // No pre-selection - let user choose directly
@@ -52,6 +53,13 @@ export function PaywallModal({
     try {
       setSelectedPackage(packageToPurchase);
       await purchase(packageToPurchase);
+
+      // Explicitly refresh customer info to ensure UI updates immediately
+      await refresh();
+
+      // Double-check premium status and update cache
+      await checkPremium();
+
       Alert.alert('Success', 'Welcome to Premium! 🎉', [
         { text: 'Continue', onPress: onPurchaseSuccess },
       ]);
@@ -64,6 +72,11 @@ export function PaywallModal({
   const handleRestore = async () => {
     try {
       await restore();
+
+      // Refresh customer info to ensure UI updates
+      await refresh();
+      await checkPremium();
+
       Alert.alert('Success', 'Purchases restored successfully!');
     } catch (err) {
       Alert.alert('Restore Failed', `Error: ${err}`);

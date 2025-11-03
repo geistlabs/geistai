@@ -34,7 +34,15 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
-  const { isSubscribed: isPremium } = useRevenueCat('premium');
+  const { isSubscribed: isPremium, offerings } = useRevenueCat('premium');
+
+  // Extract monthly and annual packages from RevenueCat offerings
+  const monthlyPackage = offerings?.availablePackages.find(
+    pkg => pkg.packageType === 'MONTHLY',
+  );
+  const annualPackage = offerings?.availablePackages.find(
+    pkg => pkg.packageType === 'ANNUAL',
+  );
 
   // Simple chat mode determination - handles undefined/loading state
   const activeChatMode: 'streaming' | 'negotiation' =
@@ -331,6 +339,8 @@ export default function ChatScreen() {
                   }
                   onUpgrade={() => setShowPaywall(true)}
                   isLoading={false}
+                  monthlyPackage={monthlyPackage}
+                  annualPackage={annualPackage}
                 />
               )}
 
