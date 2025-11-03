@@ -95,6 +95,18 @@ export async function initializeRevenueCat(): Promise<boolean> {
 
       Purchases.configure({ apiKey: revenueCatKeys.apple });
       console.log('✅ [RevenueCat] iOS SDK configured successfully');
+
+      // Verify configuration by checking customer info
+      try {
+        const customerInfo = await Purchases.getCustomerInfo();
+        console.log(
+          `✅ [RevenueCat] Verified connection - User ID: ${customerInfo.originalAppUserId}`,
+        );
+      } catch {
+        console.warn(
+          '⚠️ [RevenueCat] Could not verify connection (this is OK during init)',
+        );
+      }
     } else if (Platform.OS === 'android') {
       if (!revenueCatKeys.google) {
         const envVarName = revenueCatKeys.isTest
@@ -219,7 +231,34 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
     console.log(
       '📡 [RevenueCat] Source: RevenueCat API (offerings) + StoreKit/App Store (products)',
     );
+    console.log(
+      `🔑 [RevenueCat] Using ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} API key`,
+    );
+
     const offerings = await Purchases.getOfferings();
+
+    // Log all offerings for debugging
+    console.log(
+      `📋 [RevenueCat] Total offerings found: ${Object.keys(offerings.all).length}`,
+    );
+    if (Object.keys(offerings.all).length > 0) {
+      console.log(
+        `📋 [RevenueCat] All offerings: ${Object.keys(offerings.all).join(', ')}`,
+      );
+      // Log details of each offering
+      Object.values(offerings.all).forEach((offering, index) => {
+        console.log(
+          `   ${index + 1}. "${offering.identifier}" - ${offering.availablePackages.length} packages`,
+        );
+        if (offering.availablePackages.length > 0) {
+          offering.availablePackages.forEach((pkg, pkgIndex) => {
+            console.log(
+              `      Package ${pkgIndex + 1}: ${pkg.identifier} (${pkg.packageType}) - ${pkg.product.identifier}`,
+            );
+          });
+        }
+      });
+    }
 
     if (offerings.current) {
       console.log('✅ [RevenueCat] Offerings fetched successfully');
@@ -229,19 +268,39 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
       console.log(
         `📦 [RevenueCat] Available packages: ${offerings.current.availablePackages.length}`,
       );
+
       if (offerings.current.availablePackages.length === 0) {
         console.warn(
           '⚠️ [RevenueCat] WARNING: Current offering has no available packages!',
         );
+        console.warn('⚠️ [RevenueCat] Troubleshooting steps:');
         console.warn(
-          '⚠️ [RevenueCat] Check RevenueCat dashboard - offerings may not be configured or products may not be attached',
+          '   1. Check RevenueCat dashboard - is the offering set as "current"?',
         );
-      }
-      // Log all available offerings for debugging
-      if (Object.keys(offerings.all).length > 0) {
-        console.log(
-          `📋 [RevenueCat] All offerings: ${Object.keys(offerings.all).join(', ')}`,
+        console.warn('   2. Are packages created in the offering?');
+        console.warn(
+          '   3. Do packages reference products that exist in App Store Connect?',
         );
+        console.warn(
+          '   4. Are products approved in App Store Connect? (not just "Waiting for Review")',
+        );
+        console.warn(
+          '   5. Are product IDs matching exactly between App Store Connect and RevenueCat?',
+        );
+        console.warn(
+          `   6. Are you using the correct API key? (Currently using ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'})`,
+        );
+      } else {
+        // Log package details
+        offerings.current.availablePackages.forEach((pkg, index) => {
+          console.log(`📦 [RevenueCat] Package ${index + 1}:`);
+          console.log(`   - Identifier: ${pkg.identifier}`);
+          console.log(`   - Type: ${pkg.packageType}`);
+          console.log(`   - Product ID: ${pkg.product.identifier}`);
+          console.log(`   - Product Title: ${pkg.product.title}`);
+          console.log(`   - Price: ${pkg.product.priceString}`);
+          console.log(`   - Currency: ${pkg.product.currencyCode}`);
+        });
       }
     } else {
       console.error('❌ [RevenueCat] No current offering found!');
@@ -252,9 +311,19 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
       console.error('   2. No products are attached to the offering');
       console.error('   3. Products are not approved in App Store Connect');
       console.error('   4. Wrong API key is being used');
+      console.error(
+        `   5. Current environment: ${revenueCatKeys.isTest ? 'TEST' : 'PRODUCTION'} (TestFlight requires PRODUCTION)`,
+      );
       if (Object.keys(offerings.all).length > 0) {
         console.error(
           `   Available offerings (not set as current): ${Object.keys(offerings.all).join(', ')}`,
+        );
+        console.error(
+          '   → Go to RevenueCat dashboard and click the star icon on an offering to make it current',
+        );
+      } else {
+        console.error(
+          '   No offerings found at all - check RevenueCat dashboard configuration',
         );
       }
     }
@@ -265,6 +334,18 @@ export async function getOfferings(): Promise<PurchasesOffering | null> {
     if (error instanceof Error) {
       console.error(`❌ [RevenueCat] Error message: ${error.message}`);
       console.error(`❌ [RevenueCat] Error stack: ${error.stack}`);
+
+      // Provide specific guidance based on error
+      if (error.message.includes('configuration')) {
+        console.error('❌ [RevenueCat] Configuration Error Detected:');
+        console.error(
+          '   → Check RevenueCat dashboard for products and offerings',
+        );
+        console.error('   → Verify products exist in App Store Connect');
+        console.error(
+          '   → Ensure products are approved (not waiting for review)',
+        );
+      }
     }
     return null;
   }
