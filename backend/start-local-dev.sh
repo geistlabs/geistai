@@ -20,11 +20,14 @@ BACKEND_DIR="$SCRIPT_DIR"
 INFERENCE_DIR="$BACKEND_DIR/inference/llama.cpp"
 ROUTER_DIR="$BACKEND_DIR/router"
 MODEL_PATH="$BACKEND_DIR/inference/models/openai_gpt-oss-20b-Q4_K_S.gguf"
+MEMORY_MODEL_PATH="$BACKEND_DIR/inference/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+MEMORY_GRAMMAR_FILE="$BACKEND_DIR/memory/schema.gbnf"
 
 # Ports
 INFERENCE_PORT=8080
 ROUTER_PORT=8000
 WHISPER_PORT=8004
+MEMORY_PORT=8082
 
 # GPU settings for Apple Silicon
 GPU_LAYERS=32  # All layers on GPU for best performance
@@ -62,6 +65,7 @@ cleanup() {
     kill_port $INFERENCE_PORT
     kill_port $ROUTER_PORT
     kill_port $WHISPER_PORT
+    kill_port $MEMORY_PORT
     echo -e "${GREEN}✅ Cleanup complete${NC}"
     exit 0
 }
@@ -204,6 +208,7 @@ docker-compose down 2>/dev/null || true
 # Kill any processes on our ports
 kill_port $INFERENCE_PORT
 kill_port $ROUTER_PORT
+kill_port $MEMORY_PORT
 
 # Start inference server
 echo -e "${BLUE}🧠 Starting inference server (llama.cpp)...${NC}"
@@ -319,6 +324,77 @@ if [[ $attempt -eq $max_attempts ]]; then
     exit 1
 fi
 
+# Start Memory Extraction service
+echo -e "${BLUE}🧠 Starting Memory Extraction service...${NC}"
+
+# Check if memory model exists
+if [[ ! -f "$MEMORY_MODEL_PATH" ]]; then
+    echo -e "${YELLOW}⚠️  Memory model not found: $MEMORY_MODEL_PATH${NC}"
+    echo -e "${YELLOW}   Available models:${NC}"
+    ls -la "$BACKEND_DIR/inference/models/" | grep -E "\.(gguf|bin)$" | awk '{print "   - " $9}'
+    echo -e "${YELLOW}   Memory service will use fallback mode${NC}"
+    export MEMORY_EXTRACTION_URL="http://localhost:$MEMORY_PORT"  # Will use fallback
+else
+    echo -e "${YELLOW}   Model: Llama-3.1-8B-Instruct (Q4_K_M) - Production Model${NC}"
+    echo -e "${YELLOW}   Grammar: schema.gbnf (enforced JSON)${NC}"
+    echo -e "${YELLOW}   Port: $MEMORY_PORT${NC}"
+    echo -e "${YELLOW}   GPU Layers: $GPU_LAYERS (Metal acceleration)${NC}"
+
+    cd "$INFERENCE_DIR"
+    ./build/bin/llama-server \
+        -m "$MEMORY_MODEL_PATH" \
+        --host 0.0.0.0 \
+        --port $MEMORY_PORT \
+        --ctx-size 8192 \
+        --n-gpu-layers $GPU_LAYERS \
+        --threads $THREADS \
+        --grammar-file "$MEMORY_GRAMMAR_FILE" \
+        --temp 0.1 \
+        --top-p 0.9 \
+        --jinja \
+        --cont-batching \
+        --parallel 1 \
+        --batch-size 256 \
+        --ubatch-size 128 \
+        --mlock \
+        > /tmp/geist-memory.log 2>&1 &
+
+    MEMORY_PID=$!
+    echo -e "${GREEN}✅ Memory server starting (PID: $MEMORY_PID)${NC}"
+
+    # Wait for memory server to be ready
+    echo -e "${BLUE}⏳ Waiting for memory server to load model...${NC}"
+    sleep 3
+
+    # Check if memory server is responding
+    max_attempts=20
+    attempt=0
+    while [[ $attempt -lt $max_attempts ]]; do
+        if curl -s http://localhost:$MEMORY_PORT/health >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Memory server is ready!${NC}"
+            break
+        fi
+
+        if ! kill -0 $MEMORY_PID 2>/dev/null; then
+            echo -e "${RED}❌ Memory server failed to start. Check logs: tail -f /tmp/geist-memory.log${NC}"
+            echo -e "${YELLOW}   Memory service will use fallback mode${NC}"
+            break
+        fi
+
+        echo -e "${YELLOW}   ... still loading model (attempt $((attempt+1))/$max_attempts)${NC}"
+        sleep 3
+        ((attempt++))
+    done
+
+    if [[ $attempt -eq $max_attempts ]]; then
+        echo -e "${YELLOW}⚠️  Memory server slow to respond, continuing with fallback mode${NC}"
+    fi
+fi
+
+# Set memory service URL for router
+export MEMORY_EXTRACTION_URL="http://localhost:$MEMORY_PORT"
+echo -e "${GREEN}✅ Memory service configured: $MEMORY_EXTRACTION_URL${NC}"
+
 # Router service is now started via Docker (docker-compose --profile local)
 # This script only starts GPU services (inference + whisper)
 echo -e "${BLUE}⚡ Router service should be started separately via Docker:${NC}"
@@ -370,6 +446,12 @@ while true; do
     if ! kill -0 $WHISPER_PID 2>/dev/null; then
         echo -e "${RED}❌ Whisper STT service died unexpectedly${NC}"
         exit 1
+    fi
+
+    # Check memory service if it was started
+    if [[ -n "$MEMORY_PID" ]] && ! kill -0 $MEMORY_PID 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  Memory service died unexpectedly, will use fallback${NC}"
+        MEMORY_PID=""  # Clear PID so we don't check it again
     fi
 
     sleep 10

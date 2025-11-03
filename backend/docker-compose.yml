@@ -12,8 +12,7 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference:8080
       - EMBEDDINGS_URL=http://embeddings:8001
-      - MEMORY_EXTRACTION_URL=https://memory.geist.im
-      
+      - MEMORY_EXTRACTION_URL=http://host.docker.internal:8082
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -71,14 +70,7 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://inference-gpu:8080
       - EMBEDDINGS_URL=http://embeddings:8001
-      - MEMORY_EXTRACTION_URL=https://memory.geist.im
-      - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
-      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
-      - RATING_INFERENCE_MODEL=${RATING_INFERENCE_MODEL}
-      - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
-      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
-      - REMOTE_INFERENCE_MODEL=${REMOTE_INFERENCE_MODEL}
-      - REMOTE_INFERENCE_URL=${REMOTE_INFERENCE_URL}
+      - MEMORY_EXTRACTION_URL=http://host.docker.internal:8082
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
@@ -127,10 +119,13 @@ services:
       - HARMONY_REASONING_EFFORT=low
       - INFERENCE_URL=http://host.docker.internal:8080  # Connect to host inference
       - EMBEDDINGS_URL=http://embeddings:8001
-      - MEMORY_EXTRACTION_URL=https://memory.geist.im
+      - MEMORY_EXTRACTION_URL=http://host.docker.internal:8082
+      - WHISPER_SERVICE_URL=http://host.docker.internal:8004  # Connect to host whisper
       # Development-specific Python settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      # Testing flags
+      - DISABLE_PREMIUM_CHECK=true
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
       - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
@@ -220,9 +215,9 @@ services:
       - docker-mcp-transport=http
     ports:
       - "3002:8000"  # Expose MCP service on port 3002
-    networks: 
+    networks:
       - geist-network
- 
+
   postgresdb:
     image: postgres:15.5
     user: postgres
