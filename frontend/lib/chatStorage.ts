@@ -31,7 +31,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 /**
  * Initialize the database with proper schema
  */
-export const initializeDatabase = async (): Promise<void> => {
+export const initializeDatabase = async (): Promise<boolean> => {
   try {
     // Open database
     db = await SQLite.openDatabaseAsync(DATABASE_NAME);
@@ -42,6 +42,7 @@ export const initializeDatabase = async (): Promise<void> => {
 
     // Run migrations
     await runMigrations();
+    return true;
   } catch (error) {
     console.error('Database initialization failed:', error);
     throw error;
@@ -81,12 +82,12 @@ const runMigrations = async (): Promise<void> => {
 
     // Create performance indexes
     await db.execAsync(`
-      CREATE INDEX IF NOT EXISTS idx_chats_updated_at 
+      CREATE INDEX IF NOT EXISTS idx_chats_updated_at
       ON chats(updated_at DESC);
     `);
 
     await db.execAsync(`
-      CREATE INDEX IF NOT EXISTS idx_messages_chat_id 
+      CREATE INDEX IF NOT EXISTS idx_messages_chat_id
       ON messages(chat_id, created_at);
     `);
   } catch (error) {
@@ -277,9 +278,7 @@ export const deleteChat = async (chatId: number): Promise<void> => {
 
   try {
     // Delete messages first (though CASCADE should handle this)
-    await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [
-      chatId,
-    ]);
+    await database.runAsync('DELETE FROM messages WHERE chat_id = ?', [chatId]);
 
     // Delete chat
     await database.runAsync('DELETE FROM chats WHERE id = ?', [chatId]);

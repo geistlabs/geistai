@@ -871,6 +871,193 @@ async def proxy_embeddings(request: Request, path: str):
         )
 
 
+async def create_agent_direct_event_stream(agent, messages, request):
+    """
+    Stream events from an AgentTool directly (not wrapped in orchestrator)
+    This bypasses the orchestrator layer for direct agent communication
+    """
+    agent_task = None
+    try:
+        # Initialize the agent
+        gpt_service = await get_gpt_service()
+        await agent.initialize(gpt_service, config)
+        agent.gpt_service = gpt_service
+
+        # Set the current agent emitter for tool execution context
+        # This must be done AFTER agent.gpt_service is set
+        setattr(agent.gpt_service, 'current_agent_emitter', agent)
+
+        # Use asyncio.Queue to stream events in real-time
+        event_queue = asyncio.Queue()
+        final_response = None
+        sequence_counter = {"value": 0}
+
+        def queue_event(event_type):
+            """Create event handler that queues events with proper sequencing"""
+            def handler(data):
+                print(f"🎯 [HANDLER CALLED] Event type: {event_type}, Data: {data}")
+                # No normalization needed - agent now emits same format as orchestrator
+                event_data = {
+                    "type": event_type,
+                    "data": data,
+                    "sequence": sequence_counter["value"]
+                }
+                sequence_counter["value"] += 1
+                try:
+                    event_queue.put_nowait(event_data)
+                    print(f"✅ [QUEUED] Event {event_type} queued successfully, queue size: {event_queue.qsize()}")
+                except asyncio.QueueFull:
+                    logger.warning(f"Event queue full, dropping {event_type} event")
+            return handler
+
+        # Register event listeners for AgentTool events
+        agent.on("agent_start", queue_event("agent_start"))
+        agent.on("agent_token", queue_event("agent_token"))
+        agent.on("agent_complete", queue_event("agent_complete"))
+
+        # Register negotiation_finalized event from gpt_service (legacy support)
+        if hasattr(agent.gpt_service, 'event_emitter'):
+            agent.gpt_service.event_emitter.on("negotiation_finalized", queue_event("negotiation_finalized"))
+
+        # Start agent in background
+        agent_task = asyncio.create_task(agent.run(messages))
+
+        # Stream events as they come in
+        while True:
+            try:
+                # Wait for either an event or agent completion
+                done, pending = await asyncio.wait(
+                    [
+                        asyncio.create_task(event_queue.get()),
+                        agent_task
+                    ],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Check if agent is done
+                if agent_task in done:
+                    final_response = await agent_task
+                    logger.info("[Negotiate] Agent completed")
+
+                    # Cancel pending event queue task
+                    for task in pending:
+                        task.cancel()
+
+                    # Wait a bit for any final events to be queued (like agent_complete)
+                    await asyncio.sleep(0.2)
+                    logger.info("[Negotiate] Draining remaining events from queue, size: %d", event_queue.qsize())
+
+                    # Drain remaining events from queue
+                    while not event_queue.empty():
+                        try:
+                            event = event_queue.get_nowait()
+                            logger.info("[Negotiate] Sending drained event: %s", event.get("type"))
+                            if await request.is_disconnected():
+                                return
+
+                            yield {
+                                "data": json.dumps(event),
+                                "event": event.get("type", "unknown")
+                            }
+                        except asyncio.QueueEmpty:
+                            break
+
+                    # Send final response
+                    if final_response:
+                        yield {
+                            "data": json.dumps({
+                                "type": "final_response",
+                                "text": final_response.text,
+                                "status": final_response.status,
+                                "meta": final_response.meta,
+                                "sequence": sequence_counter["value"]
+                            }),
+                            "event": "final_response"
+                        }
+                        sequence_counter["value"] += 1
+
+                    # Send end event
+                    yield {
+                        "data": json.dumps({
+                            "finished": True,
+                            "sequence": sequence_counter["value"]
+                        }),
+                        "event": "end"
+                    }
+                    break
+
+                # Process events
+                for task in done:
+                    if task != agent_task:
+                        event = await task
+                        if await request.is_disconnected():
+                            logger.info("[Negotiate] Client disconnected")
+                            agent_task.cancel()
+                            return
+
+                        if isinstance(event, dict):
+                            yield {
+                                "data": json.dumps(event),
+                                "event": event.get("type", "unknown")
+                            }
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                logger.info("[Negotiate] Stream cancelled")
+                break
+
+    except Exception as e:
+        logger.error(f"[Negotiate] Agent error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        yield {
+            "data": json.dumps({
+                "type": "error",
+                "data": {"message": str(e)}
+            }),
+            "event": "error"
+        }
+    finally:
+        if agent_task and not agent_task.done():
+            agent_task.cancel()
+
+
+@app.post("/api/negotiate")
+async def negotiate_pricing(
+    chat_request: ChatRequest,
+    request: Request
+):
+    """
+    Pricing negotiation endpoint using direct AgentTool (no orchestrator wrapper)
+    User negotiates directly with the pricing agent
+    NO premium check needed - negotiation is free and open to all users
+    """
+    logger.info("[Negotiate] Starting direct pricing negotiation")
+
+    # Build messages array with conversation history
+    messages = chat_request.messages
+    if not messages:
+        messages = [ChatMessage(role="user", content=chat_request.message)]
+    else:
+        messages.append(ChatMessage(role="user", content=chat_request.message))
+
+    async def direct_negotiation_stream():
+        # Create pricing agent directly
+        from agent_tool import create_pricing_agent
+        pricing_agent = create_pricing_agent()
+
+        # Initialize agent with GPT service
+        gpt_service = await get_gpt_service()
+        await pricing_agent.initialize(gpt_service, config)
+        pricing_agent.gpt_service = gpt_service
+
+        # Create event stream for direct agent
+        async for event in create_agent_direct_event_stream(pricing_agent, messages, request):
+            yield event
+
+    return EventSourceResponse(direct_negotiation_stream())
+
+
 if __name__ == "__main__":
     import uvicorn
     import sys
