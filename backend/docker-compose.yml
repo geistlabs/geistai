@@ -6,7 +6,7 @@ services:
     build: ./router
     ports:
       - "0.0.0.0:8000:8000"  # Bind to all interfaces
-      - "0.0.0.0:8443:8443"# HTTPS port (uncomment if using SSL)
+      - "0.0.0.0:8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
@@ -17,12 +17,13 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
-      - REMOTE_INFERENCE_URL=https://api.studio.nebius.com
-      - RATING_INFERENCE_URL=https://api.openai.com
-      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
-      - OPENAI_KEY=${OPENAI_KEY}
+      - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
+      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
+      - RATING_INFERENCE_MODEL=${RATING_INFERENCE_MODEL}
       - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
-      - USE_REMOTE_INFERENCE=true
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - REMOTE_INFERENCE_MODEL=${REMOTE_INFERENCE_MODEL}
+      - REMOTE_INFERENCE_URL=${REMOTE_INFERENCE_URL}
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_BRAVE_URL=http://mcp-brave:8080
 
@@ -63,7 +64,7 @@ services:
     build: ./router
     ports:
       - "8000:8000"  # Bind to all interfaces
-      - "8443:8443"# HTTPS port (uncomment if using SSL)
+      - "8443:8443" # HTTPS port (uncomment if using SSL)
     environment:
       - LOG_LEVEL=DEBUG
       - HARMONY_REASONING_EFFORT=low
@@ -75,11 +76,6 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
-      - OPENAI_URL=https://api.openai.com
-      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
-      - OPENAI_KEY=${OPENAI_KEY}
-      - USE_REMOTE_INFERENCE=true
-      - BRAVE_API_KEY=${BRAVE_API_KEY}
 
     volumes:
       # Mount source code for live reloading
@@ -132,9 +128,13 @@ services:
       - DISABLE_PREMIUM_CHECK=true
       - WATCHDOG_POLLING=true
       - MCP_BRAVE_URL=http://mcp-brave:8080
-      - OPENAI_URL=https://api.openai.com
-      - USE_REMOTE_INFERENCE=false
-      - OPENAI_KEY=${OPENAI_KEY}
+      - RATING_INFERENCE_URL=${RATING_INFERENCE_URL}
+      - RATING_INFERENCE_KEY=${RATING_INFERENCE_KEY}
+      - RATING_INFERENCE_MODEL=${RATING_INFERENCE_MODEL}
+      - REMOTE_INFERENCE_KEY=${REMOTE_INFERENCE_KEY}
+      - USE_REMOTE_INFERENCE=${USE_REMOTE_INFERENCE}
+      - REMOTE_INFERENCE_MODEL=${REMOTE_INFERENCE_MODEL}
+      - REMOTE_INFERENCE_URL=${REMOTE_INFERENCE_URL}
       - BRAVE_API_KEY=${BRAVE_API_KEY}
       - MCP_FETCH_URL=http://mcp-fetch:8000
 

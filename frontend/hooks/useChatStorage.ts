@@ -10,17 +10,12 @@ import {
   getChatTitle,
 } from '../lib/chatStorage';
 
-// Legacy Message type for backward compatibility with existing useChat hook
-export interface LegacyMessage {
-  id: string;
-  text: string;
-  role: 'user' | 'assistant';
-  timestamp: number;
-}
+import { EnhancedMessage } from './useChatWithStorage';
+
 
 export const useChatStorage = (chatId?: number) => {
   const [currentChat, setCurrentChat] = useState<ChatWithMessages | null>(null);
-  const [messages, setMessages] = useState<LegacyMessage[]>([]);
+  const [messages, setMessages] = useState<EnhancedMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,13 +51,22 @@ export const useChatStorage = (chatId?: number) => {
 
         setCurrentChat(chatWithComputedTitle);
         // Convert SQLite messages to legacy format for compatibility
-        const legacyMessages: LegacyMessage[] = chat.messages.map(msg => ({
-          id: msg.id.toString(),
-          text: msg.content,
-          role: msg.role,
-          timestamp: msg.created_at,
-        }));
-        setMessages(legacyMessages);
+        const enhancedMessages: EnhancedMessage[] = chat.messages.map(
+          msg =>
+            ({
+              id: msg.id.toString(),
+              content: msg.content,
+              reasoningContent: msg.reasoning_content,
+              role: msg.role,
+              timestamp: new Date(msg.created_at),
+              toolCallEvents: JSON.parse(msg.tool_call_events),
+              agentConversations: JSON.parse(msg.agent_conversations),
+              collectedLinks: JSON.parse(msg.collected_links),
+              isStreaming: false,
+              citations: [],
+            }) as EnhancedMessage,
+        );
+        setMessages(enhancedMessages);
       } else {
         setError('Chat not found');
       }
@@ -85,7 +89,7 @@ export const useChatStorage = (chatId?: number) => {
   };
 
   const addMessage = async (
-    message: LegacyMessage,
+    message: EnhancedMessage,
     targetChatId?: number,
   ): Promise<void> => {
     const effectiveChatId = targetChatId || chatId;
@@ -95,7 +99,15 @@ export const useChatStorage = (chatId?: number) => {
 
     try {
       // Add message to SQLite
-      await addMessageToChat(effectiveChatId, message.role, message.text);
+      await addMessageToChat(
+        effectiveChatId,
+        message.role,
+        message.content,
+        message.reasoningContent ?? '',
+        JSON.stringify(message.agentConversations ?? []),
+        JSON.stringify(message.toolCallEvents ?? []),
+        JSON.stringify(message.collectedLinks ?? []),
+      );
 
       // Update local state only if this is for the current chat (don't reload during streaming to avoid conflicts)
       if (effectiveChatId === chatId) {

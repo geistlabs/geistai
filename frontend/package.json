@@ -3,10 +3,10 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start:go:android": "expo start --go --android",
+    "start:go:android": "expo start --go",
     "start": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo start --clear ",
     "startgo": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo start --go --clear",
-    "start-android": "expo start --clear --android",
+
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "EXPO_IOS_SIMULATOR_DEVICE_ID=0198E212-CDFE-4C69-9832-4625D9296986 expo run:ios",

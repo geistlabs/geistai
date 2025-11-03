@@ -18,10 +18,12 @@ from datetime import datetime
 from typing import Dict, List,  Callable, Optional
 from constants import MAX_TOOL_CALLS
 import httpx
+from prompts import get_top_p_setting, get_temperature_setting
 from response_schema import AgentResponse
 from process_llm_response import execute_single_tool_call, process_llm_response_with_tools
 from events import EventEmitter
 from extract_relevant_from_webpage import extract_relevant_text
+import tiktoken
 
 
 # MCP imports
@@ -207,7 +209,6 @@ class GptService:
                 # Use tiktoken if available for accurate token counting, else fallback to word count
                 content = result.get("content", str(result))
                 try:
-                    import tiktoken
                     enc = tiktoken.get_encoding("cl100k_base")
                     token_count = len(enc.encode(content))
                 except Exception:
@@ -521,7 +522,7 @@ class GptService:
 
         if self.config.USE_REMOTE_INFERENCE:
             url = self.config.REMOTE_INFERENCE_URL
-            model = self.config.OPENAI_MODEL
+            model = self.config.REMOTE_INFERENCE_MODEL
         else:
             url = self.config.INFERENCE_URL
             model = "gpt-3.5-turbo"
@@ -595,8 +596,8 @@ class GptService:
                 f"{url}/v1/chat/completions",
                 json={
                     "messages": conversation,
-                    "temperature": 1.0,
-                    "top_p": 1.0,
+                    "temperature": get_temperature_setting(),
+                    "top_p": get_top_p_setting(),
                     "max_tokens": self.config.MAX_TOKENS,
                     "stream": False,
                     "model": model,
@@ -680,12 +681,12 @@ class GptService:
                 "stream": True,
                 "model": model,
                 "reasoning_effort": "low",
-                "temperature": .9,
+                "temperature": get_temperature_setting(),
+                "top_p": get_top_p_setting(),
             }
        
 
             # Add tools if available
-            print(f"tools_for_llm: {tools_for_llm}")
             if tools_for_llm:
                 request_data["tools"] = tools_for_llm
                 request_data["tool_choice"] = "auto"
@@ -823,10 +824,10 @@ Important: This is your FINAL response to the user - make it complete, accurate,
                 """Final LLM call without tools"""
                 request_data = {
                 "messages": msgs,
-                "max_tokens": 32767,
-                "max_output_tokens": 32767,
-                "top_p": 1.0,
-                "temperature": .9,
+                "max_tokens": 16384,
+                "max_output_tokens": 16384,
+                "top_p": get_top_p_setting(),
+                "temperature": get_temperature_setting(),
                 "reasoning_effort": "medium",                
                 "stream": True,
                 "model": model,

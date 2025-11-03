@@ -189,7 +189,7 @@ class SimpleMCPClient:
         
         if self.client is None:
             self.client = httpx.AsyncClient(timeout=30.0)
-        
+
         response = await self.client.post(
             gateway_url,
             headers=headers,
