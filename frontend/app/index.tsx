@@ -34,7 +34,11 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
-  const { isSubscribed: isPremium, offerings } = useRevenueCat('premium');
+  const {
+    isSubscribed: isPremium,
+    offerings,
+    isLoading: isLoadingRevenueCat,
+  } = useRevenueCat('premium');
 
   // Extract monthly and annual packages from RevenueCat offerings
   const monthlyPackage = offerings?.availablePackages.find(
@@ -43,6 +47,14 @@ export default function ChatScreen() {
   const annualPackage = offerings?.availablePackages.find(
     pkg => pkg.packageType === 'ANNUAL',
   );
+
+  // Only show PricingCard when RevenueCat offerings are loaded
+  // This prevents showing fallback prices that flash when real prices load
+  const showPricingCard =
+    !isPremium &&
+    !isLoadingRevenueCat &&
+    offerings !== null &&
+    offerings !== undefined;
 
   // Simple chat mode determination - handles undefined/loading state
   const activeChatMode: 'streaming' | 'negotiation' =
@@ -327,8 +339,8 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
-              {/* Pricing Card - show immediately for non-premium users */}
-              {!isPremium && (
+              {/* Pricing Card - show only when RevenueCat offerings are loaded */}
+              {showPricingCard && (
                 <PricingCard
                   result={
                     negotiationResult || {
