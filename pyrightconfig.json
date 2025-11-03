@@ -6,9 +6,11 @@
         "./backend/router",
         "./backend/embeddings",
         "./backend/database",
-        "./backend/venv/Lib/site-packages"
+        "./backend/venv/Lib/site-packages",
+        "./backend/router/venv/Lib/site-packages",
+        "./backend/database/venv/Lib/site-packages"
     ],
-    "pythonVersion": "3.11",
+    "pythonVersion": "3.13",
     "include": [
         "**/*.py"
     ],

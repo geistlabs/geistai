@@ -11,6 +11,7 @@ import httpx
 import asyncio
 import json
 import sys
+import os
 from reasonableness_service import reasonableness_service
 from initial_test_cases import long_conversations
 
@@ -27,16 +28,18 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
         dict: Evaluation results with ratings and analysis
     """
     try:
-        rating_result = await reasonableness_service.rate_response(
+        rating_result = await reasonableness_service._rate_with_gemini(
             user_prompt=user_question,
             ai_response=ai_response,
-            context=f"Conversation turn {turn_number}"
         )
+
         reasonableness_rating = rating_result['rating']
+        coherency = rating_result['coherency']
         issues = rating_result.get('issues', [])
     except Exception as e:
         print(f"⚠️  Reasonableness rating unavailable: {e}")
-        reasonableness_rating = 0.7
+        reasonableness_rating = 0
+        coherency = 0
         issues = []
     if len(ai_response) < 50:
         issues.append("Response too short")
@@ -51,11 +54,12 @@ async def evaluate_response(user_question: str, ai_response: str, turn_number: i
         'response_length': len(ai_response),
         'elapsed_time': elapsed_time,
         'time_to_first_token': time_to_first_token,
-        'tool_call_count': tool_call_count
+        'tool_call_count': tool_call_count,
+        'coherency': coherency
     }
 
 async def test_parallel_conversation(long_conversations):
-    concurrency = 5
+    concurrency = 10
     test_start_time_all = int(time.time())
     print(f"🔄 Running {len(long_conversations)} conversations with concurrency={concurrency}...")
     semaphore = asyncio.Semaphore(concurrency)
@@ -149,6 +153,7 @@ async def test_conversation(conversation_turns, test_start_time_all):
                                     break
                             except json.JSONDecodeError:
                                 continue
+                    print(f"\n📝 AI Response (Turn {turn}): {full_response.strip()}")
                     # Add to conversation history
                     conversation_history.append({"role": "user", "content": user_message})
                     conversation_history.append({"role": "assistant", "content": full_response})
@@ -193,7 +198,7 @@ async def test_conversation(conversation_turns, test_start_time_all):
         print(f"\n📋 TURN-BY-TURN BREAKDOWN:")
         for i, eval_result in enumerate(evaluation_results, 1):
             status = "✅" if eval_result['reasonableness_rating'] > 0.7 else "⚠️" if eval_result['reasonableness_rating'] > 0.5 else "❌"
-            print(f"   Turn {i}: {status} {eval_result['reasonableness_rating']:.2f} (Quality: {eval_result['reasonableness_rating']:.2f})")
+            print(f"   Turn {i}: {status} {eval_result['reasonableness_rating']:.2f} (Truth: {eval_result['reasonableness_rating']:.2f}) - Coherency: {eval_result['coherency']:.2f} - Issues: {len(eval_result['issues'])}")
     if len(conversation_history) >= 4:
         print(f"\n🔍 CONVERSATION FLOW ANALYSIS:")
         print(f"   - Context maintained: {'✅ Yes' if len(conversation_history) == len(conversation_turns) * 2 else '❌ No'}")
@@ -215,8 +220,7 @@ async def test_conversation(conversation_turns, test_start_time_all):
             }
         }
     # Save the conversation and evaluation results to the database using SQLAlchemy models
-    import sys
-    import os
+    
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     from database import get_db_session, Conversation, ConversationResponse, ConversationResponseEvaluation, Issue
     with get_db_session() as db:
@@ -233,7 +237,7 @@ async def test_conversation(conversation_turns, test_start_time_all):
                 response=response_text,
                 evaluation=eval_result.get('reasonableness_rating', 0),
                 rationality=eval_result.get('reasonableness_rating', 0),
-                coherency=eval_result.get('reasonableness_rating', 0),
+                coherency=eval_result.get('coherency', 0),
                 elapsed_time=eval_result.get('elapsed_time', 0),
                 first_token_time=eval_result.get('time_to_first_token', 0),
                 num_tool_calls=eval_result.get('tool_call_count', 0),
@@ -246,7 +250,7 @@ async def test_conversation(conversation_turns, test_start_time_all):
                 conversation_json=eval_result,
                 elapsed=eval_result.get('elapsed_time', 0),
                 rationality=eval_result.get('reasonableness_rating', 0),
-                coherency=eval_result.get('reasonableness_rating', 0)
+                coherency=eval_result.get('coherency', 0)
             )
             issues = eval_result.get('issues', [])
             issuesObj = Issue(
@@ -391,8 +395,8 @@ async def main():
                         all_issues.extend(eval_result.get('issues', []))
                     else:
                         all_issues.extend(eval_result)
-   #    if all_issues or results:
-   #        await get_improvement_advice(all_issues, results)
+        if all_issues or results:
+           await get_improvement_advice(all_issues, results)
     except Exception as e:
         print(f"❌ Error running tests: {e}")
         import traceback

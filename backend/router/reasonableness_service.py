@@ -46,128 +46,160 @@ class ReasonablenessService:
             print(f"✅ Using Gemini API ({self.gemini_model}) with function calling")
             print(f"🔑 API Key: {self.gemini_api_key[:10]}..." if len(self.gemini_api_key) > 10 else "🔑 API Key set")
         
-    async def rate_response(
-        self, 
-        user_prompt: str, 
-        ai_response: str, 
-        context: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Rate the reasonableness of an AI response on a 0-1 scale using Gemini.
-        
-        Args:
-            user_prompt: The original user prompt/question
-            ai_response: The AI's response to rate
-            context: Optional additional context (conversation history, etc.)
-            
-        Returns:
-            Dict containing:
-            - rating: float (0-1)
-            - reasoning: str (explanation of the rating)
-            - confidence: float (0-1, how confident the rating is)
-            - issues: list of specific issues found
-        """
-        return await self._rate_with_gemini(user_prompt, ai_response, context)
-    
+  
     async def _rate_with_gemini(
         self,
         user_prompt: str,
         ai_response: str,
         context: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Rate using Gemini API with function calling."""
+        """
+        Modified implementation: 
+        1. First asks Gemini for a natural language, search-grounded response.
+        2. Then, based on that context, requires Gemini to call our custom tool with the grounded answer.
+        """
         evaluation_context = self._build_evaluation_context(user_prompt, ai_response, context)
-        
+        api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
+
+        # The conversation history: step 1 is to have the model respond naturally, grounded in google_search
+        initial_user_prompt = evaluation_context
+
+        chat_history = [
+            {
+                "role": "user",
+                "parts": [{"text": f"Get all possible relevant info from google search to ground your next answer {initial_user_prompt}\n"}]
+            }
+        ]
         try:
-            # Build Gemini API request with API key as URL parameter
-            api_url = f"{self.gemini_base_url}/models/{self.gemini_model}:generateContent?key={self.gemini_api_key}"
-            
-            # Construct request body with function declaration (Gemini format)
-            request_body = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {
-                                "text": evaluation_context
-                            }
-                        ]
+            # First round: get a natural-language, Google Search grounded answer.
+            first_request_body = {
+                "contents": chat_history,
+                "tools": [
+                    {"google_search": {}}
+                ]
+            }
+            async with httpx.AsyncClient() as client:
+                first_response = await client.post(
+                    api_url,
+                    headers={"Content-Type": "application/json"},
+                    json=first_request_body,
+                    timeout=60.0
+                )
+                if first_response.status_code != 200:
+                    print(f"Gemini API error (step 1): {first_response.status_code} {first_response.text}")
+                    return {
+                        "rating": 0.5,
+                        "coherency": 0.5,
+                        "reasoning": f"Gemini API error (step 1): {first_response.status_code}",
+                        "confidence": 0.0,
+                        "issues": [f"API request failed: {first_response.status_code}"]
                     }
-                ],
+                result1 = first_response.json()
+                
+                if not result1.get("candidates"):
+                    return {
+                        "rating": 0.5,
+                        "coherency": 0.5,
+                        "reasoning": "No search-grounded answer from Gemini",
+                        "confidence": 0.0,
+                        "issues": ["No search answer"]
+                    }
+                candidate1 = result1["candidates"][0]
+                # Collect the model's latest natural text answer ("parts")
+                assistant_parts = candidate1.get("content", {}).get("parts", [])
+                print(assistant_parts, "[Gemini search-grounded answer parts]")
+                # Add as assistant's message to chat history.
+                chat_history.append({
+                    "role": "model",
+                    "parts": assistant_parts
+                })
+                chat_history.append({
+                    "role": "user",
+                    "parts": [{"text": "Relying on the above for up to date info, rate the reasonableness of the original AI response in our first user message   ."}]
+                })
+
+            # Second round: require function tool call using search-grounded context.
+            # The system should call our function declaratively and this is required.
+            second_request_body = {
+                "contents": chat_history,
                 "tools": [
                     {
                         "function_declarations": [
                             self._get_gemini_function_declaration()
                         ]
-                    }
-                ]
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    api_url,
-                    headers={
-                        "Content-Type": "application/json"
                     },
-                    json=request_body,
+                ],
+                "tool_config": {
+                    "function_calling_config": {
+                        "mode": "ANY",        # Prefer tool calls (could also try "REQUIRED")
+                        "allowed_function_names": ["rate_response_reasonableness"]
+                    }
+                }
+            }
+            async with httpx.AsyncClient() as client:
+                tool_response = await client.post(
+                    api_url,
+                    headers={"Content-Type": "application/json"},
+                    json=second_request_body,
                     timeout=60.0
                 )
-                
-                if response.status_code != 200:
-                    print(f"Gemini API error: {response.status_code} {response.text}")
+
+                if tool_response.status_code != 200:
+                    print(f"Gemini API error (tool step): {tool_response.status_code} {tool_response.text}")
                     return {
                         "rating": 0.5,
-                        "reasoning": f"Gemini API error: {response.status_code}",
+                        "coherency": 0.5,
+                        "reasoning": f"Gemini API error (tool step): {tool_response.status_code}",
                         "confidence": 0.0,
-                        "issues": [f"API request failed: {response.status_code}"]
+                        "issues": [f"API request failed (tool): {tool_response.status_code}"]
                     }
-                
-                result = response.json()
-                
-                # Extract function call from Gemini response
-                if "candidates" not in result or not result["candidates"]:
+
+                result2 = tool_response.json()
+                if "candidates" not in result2 or not result2["candidates"]:
                     return {
                         "rating": 0.5,
-                        "reasoning": "No response from Gemini",
+                        "coherency": 0.5,
+                        "reasoning": "No tool call in search-grounded context response",
                         "confidence": 0.0,
-                        "issues": ["Empty response"]
+                        "issues": ["Empty tool response"]
                     }
-                
-                candidate = result["candidates"][0]
-                content = candidate.get("content", {})
-                parts = content.get("parts", [])
-                
+                candidate2 = result2["candidates"][0]
+                content2 = candidate2.get("content", {})
+                parts2 = content2.get("parts", [])
+
                 # Look for function call in parts
                 function_call = None
-                for part in parts:
+                for part in parts2:
                     if "functionCall" in part:
                         function_call = part["functionCall"]
                         break
-                
+
                 if not function_call:
-                    # If no function call, try to extract text response
+                    # Try to extract text response for debugging
                     response_text = ""
-                    for part in parts:
+                    for part in parts2:
                         if "text" in part:
                             response_text += part["text"]
-                    
                     return {
                         "rating": 0.5,
+                        "coherency": 0.5,
                         "reasoning": f"No function call in response. Text: {response_text[:100]}",
                         "confidence": 0.0,
-                        "issues": ["Missing function call"]
+                        "issues": ["Missing function call after search grounding"]
                     }
-                
+
                 # Extract arguments from function call
                 arguments = function_call.get("args", {})
-                
-                # Validate and normalize the response
+                print(function_call, "[Gemini function call after search grounding]")
+
+                # Validate and normalize
                 return self._validate_rating_response(arguments)
-                
+
         except httpx.TimeoutException as e:
             print(f"Rating service timeout: {str(e)}")
             return {
                 "rating": 0.5,
+                "coherency": 0.5,
                 "reasoning": f"Rating service timeout: {str(e)}",
                 "confidence": 0.0,
                 "issues": ["Service timeout"]
@@ -176,6 +208,7 @@ class ReasonablenessService:
             print(f"Rating service HTTP status error: {str(e)}")
             return {
                 "rating": 0.5,
+                "coherency": 0.5,
                 "reasoning": f"Rating service HTTP status error: {str(e)}",
                 "confidence": 0.0,
                 "issues": ["Service HTTP status error"]
@@ -184,6 +217,7 @@ class ReasonablenessService:
             print(f"Rating service request error: {str(e)}")
             return {
                 "rating": 0.5,
+                "coherency": 0.5,
                 "reasoning": f"Rating service request error: {str(e)}",
                 "confidence": 0.0,
                 "issues": [f"Rating service request error: {str(e)}"]
@@ -194,18 +228,17 @@ class ReasonablenessService:
             traceback.print_exc()
             return {
                 "rating": 0.5,
+                "coherency": 0.5,
                 "reasoning": f"Rating service error: {str(e)}",
                 "confidence": 0.0,
                 "issues": ["Service unavailable"]
             }
-    
     def _build_evaluation_context(self, user_prompt: str, ai_response: str, context: Optional[str] = None) -> str:
         """Build the evaluation context for the rating."""
         # Get the rubric prompt with the user prompt, AI response, and context
         evaluation_text = get_rubrics_prompt(
             user_prompt=user_prompt,
-            ai_response=ai_response,
-            context=context if context else "No additional context"
+            ai_response=ai_response
         )
         
         return evaluation_text
@@ -220,15 +253,11 @@ class ReasonablenessService:
                 "properties": {
                     "rating": {
                         "type": "number",
-                        "description": "Reasonableness rating from 0.0 to 1.0 (one decimal)."
+                        "description": "What a user informed by a current web search (see your previous web search grounded response would rate this between 0 and 1.0."
                     },
-                    "reasoning": {
-                        "type": "string",
-                        "description": "Brief explanation of the rating."
-                    },
-                    "confidence": {
+                    "coherency": {
                         "type": "number",
-                        "description": "Confidence in this rating (0.0 to 1.0)."
+                        "description": "Coherency score - would most users indicate this is a good response, based on common knowledge? (0.0 to 1.0), not actual truth."
                     },
                     "issues": {
                         "type": "array",
@@ -238,7 +267,7 @@ class ReasonablenessService:
                         "description": "Specific issues found (e.g., 'major: link-dump')."
                     }
                 },
-                "required": ["rating", "reasoning", "confidence", "issues"]
+                "required": ["rating", "issues", "coherency"]
             }
         }
     
@@ -252,7 +281,11 @@ class ReasonablenessService:
             # Extract and validate confidence
             confidence = float(arguments.get("confidence", 0.5))
             confidence = max(0.0, min(1.0, confidence))  # Clamp to 0-1
-            
+
+            # Extract and validate coherency
+            coherency = float(arguments.get("coherency", 0.5))
+            coherency = max(0.0, min(1.0, coherency))  # Clamp to 0-1
+
             # Extract other fields
             reasoning = str(arguments.get("reasoning", "No reasoning provided"))
             issues = arguments.get("issues", [])
@@ -265,6 +298,7 @@ class ReasonablenessService:
                 "rating": rating,
                 "reasoning": reasoning,
                 "confidence": confidence,
+                "coherency": coherency,
                 "issues": [str(issue) for issue in issues]
             }
             
@@ -273,6 +307,7 @@ class ReasonablenessService:
                 "rating": 0.5,
                 "reasoning": f"Error validating response: {str(e)}",
                 "confidence": 0.0,
+                "coherency": 0.5,
                 "issues": ["Response validation failed"]
             }
     
@@ -292,10 +327,9 @@ class ReasonablenessService:
         results = []
         
         for conv in conversations:
-            rating = await self.rate_response(
+            rating = await self._rate_with_gemini(
                 conv.get("prompt", ""),
-                conv.get("response", ""),
-                conv.get("context")
+                conv.get("response", "")
             )
             results.append(rating)
         
