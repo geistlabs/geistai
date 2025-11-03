@@ -207,12 +207,9 @@ class GptService:
                 # Use tiktoken if available for accurate token counting, else fallback to word count
                 content = result.get("content", str(result))
                 try:
-                    import tiktoken  # type: ignore
+                    import tiktoken
                     enc = tiktoken.get_encoding("cl100k_base")
                     token_count = len(enc.encode(content))
-                except ImportError:
-                    # If tiktoken is not installed, do a rough word-based fallback
-                    token_count = len(content.split())
                 except Exception:
                     # If tiktoken fails for other reasons, do a rough word-based fallback
                     token_count = len(content.split())
