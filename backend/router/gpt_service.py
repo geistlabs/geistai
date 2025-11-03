@@ -211,7 +211,7 @@ class GptService:
                     enc = tiktoken.get_encoding("cl100k_base")
                     token_count = len(enc.encode(content))
                 except Exception:
-                    # If tiktoken fails for other reasons, do a rough word-based fallback
+                    # If tiktoken is not installed, do a rough word-based fallback
                     token_count = len(content.split())
 
                 # Count URLs processed (simple heuristic)
