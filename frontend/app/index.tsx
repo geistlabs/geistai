@@ -25,6 +25,7 @@ import { PricingCard } from '../components/PricingCard';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
+import { useNegotiationLimit } from '../hooks/useNegotiationLimit';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useRevenueCat } from '../hooks/useRevenueCat';
 
@@ -39,6 +40,9 @@ export default function ChatScreen() {
     offerings,
     isLoading: isLoadingRevenueCat,
   } = useRevenueCat('premium');
+
+  // Negotiation limit hook (for resetting when premium is purchased)
+  const negotiationLimit = useNegotiationLimit();
 
   // Extract monthly and annual packages from RevenueCat offerings
   const monthlyPackage = offerings?.availablePackages.find(
@@ -88,6 +92,8 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
+    isNegotiationLimitReached,
+    negotiationMessageCount,
     // Rich event data (legacy - kept for backward compatibility)
     // toolCallEvents,
     // agentEvents,
@@ -95,6 +101,12 @@ export default function ChatScreen() {
   } = useChatWithStorage({
     chatId: currentChatId,
     chatMode: activeChatMode,
+    onNegotiationLimitReached: () => {
+      // Auto-show paywall after 1-2 seconds when limit is reached
+      setTimeout(() => {
+        setShowPaywall(true);
+      }, 1500);
+    },
   });
 
   useEffect(() => {
@@ -113,6 +125,53 @@ export default function ChatScreen() {
       Alert.alert('Storage Error', storageError);
     }
   }, [error, storageError]);
+
+  // Track if we've already handled the premium transition to avoid infinite loops
+  const premiumTransitionHandledRef = useRef(false);
+  const previousPremiumRef = useRef(isPremium);
+  const createNewChatRef = useRef(createNewChat);
+  const clearMessagesRef = useRef(clearMessages);
+
+  // Keep refs updated
+  useEffect(() => {
+    createNewChatRef.current = createNewChat;
+    clearMessagesRef.current = clearMessages;
+  }, [createNewChat, clearMessages]);
+
+  // Reset negotiation limit and create new chat when user becomes premium
+  useEffect(() => {
+    // Only handle the transition from non-premium to premium (not the initial render)
+    const becamePremium = isPremium && !previousPremiumRef.current;
+
+    if (becamePremium && !premiumTransitionHandledRef.current) {
+      premiumTransitionHandledRef.current = true;
+
+      // Reset the limit counter when user becomes premium
+      negotiationLimit.resetMessageCount();
+      // Close paywall if it was open
+      setShowPaywall(false);
+      // Create a new chat for premium access
+      const createPremiumChat = async () => {
+        try {
+          const newChatId = await createNewChatRef.current();
+          setCurrentChatId(newChatId);
+          clearMessagesRef.current();
+        } catch (err) {
+          console.error('Failed to create premium chat:', err);
+        }
+      };
+      createPremiumChat();
+    }
+
+    // Update the previous premium state
+    previousPremiumRef.current = isPremium;
+
+    // Reset the flag if user becomes non-premium again (for testing/debugging)
+    if (!isPremium) {
+      premiumTransitionHandledRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPremium]);
 
   const handleSend = async () => {
     if (!isConnected) {
@@ -432,7 +491,12 @@ export default function ChatScreen() {
               onSend={handleSend}
               onInterrupt={handleInterrupt}
               onVoiceInput={handleVoiceInput}
-              disabled={isLoading || !isConnected || isTranscribing}
+              disabled={
+                isLoading ||
+                !isConnected ||
+                isTranscribing ||
+                isNegotiationLimitReached
+              }
               isStreaming={isStreaming}
               isRecording={isRecording}
               isTranscribing={isTranscribing}

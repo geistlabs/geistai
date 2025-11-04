@@ -16,6 +16,7 @@ import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
+import { useNegotiationLimit } from './useNegotiationLimit';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -128,6 +129,7 @@ export interface UseChatWithStorageOptions {
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
   onTokenCount?: (count: number) => void;
+  onNegotiationLimitReached?: () => void; // Callback when limit is reached
 }
 
 export interface UseChatWithStorageReturn {
@@ -144,6 +146,10 @@ export interface UseChatWithStorageReturn {
   retryLastMessage: () => Promise<void>;
   deleteMessage: (index: number) => void;
   editMessage: (index: number, content: string) => void;
+
+  // Negotiation limit tracking
+  isNegotiationLimitReached: boolean;
+  negotiationMessageCount: number;
 
   // Rich event data (legacy - kept for backward compatibility)
   toolCallEvents: any[];
@@ -178,10 +184,13 @@ export function useChatWithStorage(
   const { chatMode = 'streaming' } = options;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  // Negotiation limit tracking (only active in negotiation mode)
+  const negotiationLimit = useNegotiationLimit();
+
   // Set welcome message based on chat mode
   const getWelcomeMessage = useCallback(() => {
     if (chatMode === 'negotiation') {
-      return "Hi! I'm here to help you learn about GeistAI. Ask me anything about the app, features, or how Premium works. What would you like to know?";
+      return "Hi! I'm here to help you learn about GeistAI. Ask me anything about the app, features, or how Premium works. You have 3 free messages to try it out! What would you like to know?";
     }
     return "Hello! Welcome to Geist AI Premium. I'm your AI assistant ready to help with any task. I can use advanced tools, search your memories, and provide detailed responses with citations. How can I assist you today?";
   }, [chatMode]);
@@ -288,6 +297,12 @@ export function useChatWithStorage(
   const sendMessage = useCallback(
     async (content: string) => {
       if (isLoading || isStreaming) return;
+
+      // Check negotiation limit before sending message
+      if (chatMode === 'negotiation' && negotiationLimit.isLimitReached) {
+        // Limit reached - don't send message, limit message will be shown by parent component
+        return;
+      }
 
       setError(null);
       setIsLoading(true);
@@ -883,11 +898,36 @@ export function useChatWithStorage(
           console.log(
             '[ChatWithStorage] 🎯 Using negotiation mode - calling /api/negotiate',
           );
+
+          // Increment message count for negotiation mode
+          await negotiationLimit.incrementMessageCount();
+
           await sendNegotiationMessage(
             content,
             messagesWithContext,
             eventHandlers,
           );
+
+          // Check if limit was reached after this message
+          const isLimitReached = await negotiationLimit.checkLimit();
+          if (isLimitReached) {
+            // Add limit message to chat
+            const limitMessage: EnhancedMessage = {
+              id: `limit-${Date.now()}`,
+              content:
+                "You've reached your free message limit. Upgrade to Premium to continue chatting!",
+              role: 'assistant',
+              timestamp: new Date(),
+              isStreaming: false,
+              agentConversations: [],
+              toolCallEvents: [],
+              collectedLinks: [],
+            };
+            setEnhancedMessages(prev => [...prev, limitMessage]);
+
+            // Notify parent component that limit was reached
+            options.onNegotiationLimitReached?.();
+          }
         } else {
           console.log(
             '[ChatWithStorage] 🚀 Using streaming mode - calling /api/stream',
@@ -912,7 +952,14 @@ export function useChatWithStorage(
         setIsLoading(false);
       }
     },
-    [isLoading, isStreaming, options, storage.addMessage],
+    [
+      isLoading,
+      isStreaming,
+      options,
+      storage.addMessage,
+      chatMode,
+      negotiationLimit,
+    ],
   );
 
   const stopStreaming = useCallback(() => {
@@ -1056,6 +1103,11 @@ export function useChatWithStorage(
     retryLastMessage,
     deleteMessage,
     editMessage,
+
+    // Negotiation limit tracking
+    isNegotiationLimitReached:
+      chatMode === 'negotiation' && negotiationLimit.isLimitReached,
+    negotiationMessageCount: negotiationLimit.messageCount,
 
     // Rich event data (legacy - kept for backward compatibility)
     toolCallEvents,
