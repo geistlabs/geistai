@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
+  AgentMessage,
   ChatAPI,
   ChatMessage,
+  NegotiationResult,
+  sendNegotiationMessage,
   sendStreamingMessage,
-  AgentMessage,
   StreamEventHandlers,
 } from '../lib/api/chat';
 import { ApiClient, ApiConfig } from '../lib/api/client';
 import { ENV } from '../lib/config/environment';
+import { Memory, memoryService } from '../lib/memoryService';
 import { TokenBatcher } from '../lib/streaming/tokenBatcher';
 
 import { LegacyMessage, useChatStorage } from './useChatStorage';
 import { useMemoryManager } from './useMemoryManager';
-import { memoryService, Memory } from '../lib/memoryService';
+import { useNegotiationLimit } from './useNegotiationLimit';
 
 // Enhanced message interface matching backend webapp structure
 export interface EnhancedMessage {
@@ -120,11 +123,13 @@ export function collectLinksFromEnhancedMessage(
 
 export interface UseChatWithStorageOptions {
   chatId?: number;
+  chatMode?: 'streaming' | 'negotiation';
   apiConfig?: Partial<ApiConfig>;
   onError?: (error: Error) => void;
   onStreamStart?: () => void;
   onStreamEnd?: () => void;
   onTokenCount?: (count: number) => void;
+  onNegotiationLimitReached?: () => void; // Callback when limit is reached
 }
 
 export interface UseChatWithStorageReturn {
@@ -134,12 +139,17 @@ export interface UseChatWithStorageReturn {
   isLoading: boolean;
   isStreaming: boolean;
   error: Error | null;
+  negotiationResult: NegotiationResult | null;
   sendMessage: (content: string) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
   retryLastMessage: () => Promise<void>;
   deleteMessage: (index: number) => void;
   editMessage: (index: number, content: string) => void;
+
+  // Negotiation limit tracking
+  isNegotiationLimitReached: boolean;
+  negotiationMessageCount: number;
 
   // Rich event data (legacy - kept for backward compatibility)
   toolCallEvents: any[];
@@ -171,12 +181,24 @@ const defaultApiConfig: ApiConfig = {
 export function useChatWithStorage(
   options: UseChatWithStorageOptions = {},
 ): UseChatWithStorageReturn {
+  const { chatMode = 'streaming' } = options;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Negotiation limit tracking (only active in negotiation mode)
+  const negotiationLimit = useNegotiationLimit();
+
+  // Set welcome message based on chat mode
+  const getWelcomeMessage = useCallback(() => {
+    if (chatMode === 'negotiation') {
+      return "Hi! I'm here to help you learn about GeistAI. Ask me anything about the app, features, or how Premium works. You have 3 free messages to try it out! What would you like to know?";
+    }
+    return "Hello! Welcome to Geist AI Premium. I'm your AI assistant ready to help with any task. I can use advanced tools, search your memories, and provide detailed responses with citations. How can I assist you today?";
+  }, [chatMode]);
+
   const [enhancedMessages, setEnhancedMessages] = useState<EnhancedMessage[]>([
     {
       id: '1',
-      content:
-        'Hello! This is a basic chat interface for testing the GeistAI router with enhanced message features. Type a message to get started and see rich agent activity, tool calls, and citations.',
+      content: getWelcomeMessage(),
       role: 'assistant',
       timestamp: new Date(),
       isStreaming: false,
@@ -188,6 +210,8 @@ export function useChatWithStorage(
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [negotiationResult, setNegotiationResult] =
+    useState<NegotiationResult | null>(null);
 
   // Rich event state (legacy - kept for backward compatibility)
   const [toolCallEvents, setToolCallEvents] = useState<any[]>([]);
@@ -274,6 +298,12 @@ export function useChatWithStorage(
     async (content: string) => {
       if (isLoading || isStreaming) return;
 
+      // Check negotiation limit before sending message
+      if (chatMode === 'negotiation' && negotiationLimit.isLimitReached) {
+        // Limit reached - don't send message, limit message will be shown by parent component
+        return;
+      }
+
       setError(null);
       setIsLoading(true);
       lastUserMessageRef.current = content;
@@ -304,7 +334,9 @@ export function useChatWithStorage(
       setMessages(prev => [...prev, userMessage]);
 
       // 1. IMMEDIATELY extract memories from the question using /api/memory
-      console.log(`[ChatWithStorage] 🧠 Starting memory extraction for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+      console.log(
+        `[ChatWithStorage] 🧠 Starting memory extraction for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`,
+      );
       const memoryExtractionPromise =
         memoryService.extractMemoriesFromQuestion(content);
 
@@ -336,20 +368,25 @@ export function useChatWithStorage(
       // 3. When /api/memory returns, store the memories asynchronously
       memoryExtractionPromise
         .then(async extractedMemories => {
-          console.log(`[ChatWithStorage] 🧠 Memory extraction completed`);
-          console.log(`[ChatWithStorage] 📊 Extracted ${extractedMemories.length} memories`);
-          
+          console.log(
+            `[ChatWithStorage] 📊 Extracted ${extractedMemories.length} memories`,
+          );
+
           try {
             if (extractedMemories.length > 0) {
-              console.log(`[ChatWithStorage] 💾 Processing extracted memories for storage...`);
-              
+              console.log(
+                '[ChatWithStorage] 💾 Processing extracted memories for storage...',
+              );
+
               // Convert extracted memories to full Memory objects and store them
               if (memoryManager.isInitialized && currentChatId) {
                 const memories: Memory[] = [];
 
                 for (const memoryData of extractedMemories) {
-                  console.log(`[ChatWithStorage] 🔄 Processing memory: "${memoryData.content.substring(0, 80)}..."`);
-                  
+                  console.log(
+                    `[ChatWithStorage] 🔄 Processing memory: "${memoryData.content.substring(0, 80)}..."`,
+                  );
+
                   const embedding = await memoryService.getEmbedding(
                     memoryData.content,
                   );
@@ -363,60 +400,89 @@ export function useChatWithStorage(
                       embedding,
                       relevanceScore: memoryData.relevanceScore || 0.8,
                       extractedAt: Date.now(),
-                      messageIds: [parseInt(userMessage.id)],
+                      messageIds: [parseInt(userMessage.id || '0')],
                       category: memoryData.category || 'other',
                     };
 
                     memories.push(memory);
-                    console.log(`[ChatWithStorage] ✅ Memory processed and ready for storage`);
+                    console.log(
+                      '[ChatWithStorage] ✅ Memory processed and ready for storage',
+                    );
                   } else {
-                    console.log(`[ChatWithStorage] ❌ Failed to generate embedding for memory`);
+                    console.log(
+                      '[ChatWithStorage] ❌ Failed to generate embedding for memory',
+                    );
                   }
                 }
 
                 if (memories.length > 0) {
-                  console.log(`[ChatWithStorage] 💾 Storing ${memories.length} memories in database...`);
+                  console.log(
+                    `[ChatWithStorage] 💾 Storing ${memories.length} memories in database...`,
+                  );
                   await memoryManager.storeMemories(memories);
-                  console.log(`[ChatWithStorage] ✅ Successfully stored ${memories.length} memories`);
+                  console.log(
+                    `[ChatWithStorage] ✅ Successfully stored ${memories.length} memories`,
+                  );
                 } else {
-                  console.log(`[ChatWithStorage] ⚠️ No memories to store (embedding generation failed)`);
+                  console.log(
+                    '[ChatWithStorage] ⚠️ No memories to store (embedding generation failed)',
+                  );
                 }
               } else {
-                console.log(`[ChatWithStorage] ❌ Cannot store memories: Memory manager not initialized (${memoryManager.isInitialized}) or no chat ID (${currentChatId})`);
+                console.log(
+                  `[ChatWithStorage] ❌ Cannot store memories: Memory manager not initialized (${memoryManager.isInitialized}) or no chat ID (${currentChatId})`,
+                );
               }
             } else {
-              console.log(`[ChatWithStorage] ⚠️ No memories extracted from user message`);
+              console.log(
+                '[ChatWithStorage] ⚠️ No memories extracted from user message',
+              );
             }
           } catch (err) {
-            console.error(`[ChatWithStorage] ❌ Failed to store memories:`, err);
+            console.error(
+              '[ChatWithStorage] ❌ Failed to store memories:',
+              err,
+            );
           }
         })
         .catch(err => {
-          console.error(`[ChatWithStorage] ❌ Memory extraction failed:`, err);
+          console.error('[ChatWithStorage] ❌ Memory extraction failed:', err);
         });
 
       // Get relevant memory context asynchronously (don't block streaming)
-      let memoryContext = '';
+      const memoryContext = '';
       const getMemoryContextAsync = async () => {
-        console.log(`[ChatWithStorage] 🧠 Starting memory context retrieval...`);
-        console.log(`[ChatWithStorage] ✅ Memory manager initialized: ${memoryManager.isInitialized}`);
-        console.log(`[ChatWithStorage] 🆔 Current chat ID: ${currentChatId}`);
-        
+        console.log(
+          '[ChatWithStorage] 🧠 Starting memory context retrieval...',
+        );
+        console.log(
+          `[ChatWithStorage] ✅ Memory manager initialized: ${memoryManager.isInitialized}`,
+        );
+
         if (memoryManager.isInitialized && currentChatId) {
           try {
-            console.log(`[ChatWithStorage] 🔍 Calling getRelevantContext for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`);
+            console.log(
+              `[ChatWithStorage] 🔍 Calling getRelevantContext for: "${content.substring(0, 100)}${content.length > 100 ? '...' : ''}"`,
+            );
             const context = await memoryManager.getRelevantContext(
               content,
               currentChatId,
             );
-            console.log(`[ChatWithStorage] 📋 Memory context retrieved, length: ${context.length}`);
+            console.log(
+              `[ChatWithStorage] 📋 Memory context retrieved, length: ${context.length}`,
+            );
             return context;
           } catch (err) {
-            console.error(`[ChatWithStorage] ❌ Error retrieving memory context:`, err);
+            console.error(
+              '[ChatWithStorage] ❌ Error retrieving memory context:',
+              err,
+            );
             return '';
           }
         }
-        console.log(`[ChatWithStorage] ⚠️ Memory manager not initialized or no chat ID, returning empty context`);
+        console.log(
+          '[ChatWithStorage] ⚠️ Memory manager not initialized or no chat ID, returning empty context',
+        );
         return '';
       };
 
@@ -465,7 +531,6 @@ export function useChatWithStorage(
             // Log first token timing
             if (!firstTokenLogged) {
               const firstTokenTime = Date.now() - inputStartTime;
-              // First token received
               firstTokenLogged = true;
             }
 
@@ -524,8 +589,8 @@ export function useChatWithStorage(
           onToken: (token: string) => {
             // Add token to batcher instead of processing immediately
             batcher.addToken(token);
-            // Update enhanced message content
 
+            // Update enhanced message content
             setEnhancedMessages(prev =>
               prev.map(msg => {
                 const resultingContent = msg.content + token;
@@ -725,7 +790,7 @@ export function useChatWithStorage(
             options.onStreamEnd?.();
 
             // Save final assistant message to storage asynchronously (don't block completion)
-            if (currentChatId && storage.addMessage && accumulatedContent) {
+            if (currentChatId && accumulatedContent) {
               const finalAssistantMessage = {
                 ...assistantMessage,
                 content: accumulatedContent,
@@ -745,28 +810,55 @@ export function useChatWithStorage(
             setIsLoading(false); // Ensure loading state is cleared on stream error
             options.onError?.(errorObj);
           },
+          onNegotiationChannel: (data: {
+            final_price: number;
+            package_id: string;
+            negotiation_summary: string;
+            stage: string;
+            confidence: number;
+          }) => {
+            const result: NegotiationResult = {
+              final_price: data.final_price,
+              package_id: data.package_id,
+              negotiation_summary: data.negotiation_summary,
+            };
+            setNegotiationResult(result);
+          },
         };
 
         // Prepare messages with memory context
         const messagesWithContext = [...currentMessages];
 
-        console.log(`[ChatWithStorage] 📦 Preparing messages with memory context...`);
-        console.log(`[ChatWithStorage] 📨 Current messages count: ${currentMessages.length}`);
+        console.log(
+          '[ChatWithStorage] 📦 Preparing messages with memory context...',
+        );
+        console.log(
+          `[ChatWithStorage] 📨 Current messages count: ${currentMessages.length}`,
+        );
 
         // Wait for memory context to be retrieved (if it finishes quickly)
         // But don't wait more than 500ms to avoid blocking streaming
         try {
-          console.log(`[ChatWithStorage] ⏱️ Waiting for memory context (max 500ms)...`);
+          console.log(
+            '[ChatWithStorage] ⏱️ Waiting for memory context (max 500ms)...',
+          );
           const contextWithTimeout = await Promise.race([
             memoryContextPromise,
             new Promise<string>(resolve => setTimeout(() => resolve(''), 500)),
           ]);
 
           if (contextWithTimeout) {
-            console.log(`[ChatWithStorage] ✅ Memory context retrieved successfully!`);
-            console.log(`[ChatWithStorage] 📄 Memory context length: ${contextWithTimeout.length} characters`);
-            console.log(`[ChatWithStorage] 📋 Memory context preview:`, contextWithTimeout.substring(0, 300) + '...');
-            
+            console.log(
+              '[ChatWithStorage] ✅ Memory context retrieved successfully!',
+            );
+            console.log(
+              `[ChatWithStorage] 📄 Memory context length: ${contextWithTimeout.length} characters`,
+            );
+            console.log(
+              '[ChatWithStorage] 📋 Memory context preview:',
+              contextWithTimeout.substring(0, 300) + '...',
+            );
+
             // Insert memory context as a system message at the beginning
             messagesWithContext.unshift({
               id: 'memory-context',
@@ -774,22 +866,78 @@ export function useChatWithStorage(
               content: contextWithTimeout,
               timestamp: Date.now(),
             });
-            console.log(`[ChatWithStorage] 🔄 Added memory context as system message`);
+            console.log(
+              '[ChatWithStorage] 🔄 Added memory context as system message',
+            );
           } else {
-            console.log(`[ChatWithStorage] ⏰ Memory context retrieval timed out or returned empty`);
+            console.log(
+              '[ChatWithStorage] ⏰ Memory context retrieval timed out or returned empty',
+            );
           }
         } catch (err) {
-          console.error(`[ChatWithStorage] ❌ Memory context retrieval failed:`, err);
+          console.error(
+            '[ChatWithStorage] ❌ Memory context retrieval failed:',
+            err,
+          );
         }
 
-        console.log(`[ChatWithStorage] 📤 Final messages to send count: ${messagesWithContext.length}`);
-        console.log(`[ChatWithStorage] 📋 Full prompt being sent to /api/stream:`);
+        console.log(
+          `[ChatWithStorage] 📤 Final messages to send count: ${messagesWithContext.length}`,
+        );
+        console.log(
+          '[ChatWithStorage] 📋 Full prompt being sent to /api/stream:',
+        );
         messagesWithContext.forEach((msg, index) => {
-          console.log(`[ChatWithStorage] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`);
+          console.log(
+            `[ChatWithStorage] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 100)}${msg.content.length > 100 ? '...' : ''}`,
+          );
         });
 
-        // 2. Start streaming to /api/stream
-        await sendStreamingMessage(content, messagesWithContext, eventHandlers);
+        // 2. Start streaming to appropriate endpoint based on chat mode
+        if (chatMode === 'negotiation') {
+          console.log(
+            '[ChatWithStorage] 🎯 Using negotiation mode - calling /api/negotiate',
+          );
+
+          // Increment message count for negotiation mode
+          await negotiationLimit.incrementMessageCount();
+
+          await sendNegotiationMessage(
+            content,
+            messagesWithContext,
+            eventHandlers,
+          );
+
+          // Check if limit was reached after this message
+          const isLimitReached = await negotiationLimit.checkLimit();
+          if (isLimitReached) {
+            // Add limit message to chat
+            const limitMessage: EnhancedMessage = {
+              id: `limit-${Date.now()}`,
+              content:
+                "You've reached your free message limit. Upgrade to Premium to continue chatting!",
+              role: 'assistant',
+              timestamp: new Date(),
+              isStreaming: false,
+              agentConversations: [],
+              toolCallEvents: [],
+              collectedLinks: [],
+            };
+            setEnhancedMessages(prev => [...prev, limitMessage]);
+
+            // Notify parent component that limit was reached
+            options.onNegotiationLimitReached?.();
+          }
+        } else {
+          console.log(
+            '[ChatWithStorage] 🚀 Using streaming mode - calling /api/stream',
+          );
+          await sendStreamingMessage(
+            content,
+            messagesWithContext,
+            eventHandlers,
+          );
+        }
       } catch (err) {
         const error =
           err instanceof Error ? err : new Error('Failed to send message');
@@ -804,7 +952,14 @@ export function useChatWithStorage(
         setIsLoading(false);
       }
     },
-    [isLoading, isStreaming, options, storage.addMessage],
+    [
+      isLoading,
+      isStreaming,
+      options,
+      storage.addMessage,
+      chatMode,
+      negotiationLimit,
+    ],
   );
 
   const stopStreaming = useCallback(() => {
@@ -828,10 +983,51 @@ export function useChatWithStorage(
     }
   }, [options]);
 
+  // Update welcome message when chatMode changes
+  useEffect(() => {
+    const expectedWelcomeMessage = getWelcomeMessage();
+    // Only update if we have no messages or only the welcome message with wrong content
+    const firstMessage = enhancedMessages[0];
+    const shouldUpdate =
+      enhancedMessages.length === 0 ||
+      (enhancedMessages.length === 1 &&
+        firstMessage?.role === 'assistant' &&
+        firstMessage?.id === '1' &&
+        firstMessage?.content !== expectedWelcomeMessage);
+
+    if (shouldUpdate) {
+      setEnhancedMessages([
+        {
+          id: '1',
+          content: expectedWelcomeMessage,
+          role: 'assistant',
+          timestamp: new Date(),
+          isStreaming: false,
+          agentConversations: [],
+          toolCallEvents: [],
+          collectedLinks: [],
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMode, getWelcomeMessage]);
+
   const clearMessages = useCallback(() => {
     stopStreaming();
     setMessages([]);
-    setEnhancedMessages([]);
+    // Reset to welcome message based on current chatMode
+    setEnhancedMessages([
+      {
+        id: '1',
+        content: getWelcomeMessage(),
+        role: 'assistant',
+        timestamp: new Date(),
+        isStreaming: false,
+        agentConversations: [],
+        toolCallEvents: [],
+        collectedLinks: [],
+      },
+    ]);
     setError(null);
     lastUserMessageRef.current = null;
     tokenCountRef.current = 0;
@@ -842,7 +1038,7 @@ export function useChatWithStorage(
     setOrchestratorStatus({ isActive: false });
 
     // Note: We don't clear storage here - that would be deleteChat
-  }, [stopStreaming]);
+  }, [stopStreaming, getWelcomeMessage]);
 
   const retryLastMessage = useCallback(async () => {
     if (lastUserMessageRef.current && !isLoading && !isStreaming) {
@@ -900,12 +1096,18 @@ export function useChatWithStorage(
     isLoading: isLoading || storage.isLoading, // Simplified - storage loading is now properly managed
     isStreaming,
     error,
+    negotiationResult,
     sendMessage,
     stopStreaming,
     clearMessages,
     retryLastMessage,
     deleteMessage,
     editMessage,
+
+    // Negotiation limit tracking
+    isNegotiationLimitReached:
+      chatMode === 'negotiation' && negotiationLimit.isLimitReached,
+    negotiationMessageCount: negotiationLimit.messageCount,
 
     // Rich event data (legacy - kept for backward compatibility)
     toolCallEvents,

@@ -17,12 +17,17 @@ import ChatDrawer from '../components/chat/ChatDrawer';
 import { EnhancedMessageBubble } from '../components/chat/EnhancedMessageBubble';
 import { InputBar } from '../components/chat/InputBar';
 import { LoadingIndicator } from '../components/chat/LoadingIndicator';
+import { DevResetButton } from '../components/DevResetButton';
 import HamburgerIcon from '../components/HamburgerIcon';
 import { NetworkStatus } from '../components/NetworkStatus';
+import { PaywallModal } from '../components/paywall/PaywallModal';
+import { PricingCard } from '../components/PricingCard';
 import '../global.css';
 import { useAudioRecording } from '../hooks/useAudioRecording';
 import { useChatWithStorage } from '../hooks/useChatWithStorage';
+import { useNegotiationLimit } from '../hooks/useNegotiationLimit';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useRevenueCat } from '../hooks/useRevenueCat';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
@@ -30,6 +35,35 @@ const DRAWER_WIDTH = Math.min(288, SCREEN_WIDTH * 0.85);
 export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const { isConnected } = useNetworkStatus();
+  const {
+    isSubscribed: isPremium,
+    offerings,
+    isLoading: isLoadingRevenueCat,
+  } = useRevenueCat('premium');
+
+  // Negotiation limit hook (for resetting when premium is purchased)
+  const negotiationLimit = useNegotiationLimit();
+
+  // Extract monthly and annual packages from RevenueCat offerings
+  const monthlyPackage = offerings?.availablePackages.find(
+    pkg => pkg.packageType === 'MONTHLY',
+  );
+  const annualPackage = offerings?.availablePackages.find(
+    pkg => pkg.packageType === 'ANNUAL',
+  );
+
+  // Only show PricingCard when RevenueCat offerings are loaded
+  // This prevents showing fallback prices that flash when real prices load
+  const showPricingCard =
+    !isPremium &&
+    !isLoadingRevenueCat &&
+    offerings !== null &&
+    offerings !== undefined;
+
+  // Simple chat mode determination - handles undefined/loading state
+  const activeChatMode: 'streaming' | 'negotiation' =
+    isPremium === true ? 'streaming' : 'negotiation';
+
   const [input, setInput] = useState('');
   const [currentChatId, setCurrentChatId] = useState<number | undefined>(
     undefined,
@@ -37,6 +71,7 @@ export default function ChatScreen() {
   const [isDrawerVisible, setIsDrawerVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   // Audio recording hook
   const recording = useAudioRecording();
@@ -49,6 +84,7 @@ export default function ChatScreen() {
     isLoading,
     isStreaming,
     error,
+    negotiationResult,
     sendMessage,
     stopStreaming,
     clearMessages,
@@ -56,11 +92,22 @@ export default function ChatScreen() {
     createNewChat,
     storageError,
     chatApi,
+    isNegotiationLimitReached,
+    negotiationMessageCount,
     // Rich event data (legacy - kept for backward compatibility)
-    toolCallEvents,
-    agentEvents,
-    orchestratorStatus,
-  } = useChatWithStorage({ chatId: currentChatId });
+    // toolCallEvents,
+    // agentEvents,
+    // orchestratorStatus,
+  } = useChatWithStorage({
+    chatId: currentChatId,
+    chatMode: activeChatMode,
+    onNegotiationLimitReached: () => {
+      // Auto-show paywall after 1-2 seconds when limit is reached
+      setTimeout(() => {
+        setShowPaywall(true);
+      }, 1500);
+    },
+  });
 
   useEffect(() => {
     if (enhancedMessages.length > 0) {
@@ -78,6 +125,53 @@ export default function ChatScreen() {
       Alert.alert('Storage Error', storageError);
     }
   }, [error, storageError]);
+
+  // Track if we've already handled the premium transition to avoid infinite loops
+  const premiumTransitionHandledRef = useRef(false);
+  const previousPremiumRef = useRef(isPremium);
+  const createNewChatRef = useRef(createNewChat);
+  const clearMessagesRef = useRef(clearMessages);
+
+  // Keep refs updated
+  useEffect(() => {
+    createNewChatRef.current = createNewChat;
+    clearMessagesRef.current = clearMessages;
+  }, [createNewChat, clearMessages]);
+
+  // Reset negotiation limit and create new chat when user becomes premium
+  useEffect(() => {
+    // Only handle the transition from non-premium to premium (not the initial render)
+    const becamePremium = isPremium && !previousPremiumRef.current;
+
+    if (becamePremium && !premiumTransitionHandledRef.current) {
+      premiumTransitionHandledRef.current = true;
+
+      // Reset the limit counter when user becomes premium
+      negotiationLimit.resetMessageCount();
+      // Close paywall if it was open
+      setShowPaywall(false);
+      // Create a new chat for premium access
+      const createPremiumChat = async () => {
+        try {
+          const newChatId = await createNewChatRef.current();
+          setCurrentChatId(newChatId);
+          clearMessagesRef.current();
+        } catch (err) {
+          console.error('Failed to create premium chat:', err);
+        }
+      };
+      createPremiumChat();
+    }
+
+    // Update the previous premium state
+    previousPremiumRef.current = isPremium;
+
+    // Reset the flag if user becomes non-premium again (for testing/debugging)
+    if (!isPremium) {
+      premiumTransitionHandledRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPremium]);
 
   const handleSend = async () => {
     if (!isConnected) {
@@ -243,6 +337,8 @@ export default function ChatScreen() {
         }}
       >
         <SafeAreaView className='flex-1 bg-white'>
+          {/* Dev Reset Button - Only visible in development */}
+          <DevResetButton />
           <KeyboardAvoidingView
             className='flex-1'
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -266,6 +362,14 @@ export default function ChatScreen() {
                 {/* Center - Title */}
                 <View className='flex-row items-center'>
                   <Text className='text-lg font-medium text-black'>Geist</Text>
+                  {/* PAYWALL COMMENTED OUT FOR TESTING */}
+                  {/* {isPremium && (
+                    <View className='ml-2 bg-yellow-400 px-2 py-1 rounded'>
+                      <Text className='text-black text-xs font-bold'>
+                        PREMIUM
+                      </Text>
+                    </View>
+                  )} */}
                 </View>
 
                 {/* Right side - Buttons */}
@@ -294,6 +398,23 @@ export default function ChatScreen() {
 
             {/* Messages List */}
             <View className='flex-1 pb-2'>
+              {/* Pricing Card - show only when RevenueCat offerings are loaded */}
+              {showPricingCard && (
+                <PricingCard
+                  result={
+                    negotiationResult || {
+                      final_price: 9.99,
+                      package_id: 'premium_monthly_10',
+                      negotiation_summary: 'Default pricing',
+                    }
+                  }
+                  onUpgrade={() => setShowPaywall(true)}
+                  isLoading={false}
+                  monthlyPackage={monthlyPackage}
+                  annualPackage={annualPackage}
+                />
+              )}
+
               {isLoading && enhancedMessages.length === 0 ? (
                 <View className='flex-1 items-center justify-center p-8'>
                   <LoadingIndicator size='medium' />
@@ -370,7 +491,12 @@ export default function ChatScreen() {
               onSend={handleSend}
               onInterrupt={handleInterrupt}
               onVoiceInput={handleVoiceInput}
-              disabled={isLoading || !isConnected || isTranscribing}
+              disabled={
+                isLoading ||
+                !isConnected ||
+                isTranscribing ||
+                isNegotiationLimitReached
+              }
               isStreaming={isStreaming}
               isRecording={isRecording}
               isTranscribing={isTranscribing}
@@ -403,6 +529,16 @@ export default function ChatScreen() {
         onChatSelect={handleChatSelect}
         activeChatId={currentChatId}
         onNewChat={handleNewChat}
+      />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onPurchaseSuccess={() => {
+          setShowPaywall(false);
+          console.log('✅ Purchase successful');
+        }}
+        highlightedPackageId={negotiationResult?.package_id}
+        negotiationSummary={negotiationResult?.negotiation_summary}
       />
     </>
   );

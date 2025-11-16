@@ -1,6 +1,7 @@
 import EventSource from 'react-native-sse';
 
 import { ENV } from '../config/environment';
+
 import { ApiClient } from './client';
 export interface ChatMessage {
   id?: string;
@@ -30,6 +31,12 @@ export interface ChatResponse {
 
 export interface ChatError {
   error: string;
+}
+
+export interface NegotiationResult {
+  final_price: number;
+  package_id: string;
+  negotiation_summary: string;
 }
 
 // Send a message to the chat API (non-streaming)
@@ -97,11 +104,18 @@ export interface StreamEventHandlers {
     result?: any;
     error?: string;
   }) => void;
+  onNegotiationChannel: (data: {
+    final_price: number;
+    package_id: string;
+    negotiation_summary: string;
+    stage: string;
+    confidence: number;
+  }) => void;
   onComplete: () => void;
   onError: (error: string) => void;
 }
 
-// Event processor class for handling different event types
+// Event processor class for handling orchestrator events
 class StreamEventProcessor {
   private handlers: StreamEventHandlers;
 
@@ -245,6 +259,115 @@ class StreamEventProcessor {
   }
 }
 
+// Negotiation event processor for handling agent-specific events
+class NegotiationEventProcessor {
+  private handlers: StreamEventHandlers;
+
+  constructor(handlers: StreamEventHandlers) {
+    this.handlers = handlers;
+  }
+
+  /**
+   * Process negotiation events from the pricing agent
+   * Handles: agent_start, agent_token, agent_complete, negotiation_finalized, error
+   *
+   * NOTE: This processor ROUTES events to handlers.
+   * The useChatWithStorage hook handles token ACCUMULATION via its existing batching mechanism.
+   */
+  processEvent(data: any): void {
+    try {
+      switch (data.type) {
+        case 'agent_start':
+          this.handleAgentStart(data);
+          break;
+        case 'agent_token':
+          this.handleAgentToken(data);
+          break;
+        case 'agent_complete':
+          this.handleAgentComplete(data);
+          break;
+        case 'negotiation_finalized':
+          this.handleNegotiationFinalized(data);
+          break;
+        case 'final_response':
+          this.handleFinalResponse(data);
+          break;
+        case 'error':
+          this.handleError(data);
+          break;
+        default:
+        // Unknown event type
+      }
+    } catch (error) {
+      // Error processing negotiation event
+    }
+  }
+
+  private handleAgentStart(data: any): void {
+    // Agent started processing - signal to handlers
+  }
+
+  private handleAgentToken(data: any): void {
+    // Extract token from agent_token event and route to handler
+    // data.data.content has structure: { channel: 'content' | 'reasoning', data: string }
+    if (
+      data.data?.content?.channel === 'content' &&
+      typeof data.data.content.data === 'string'
+    ) {
+      const token = data.data.content.data;
+      // Route token to handler - the hook will accumulate via batching
+      this.handlers.onToken(token);
+    } else if (
+      data.data?.content?.channel === 'negotiation' &&
+      typeof data.data.content.data === 'object'
+    ) {
+      // Handle negotiation data from agent_token event
+      this.handleNegotiationData(data.data.content.data);
+    }
+  }
+
+  private handleNegotiationData(negotiationData: any): void {
+    // Process negotiation data and route to handler
+    if (this.handlers.onNegotiationChannel) {
+      const mappedData = {
+        final_price: negotiationData.monthly_price, // Map monthly_price to final_price
+        package_id: negotiationData.monthly_package_id, // Map monthly_package_id to package_id
+        negotiation_summary: negotiationData.negotiation_summary,
+        stage: negotiationData.stage,
+        confidence: negotiationData.confidence,
+      };
+      this.handlers.onNegotiationChannel(mappedData);
+    }
+  }
+
+  private handleAgentComplete(data: any): void {
+    // Agent completed - route completion signal to handler
+    // The hook manages the final message state
+    const agentData = data.data;
+
+    // Signal completion - hook will finalize message state
+    if (this.handlers.onComplete) {
+      this.handlers.onComplete();
+    }
+  }
+
+  private handleNegotiationFinalized(data: any): void {
+    // Legacy handler - negotiation data now comes through agent_token events
+    // This method is kept for backward compatibility but negotiation data
+    // is now handled through handleAgentToken -> handleNegotiationData
+  }
+
+  private handleFinalResponse(data: any): void {
+    // Final response from agent
+  }
+
+  private handleError(data: any): void {
+    // Error occurred during negotiation
+    const errorMessage = data.data?.message || 'Unknown negotiation error';
+    this.handlers.onError(errorMessage);
+  }
+}
+
 // Send a streaming message to the chat API
 export async function sendStreamingMessage(
   message: string,
@@ -255,16 +378,6 @@ export async function sendStreamingMessage(
     message,
     messages: conversationHistory,
   };
-
-  console.log(`[StreamingAPI] 🚀 Sending streaming message to /api/stream`);
-  console.log(`[StreamingAPI] 📝 Message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
-  console.log(`[StreamingAPI] 📚 Conversation history length: ${conversationHistory.length} messages`);
-  console.log(`[StreamingAPI] 📋 Full request body:`);
-  console.log(`[StreamingAPI] Message: "${requestBody.message}"`);
-  console.log(`[StreamingAPI] Messages array:`);
-  requestBody.messages?.forEach((msg, index) => {
-    console.log(`[StreamingAPI] ${index + 1}. [${msg.role}] ${msg.content.substring(0, 150)}${msg.content.length > 150 ? '...' : ''}`);
-  });
 
   // Create event processor
   const eventProcessor = new StreamEventProcessor(handlers);
@@ -447,6 +560,134 @@ export function getAgentDisplayName(agentName: string): string {
   );
 }
 
+// Send a negotiation message to the pricing agent
+export async function sendNegotiationMessage(
+  message: string,
+  conversationHistory: ChatMessage[],
+  handlers: StreamEventHandlers,
+): Promise<void> {
+  const requestBody: ChatRequest = {
+    message,
+    messages: conversationHistory,
+  };
+
+  // Create event processor
+  const eventProcessor = new NegotiationEventProcessor(handlers);
+
+  return new Promise<void>((resolve, reject) => {
+    // Create EventSource with POST data
+    const es = new EventSource(`${ENV.API_URL}/api/negotiate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(requestBody),
+      withCredentials: false,
+    });
+
+    // Handle different event types
+    es.addEventListener('agent_start', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_start
+      }
+    });
+
+    es.addEventListener('agent_token', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_token
+      }
+    });
+
+    es.addEventListener('agent_complete', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse agent_complete
+      }
+    });
+
+    es.addEventListener('negotiation_finalized', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse negotiation_finalized
+      }
+    });
+
+    es.addEventListener('final_response', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse final_response
+      }
+    });
+
+    es.addEventListener('error', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        } else {
+          handlers.onError('Negotiation stream error occurred');
+        }
+      } catch (parseError) {
+        // Failed to parse error event
+      }
+    });
+
+    es.addEventListener('end', (event: any) => {
+      try {
+        if (event.data && typeof event.data === 'string') {
+          const data = JSON.parse(event.data);
+          eventProcessor.processEvent(data);
+        }
+      } catch (parseError) {
+        // Failed to parse end event data
+      }
+
+      handlers.onComplete();
+      es.close();
+      resolve();
+    });
+
+    es.addEventListener('open', (event: any) => {
+      // SSE connection established
+    });
+
+    // Handle connection errors
+    es.onerror = error => {
+      handlers.onError('Negotiation connection failed');
+      es.close();
+      reject(new Error('Negotiation connection failed'));
+    };
+
+    // Handle general errors
+    es.onopen = () => {
+      // EventSource opened
+    };
+  });
+}
+
 // Health check function
 export async function checkHealth(): Promise<{
   status: string;
@@ -622,5 +863,13 @@ export class ChatAPI {
         error: error instanceof Error ? error.message : 'Transcription failed',
       };
     }
+  }
+
+  async sendNegotiationMessage(
+    message: string,
+    conversationHistory: ChatMessage[],
+    handlers: StreamEventHandlers,
+  ): Promise<void> {
+    return sendNegotiationMessage(message, conversationHistory, handlers);
   }
 }
